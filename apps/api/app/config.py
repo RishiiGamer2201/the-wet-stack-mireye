@@ -46,6 +46,19 @@ class Settings(BaseSettings):
     #: unless this is deliberately turned on.
     mireye_include_parcel_fields: bool = False
 
+    # --- live spend limits -------------------------------------------------
+    # Mireye bills per field per location, so an unbounded sweep is an unbounded
+    # bill. These caps are conservative on purpose: reaching one records a
+    # visible InformationGap rather than failing the run or quietly downgrading
+    # evidence, so the analysis stays honest about what it did not look at.
+    #: Locations a single investigation may fetch live.
+    mireye_max_live_locations: int = 3
+    #: Live /v1/fetch calls a single investigation may make, across all locations.
+    mireye_max_live_fetches: int = 8
+    #: POST /v1/feature-requests is documented but its contract is unverified, so
+    #: gaps are recorded locally until someone confirms the real payload.
+    mireye_enable_feature_requests: bool = False
+
     # --- llm ---------------------------------------------------------------
     llm_provider: str = "auto"  # auto | anthropic | none
     anthropic_api_key: str | None = None

@@ -68,7 +68,7 @@ def request(url: str, method: str = "GET", body: dict | None = None, headers: di
 # ---------------------------------------------------------------------------
 
 
-def smoke_api(api: str, origin: str | None) -> None:
+def smoke_api(api: str, origin: str | None, allow_live: bool = False) -> None:
     print(f"\nAPI {api}")
 
     status, _, body = request(f"{api}/api/health")
@@ -87,10 +87,24 @@ def smoke_api(api: str, origin: str | None) -> None:
 
     status, _, meta = request(f"{api}/api/meta")
     check("meta returns 200", status == 200)
+    mireye_mode = "unknown"
     if isinstance(meta, dict):
         check("meta reports 34 Mireye fields", meta.get("mireye_field_count") == 34)
         check("safety disclaimer present", "not professional engineering approval" in meta.get("disclaimer", ""))
+        mireye_mode = meta.get("services", {}).get("mireye", "unknown")
         print(f"        services: {json.dumps(meta.get('services', {}))}  demo_mode={meta.get('demo_mode')}")
+
+    # Everything below sweeps every candidate site and analyses every change.
+    # Against a live backend that is a per-field, per-location bill, so refuse to
+    # start rather than discover the cost afterwards.
+    if mireye_mode != "mock" and not allow_live:
+        print(
+            f"\n  ABORTED before any site analysis: the backend reports mireye='{mireye_mode}',"
+            "\n  and this suite sweeps every site. Point it at a mock-mode backend, or pass"
+            "\n  --i-understand-this-spends-credits to override."
+        )
+        check("backend is in mock mode before sweeping sites", False, f"mireye={mireye_mode}")
+        return
 
     status, _, projects = request(f"{api}/api/projects")
     if not check("a demo project is present", status == 200 and bool(projects), f"got {status}"):
@@ -216,11 +230,17 @@ def main() -> None:
         help="API origin the bundle must have been built against (defaults to --api when it is not local)",
     )
     parser.add_argument("--skip-api", action="store_true")
+    parser.add_argument(
+        "--i-understand-this-spends-credits",
+        dest="allow_live",
+        action="store_true",
+        help="permit the site sweep against a non-mock backend (bills provider credits)",
+    )
     args = parser.parse_args()
 
     print("Deployment smoke test")
     if not args.skip_api:
-        smoke_api(args.api.rstrip("/"), args.origin)
+        smoke_api(args.api.rstrip("/"), args.origin, args.allow_live)
     if args.bundle:
         expected = args.expect_base
         if expected is None and (urlparse(args.api).hostname or "") not in ("localhost", "127.0.0.1"):

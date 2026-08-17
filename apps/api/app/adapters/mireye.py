@@ -62,6 +62,7 @@ import httpx
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from ..config import Settings, get_settings
+from ..domain import EvidenceRelation
 from ..fields import CONVERSIONS, FIELD_INDEX, FIELDS, UnknownFieldError, to_internal
 from ..store import Store, get_store
 
@@ -148,6 +149,15 @@ class MireyeContractError(MireyeError):
 
 #: Mireye reports confidence as a word. Scoring needs a number, and the word is
 #: kept alongside it so the original is never lost.
+#: Mireye's `parcel_record` billing group: 300 credits per location instead of 1
+#: per field. Named here so a request can be costed before it is sent.
+PARCEL_RECORD_FIELDS = frozenset(
+    {"wetland_fraction_of_parcel", "parcel_zoning", "parcel_area_m2", "parcel_apn",
+     "parcel_address", "parcel_boundary_geojson", "parcel_geometry_wkt",
+     "parcel_data_source", "developable_acres_proxy",
+     "onsite_solar_potential_mwac_low", "onsite_solar_potential_mwac_high"}
+)
+
 CONFIDENCE_WORDS: dict[str, float] = {
     "very_high": 0.95, "very high": 0.95,
     "high": 0.85,
@@ -202,6 +212,9 @@ class FieldValue:
     longitude: float | None = None
     endpoint: str = "/v1/fetch"
     note: str | None = None
+    #: How this reading relates to the concept. CONTEXTUAL_PROXY values are
+    #: recorded and displayed but never populate the concept's canonical value.
+    relation: EvidenceRelation = EvidenceRelation.EXACT
     # -- provenance from the provider, pre-conversion ------------------------
     provider_field: str | None = None
     provider_value: float | str | None = None
@@ -658,6 +671,7 @@ class LiveMireyeClient:
             latitude=latitude,
             longitude=longitude,
             note=note,
+            relation=spec.relation,
             provider_field=provider_field,
             provider_value=raw.value,
             provider_unit=raw.unit,
@@ -718,6 +732,23 @@ class LiveMireyeClient:
         skipped = [f for f in fields if f not in requestable]
         return requestable, [FIELD_INDEX[f].provider_field for f in requestable], skipped
 
+    def _log_plan(self, provider_names: list[str], where: str) -> None:
+        """State what is about to be billed, before it is billed.
+
+        Field names and a coordinate only — never the key, never a header.
+        """
+        billed = sorted(set(provider_names) & PARCEL_RECORD_FIELDS)
+        log.info(
+            "mireye fetch planned",
+            extra={
+                "location": where,
+                "field_count": len(provider_names),
+                "fields": sorted(provider_names),
+                "billed_extra_group": billed,
+                "estimated_credits": len(provider_names) - len(billed) + 300 * len(billed),
+            },
+        )
+
     def fetch(
         self, latitude: float, longitude: float, fields: list[str], site_id: str | None = None
     ) -> FetchResult:
@@ -733,6 +764,7 @@ class LiveMireyeClient:
             )
 
         cache_key = f"mireye:fetch:{latitude:.5f}:{longitude:.5f}:{','.join(sorted(provider_names))}"
+        self._log_plan(provider_names, f"{latitude:.5f},{longitude:.5f}")
         started = time.perf_counter()
         payload, cached = self._cached(
             cache_key,
@@ -807,16 +839,30 @@ class LiveMireyeClient:
         )
 
     def feature_request(self, field_key: str, reason: str, context: str = "") -> dict[str, Any]:
-        """Record a gap with Mireye — at most once per field.
+        """Record a gap — at most once per field, and locally by default.
 
-        A site investigation re-runs freely, and every run finds the same
-        unmapped concepts. Submitting the same request each time would spam the
-        provider, so the first submission is remembered locally and replayed.
+        A site investigation re-runs freely and every run finds the same unmapped
+        concepts, so the first submission is remembered and replayed rather than
+        re-sent. The remote call is off unless MIREYE_ENABLE_FEATURE_REQUESTS is
+        set: unlike /fetch and /geocode, this endpoint's payload has never been
+        verified against the live service, so posting to it would be guesswork
+        against someone else's API.
         """
         cache_key = f"mireye:feature-request:{field_key}"
         existing = self.store.cache_get(cache_key)
         if existing is not None:
             return {**existing, "deduplicated": True}
+        if not self.settings.mireye_enable_feature_requests:
+            payload = {
+                "id": "local_" + hashlib.sha256(field_key.encode()).hexdigest()[:10],
+                "status": "recorded_locally",
+                "field": field_key,
+                "reason": reason,
+                "note": "Not sent: /v1/feature-requests has an unverified contract. "
+                "Set MIREYE_ENABLE_FEATURE_REQUESTS=true once it is confirmed.",
+            }
+            self.store.cache_set(cache_key, payload, 30 * 24 * 3600)
+            return payload
         payload = self._request(
             "POST", "/v1/feature-requests", {"field": field_key, "reason": reason, "context": context}
         )

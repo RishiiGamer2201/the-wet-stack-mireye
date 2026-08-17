@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
+import httpx
 import pytest
 
 API_ROOT = Path(__file__).resolve().parents[1] / "apps" / "api"
@@ -21,6 +23,31 @@ from app.config import get_settings  # noqa: E402
 from app.domain import CandidateSite, EquipmentChange, Project  # noqa: E402
 from app.seed import seed  # noqa: E402
 from app.store import C, Store, set_store  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _no_outbound_provider_calls(request, monkeypatch):
+    """Fail loudly if a test tries to reach a real provider.
+
+    Every contract expectation is pinned against recorded fixtures, so a socket
+    opening to api.mireye.com means a test would bill real credits. Tests that
+    supply their own `httpx.MockTransport` are unaffected — this only blocks the
+    real network path. The opt-in live module is exempt.
+    """
+    if "live" in request.node.nodeid and "RUN_MIREYE_LIVE_TESTS" in os.environ:
+        return
+
+    real_send = httpx.HTTPTransport.handle_request
+
+    def guarded(self, http_request):
+        raise AssertionError(
+            "a test attempted a real outbound HTTP request to "
+            f"{http_request.url.host} — provider calls cost credits. "
+            "Use a fixture from tests/fixtures/ or httpx.MockTransport."
+        )
+
+    monkeypatch.setattr(httpx.HTTPTransport, "handle_request", guarded)
+    _ = real_send
 
 
 @pytest.fixture

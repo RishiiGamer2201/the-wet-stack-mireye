@@ -6,6 +6,7 @@ import logging
 from datetime import UTC, datetime
 
 from ..adapters.mireye import MireyeClient, MireyeError
+from ..config import get_settings
 from ..domain import (
     CandidateSite,
     Evidence,
@@ -126,12 +127,106 @@ def fetch_site_fields(
     }
 
 
-def broad_pass(store: Store, client: MireyeClient, project: Project, sites: list[CandidateSite]):
-    return [fetch_site_fields(store, client, project, s, broad_fields()) for s in sites]
+class LiveBudget:
+    """Caps live provider spend for one investigation.
+
+    Mireye bills per field per location, so an unbounded sweep is an unbounded
+    bill. Reaching a cap is not an error: the remaining sites record an
+    InformationGap saying they were not looked at, which keeps the analysis
+    honest instead of silently presenting partial coverage as complete.
+
+    Mock mode is free, so the budget only binds when the client is live.
+    """
+
+    def __init__(self, client: MireyeClient, settings=None) -> None:
+        settings = settings or get_settings()
+        self.enforced = getattr(client, "mode", "mock") != "mock"
+        self.max_locations = settings.mireye_max_live_locations
+        self.max_fetches = settings.mireye_max_live_fetches
+        self.locations: set[str] = set()
+        self.fetches = 0
+
+    def check(self, site: CandidateSite) -> str | None:
+        """None when the fetch may proceed, otherwise why it may not."""
+        if not self.enforced:
+            return None
+        if self.fetches >= self.max_fetches:
+            return (
+                f"the live fetch limit for this investigation ({self.max_fetches}) was reached"
+            )
+        if site.id not in self.locations and len(self.locations) >= self.max_locations:
+            return (
+                f"the live location limit for this investigation ({self.max_locations}) was reached"
+            )
+        return None
+
+    def spend(self, site: CandidateSite) -> None:
+        self.locations.add(site.id)
+        self.fetches += 1
 
 
-def deep_pass(store: Store, client: MireyeClient, project: Project, sites: list[CandidateSite]):
-    return [fetch_site_fields(store, client, project, s, deep_fields()) for s in sites]
+def _skipped_for_budget(
+    store: Store, project: Project, site: CandidateSite, field_keys: list[str], reason: str
+) -> dict:
+    """Record why a site was not queried, as gaps rather than as absent data."""
+    gaps = []
+    for key in field_keys:
+        gap = InformationGap(
+            id=gap_id(project.id, site.id, key),
+            project_id=project.id,
+            subject_id=site.id,
+            field_key=key,
+            description=f"{key} was not requested for {site.name}: {reason}.",
+            why_it_matters="No physical-world evidence was retrieved, so this field is "
+            "excluded from the score and coverage is reduced. Raise the limit or "
+            "investigate fewer sites at a time to close it.",
+            expected_source=SourceType.MIREYE,
+            suggested_action=NextActionType.CLARIFICATION_REQUEST,
+            blocking=False,
+        )
+        put_gap(store, gap, parent_id=site.id)
+        gaps.append(gap)
+    log.warning("live budget reached", extra={"site": site.id, "reason": reason})
+    return {
+        "ok": False,
+        "summary": f"{site.name}: not queried — {reason}; {len(gaps)} field(s) recorded as gaps.",
+        "detail": {"reason": reason, "fields": field_keys},
+        "evidence_ids": [],
+        "gap_ids": [g.id for g in gaps],
+    }
+
+
+def _pass(store, client, project, sites, field_keys, budget: LiveBudget | None):
+    budget = budget or LiveBudget(client)
+    results = []
+    for site in sites:
+        reason = budget.check(site)
+        if reason:
+            results.append(_skipped_for_budget(store, project, site, field_keys, reason))
+            continue
+        budget.spend(site)
+        results.append(fetch_site_fields(store, client, project, site, field_keys))
+    return results
+
+
+def broad_pass(
+    store: Store,
+    client: MireyeClient,
+    project: Project,
+    sites: list[CandidateSite],
+    budget: LiveBudget | None = None,
+):
+    return _pass(store, client, project, sites, broad_fields(), budget)
+
+
+def deep_pass(
+    store: Store,
+    client: MireyeClient,
+    project: Project,
+    sites: list[CandidateSite],
+    budget: LiveBudget | None = None,
+):
+    return _pass(store, client, project, sites, deep_fields(), budget)
 
 
 def score_sites(

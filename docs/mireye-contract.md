@@ -106,6 +106,27 @@ The scoring engine speaks internal concept names; Mireye speaks its own. They ne
 The original provider field, value, unit and confidence word are written onto every `Evidence`
 record, so a converted number can always be audited back to the reading it came from.
 
+### Evidence relations — what a reading is allowed to do
+
+Every mapping declares how the provider reading relates to the concept it is filed under. The
+relation, not the status, decides whether a value may be used.
+
+| Relation | Meaning | May populate a value, close its gap, pass a gate, count as coverage |
+| --- | --- | --- |
+| `EXACT` | the provider measures precisely this quantity | **yes** |
+| `UNIT_CONVERTED` | same quantity, deterministic unit change | **yes** |
+| `CATEGORICAL_NORMALIZED` | same quantity, vocabulary mapped | **yes** |
+| `CONTEXTUAL_PROXY` | a *different* measurement that merely informs the concept | **no** |
+
+A contextual proxy is retrieved, stored as `Evidence`, displayed and citable — but **no
+`SiteObservation` is written for it**. Observations are what scoring, coverage and the verification
+gates read, so withholding one is the mechanism: the concept stays missing, keeps its information
+gap, and cannot be scored. Coverage is therefore computed from canonical evidence only.
+
+Measured at Cascade Flats against the recorded fixture: treating the three proxies as measurements
+gave coverage 0.348 with 22 missing fields; treating them as contextual gives **coverage 0.259 with
+25 missing fields**. The decision state is unchanged (`NEEDS INFORMATION`).
+
 ### Proxies — mapped, but not the same quantity
 
 A proxy is labelled on the evidence and in the UI. It is never presented as an exact match.
@@ -181,6 +202,40 @@ Covered by `tests/test_mireye_contract.py` (27 tests) and `tests/test_evidence.p
 (`::test_fallback_client_degrades_and_records_the_reason`,
 `::test_a_drifted_contract_degrades_rather_than_failing_the_investigation`,
 `::test_feature_requests_are_submitted_once_per_field`).
+
+## Cost guardrails
+
+Mireye bills per field per location, so an unbounded sweep is an unbounded bill. These limits are
+conservative by default and every one of them is enforced in code, not by convention.
+
+| Control | Default | Effect |
+| --- | --- | --- |
+| `MIREYE_MAX_LIVE_LOCATIONS` | `3` | Locations one investigation may fetch live |
+| `MIREYE_MAX_LIVE_FETCHES` | `8` | Live `/v1/fetch` calls per investigation, across all locations |
+| `MIREYE_INCLUDE_PARCEL_FIELDS` | `false` | Keeps the 300-credit `parcel_record` group out of every request |
+| `MIREYE_ENABLE_FEATURE_REQUESTS` | `false` | `/v1/feature-requests` is unverified, so gaps are recorded locally |
+| `MIREYE_CACHE_TTL_SECONDS` | `900` | Repeat fetches for the same location + field set are served from cache |
+
+**Reaching a limit is not an error.** The sites that were not queried record an `InformationGap`
+saying so — *"… was not requested for X: the live location limit for this investigation (3) was
+reached"* — rather than failing the run or quietly presenting partial coverage as complete.
+
+The budget binds only when the client is live; mock mode is free and unlimited.
+
+Further protections:
+
+* **Every fetch logs its plan before spending** — location, field names, whether the billed group is
+  included, and an estimated credit count. No key or header is ever logged.
+* **`/v1/ask` is never called during scoring.** It is exploratory, separately billed, and reachable
+  only from the explicit "Ask Mireye" endpoint. A regression test fails if the scoring path calls it.
+* **The test suite cannot reach a provider.** An autouse fixture replaces the real httpx transport,
+  so any test that opens a socket to `api.mireye.com` fails with an explicit message instead of
+  spending credits. Tests supplying their own `MockTransport` are unaffected.
+* **`scripts/smoke_test.py` refuses to sweep a live backend.** It reads `/api/meta` first and aborts
+  before touching `/api/projects` unless `services.mireye == "mock"`, overridable only with
+  `--i-understand-this-spends-credits`.
+* **The opt-in live test uses one location**, three ordinary fields, and asserts that the parcel
+  group is disabled before it runs.
 
 ## Live mode is opt-in
 

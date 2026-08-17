@@ -58,6 +58,32 @@ class EvidenceStatus(str, Enum):
     STALE = "stale"  # was valid, upstream input changed or TTL expired
 
 
+class EvidenceRelation(str, Enum):
+    """How a piece of evidence relates to the concept it is filed under.
+
+    The first three are *the same measurement*, possibly re-expressed, and may
+    populate a canonical value. CONTEXTUAL_PROXY is a different measurement that
+    merely informs the concept: it is displayed and citable, but it can never
+    stand in for the real one.
+    """
+
+    EXACT = "exact"  # provider measures precisely this quantity
+    UNIT_CONVERTED = "unit_converted"  # same quantity, deterministic unit change
+    CATEGORICAL_NORMALIZED = "categorical_normalized"  # same quantity, vocabulary mapped
+    CONTEXTUAL_PROXY = "contextual_proxy"  # related, NOT equivalent — never canonical
+
+
+#: Relations whose evidence is the measurement itself and may populate a value,
+#: close a gap, satisfy a verification gate and count toward coverage.
+CANONICAL_RELATIONS = frozenset(
+    {
+        EvidenceRelation.EXACT,
+        EvidenceRelation.UNIT_CONVERTED,
+        EvidenceRelation.CATEGORICAL_NORMALIZED,
+    }
+)
+
+
 class VerificationStatus(str, Enum):
     UNVERIFIED = "unverified"
     VERIFIED = "verified"
@@ -207,6 +233,9 @@ class Evidence(Base):
     unit: str | None = None
     source: EvidenceSource
     status: EvidenceStatus = EvidenceStatus.SYNTHETIC
+    relation: EvidenceRelation = EvidenceRelation.EXACT
+    #: Set on CONTEXTUAL_PROXY evidence: why this is not the measurement itself.
+    relation_note: str | None = None
     verification: VerificationStatus = VerificationStatus.UNVERIFIED
     confidence: float = Field(default=0.5, ge=0.0, le=1.0)
     retrieved_at: datetime = Field(default_factory=now)
@@ -223,6 +252,16 @@ class Evidence(Base):
     @property
     def is_usable(self) -> bool:
         return self.status not in (EvidenceStatus.MISSING,)
+
+    @property
+    def is_canonical(self) -> bool:
+        """True when this evidence may populate the concept's value.
+
+        Contextual proxies are readable and citable but never canonical, so a
+        related-but-different measurement cannot close a gap, pass a gate or
+        raise a score.
+        """
+        return self.relation in CANONICAL_RELATIONS
 
     def mark_stale(self, reason: str) -> Evidence:
         self.status = EvidenceStatus.STALE

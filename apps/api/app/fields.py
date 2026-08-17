@@ -13,7 +13,7 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-from .domain import SiteDimension
+from .domain import EvidenceRelation, SiteDimension
 
 Direction = Literal["higher_better", "lower_better", "band", "categorical"]
 
@@ -73,6 +73,22 @@ class FieldSpec(BaseModel):
     def internal_unit(self) -> str | None:
         """The unit scoring works in — `unit` under its explicit name."""
         return self.unit
+
+    @property
+    def relation(self) -> EvidenceRelation:
+        """How the provider field relates to this concept.
+
+        A `proxy` mapping is a *different* measurement, so it is contextual no
+        matter how it is expressed. Everything else is the same measurement,
+        either as-is, unit-converted, or vocabulary-normalised.
+        """
+        if self.provider_availability == "proxy":
+            return EvidenceRelation.CONTEXTUAL_PROXY
+        if self.direction == "categorical" or self.kind == "category":
+            return EvidenceRelation.CATEGORICAL_NORMALIZED
+        if self.conversion != "identity":
+            return EvidenceRelation.UNIT_CONVERTED
+        return EvidenceRelation.EXACT
 
 
 def _f(**kw) -> FieldSpec:
@@ -516,20 +532,26 @@ PROVIDER_MAP: dict[str, tuple[str, str | None, str, ProviderAvailability, str | 
     # --- proxies: close, but not the same quantity -------------------------
     "ambient_design_db_c": (
         "design_wet_bulb_temperature_0_4pct_degc", "degC", "identity", "proxy",
-        "PROXY: the provider supplies the 0.4% design wet-bulb temperature; this concept "
-        "is the design dry-bulb. Wet-bulb is the lower of the two, so an equipment "
-        "rating check against it is optimistic. Treat as indicative and confirm the "
-        "dry-bulb from project climate data before relying on it.",
+        "CONTEXTUAL ONLY — this is the 0.4% design WET-BULB temperature, a different "
+        "measurement from the design dry-bulb this concept requires. Wet-bulb is always "
+        "the lower of the two, so treating it as dry-bulb would make an equipment "
+        "rating check optimistic and could pass a unit that fails at site conditions. "
+        "It is shown as evaporative-cooling context; the dry-bulb must come from "
+        "project climate data.",
     ),
     "fiber_routes_count": (
         "fiber_provider_count", None, "identity", "proxy",
-        "PROXY: the provider counts broadband providers in the hex, not physically "
-        "diverse long-haul routes. Two providers may share one conduit.",
+        "CONTEXTUAL ONLY — this counts broadband service providers in the hex, which is "
+        "not physical route diversity. Several providers can share one conduit, so a "
+        "high count does not evidence diverse paths. Shown as a market-presence "
+        "indicator; diversity needs a carrier route survey.",
     ),
     "planned_grid_expansion_mw": (
         "interconnection_queue_active_capacity_county_mw", "MW", "identity", "proxy",
-        "PROXY: active interconnection-queue capacity in the county is generation "
-        "seeking connection, not utility-committed capacity additions.",
+        "CONTEXTUAL ONLY — this is generation capacity queued for interconnection in the "
+        "county, not utility-committed delivery capacity for a new load. Queued "
+        "generation frequently withdraws, and generation capacity is not load headroom. "
+        "Shown as a grid-activity indicator; capacity must come from the utility.",
     ),
     # --- mapped but billed separately (Mireye `parcel_record`, 300 credits) --
     "wetland_fraction": (

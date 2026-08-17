@@ -126,12 +126,13 @@ def test_site_apis_round_trip():
 # --- live adapter: retries, failure, fallback -------------------------------
 
 
-def _live(handler, store, retries=2):
+def _live(handler, store, retries=2, enable_feature_requests=False):
     settings = Settings(
         mireye_base_url="https://mireye.test",
         mireye_api_key="k",
         mireye_max_retries=retries,
         mireye_timeout_seconds=1,
+        mireye_enable_feature_requests=enable_feature_requests,
     )
     transport = httpx.MockTransport(handler)
     http = httpx.Client(base_url="https://mireye.test", transport=transport)
@@ -231,6 +232,23 @@ def test_a_drifted_contract_degrades_rather_than_failing_the_investigation(store
     assert result.values["elevation_m"].status == "fallback"
 
 
+def test_feature_requests_stay_local_until_the_contract_is_verified(store):
+    """/v1/feature-requests has never been exercised against the live service, so
+    posting to it would be guesswork against someone else's API."""
+    calls = {"n": 0}
+
+    def handler(request):
+        calls["n"] += 1
+        return httpx.Response(200, json={"id": "fr_remote", "status": "recorded"})
+
+    client = _live(handler, store)  # mireye_enable_feature_requests defaults to False
+    recorded = client.feature_request("grid_capacity_mw", "no provider equivalent")
+    assert calls["n"] == 0, "no request may leave the process while unverified"
+    assert recorded["status"] == "recorded_locally"
+    assert recorded["id"].startswith("local_")
+    assert "unverified contract" in recorded["note"]
+
+
 def test_feature_requests_are_submitted_once_per_field(store):
     calls = {"n": 0}
 
@@ -238,7 +256,7 @@ def test_feature_requests_are_submitted_once_per_field(store):
         calls["n"] += 1
         return httpx.Response(200, json={"id": "fr_1", "status": "recorded"})
 
-    client = _live(handler, store)
+    client = _live(handler, store, enable_feature_requests=True)
     first = client.feature_request("grid_capacity_mw", "no provider equivalent")
     second = client.feature_request("grid_capacity_mw", "no provider equivalent")
     assert calls["n"] == 1, "the same gap must not be resubmitted"

@@ -69,6 +69,9 @@ class Context:
     analysis: change_service.ChangeAnalysis | None = None
     replans: int = 0
     weights: dict[SiteDimension, float] | None = None
+    #: One live-spend budget for the whole investigation, so the broad and deep
+    #: passes cannot each spend the full allowance.
+    budget: site_service.LiveBudget | None = None
 
     # -- recording ----------------------------------------------------------
     def event(self, phase: InvestigationPhase, tool: str, summary: str, detail=None, ok=True, ms=None):
@@ -170,7 +173,9 @@ def site_evidence(ctx: Context) -> Context:
     if step:
         step.status = StepStatus.RUNNING
         started = time.perf_counter()
-        results = site_service.broad_pass(ctx.store, ctx.client, ctx.project, ctx.sites)
+        results = site_service.broad_pass(
+            ctx.store, ctx.client, ctx.project, ctx.sites, ctx.budget
+        )
         evidence_ids = [i for r in results for i in r["evidence_ids"]]
         gap_ids = [i for r in results for i in r["gap_ids"]]
         for r in results:
@@ -268,7 +273,9 @@ def site_replan(ctx: Context) -> Context:
         f"{', '.join(s.name for s in ctx.shortlisted)} with {len(deep_fields())} additional field(s)."
     )
     ctx.investigation.replan_notes.append(note)
-    results = site_service.deep_pass(ctx.store, ctx.client, ctx.project, ctx.shortlisted)
+    results = site_service.deep_pass(
+        ctx.store, ctx.client, ctx.project, ctx.shortlisted, ctx.budget
+    )
     evidence_ids = [i for r in results for i in r["evidence_ids"]]
     gap_ids = [i for r in results for i in r["gap_ids"]]
     for r in results:
@@ -794,15 +801,17 @@ def run_site_investigation(
         Workflow.BEFORE_CONSTRUCTION,
         f"Which of {len(sites)} candidate site(s) best fits {project.name}?",
     )
+    client = get_mireye_client()
     ctx = Context(
         store=store,
-        client=get_mireye_client(),
+        client=client,
         graph_store=get_graph_store(),
         llm=get_llm(),
         project=project,
         investigation=investigation,
         sites=sites,
         weights=weights,
+        budget=site_service.LiveBudget(client),
     )
     ctx.save()
     try:

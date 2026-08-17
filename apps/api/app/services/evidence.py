@@ -9,6 +9,7 @@ from ..adapters.mireye import FetchResult, MireyeClient
 from ..domain import (
     CandidateSite,
     Evidence,
+    EvidenceRelation,
     EvidenceSource,
     EvidenceStatus,
     InformationGap,
@@ -46,8 +47,11 @@ def evidence_from_field_value(
 
     # Keep what the provider actually said next to the value scoring uses, so a
     # converted number can always be traced back to its source reading.
+    relation = getattr(value, "relation", EvidenceRelation.EXACT)
     provider_field = getattr(value, "provider_field", None)
     notes = value.note
+    if relation == EvidenceRelation.CONTEXTUAL_PROXY:
+        notes = f"CONTEXTUAL EVIDENCE — does not populate this field. {notes or ''}".strip()
     if provider_field:
         raw = getattr(value, "provider_value", None)
         raw_unit = getattr(value, "provider_unit", None) or ""
@@ -75,6 +79,8 @@ def evidence_from_field_value(
             notes=notes,
         ),
         status=status,
+        relation=relation,
+        relation_note=spec.provider_note if relation == EvidenceRelation.CONTEXTUAL_PROXY else None,
         verification=VerificationStatus.UNVERIFIED,
         confidence=value.confidence,
         retrieved_at=value.retrieved_at,
@@ -102,22 +108,36 @@ def refresh_status(evidence: Evidence, max_age: timedelta = DEFAULT_MAX_AGE) -> 
 
 
 def gap_for_missing_field(
-    project_id: str, site: CandidateSite, field_key: str, feature_request_id: str | None = None
+    project_id: str,
+    site: CandidateSite,
+    field_key: str,
+    feature_request_id: str | None = None,
+    *,
+    proxy_only: bool = False,
 ) -> InformationGap:
     spec = FIELD_INDEX.get(field_key)
     label = spec.label if spec else field_key
+    if proxy_only and spec:
+        description = (
+            f"{label} is not measured by Mireye for {site.name}. A related reading "
+            f"('{spec.provider_field}') is recorded as context but is a different "
+            "quantity, so it does not close this gap."
+        )
+    else:
+        description = f"{label} is not available from Mireye for {site.name}."
     return InformationGap(
         id=gap_id(project_id, site.id, field_key),
         project_id=project_id,
         subject_id=site.id,
         field_key=field_key,
-        description=f"{label} is not available from Mireye for {site.name}.",
+        description=description,
         why_it_matters=(
             spec.description
             if spec
             else "The field is required by the site scoring model."
         )
-        + " The dimension score is computed without it and evidence coverage is reduced.",
+        + " The dimension score is computed without it and evidence coverage is reduced."
+        + (f" {spec.provider_note}" if proxy_only and spec and spec.provider_note else ""),
         expected_source=SourceType.MIREYE,
         suggested_action=NextActionType.CLARIFICATION_REQUEST,
         blocking=False,
@@ -149,14 +169,30 @@ def record_fetch(
     result: FetchResult,
 ) -> tuple[list[Evidence], list[SiteObservation], list[InformationGap]]:
     """Persist a /v1/fetch response as evidence + observations, and turn every
-    unavailable field into a tracked gap plus a Mireye feature request."""
+    unavailable field into a tracked gap plus a recorded feature request.
+
+    A CONTEXTUAL_PROXY reading is stored as evidence — it is real, sourced and
+    worth showing — but no `SiteObservation` is created for it. Observations are
+    what scoring, coverage and the verification gates read, so withholding one is
+    what stops a related-but-different measurement from populating a canonical
+    value, closing its gap or passing a gate. The concept therefore stays
+    missing, exactly as if the provider had nothing at all.
+    """
     evidences: list[Evidence] = []
     observations: list[SiteObservation] = []
     gaps: list[InformationGap] = []
+    proxy_keys: list[str] = []
 
     for key, value in result.values.items():
         ev = refresh_status(evidence_from_field_value(project_id, site, value))
         spec = FIELD_INDEX[key]
+        store.put(C.EVIDENCE, ev, project_id=project_id, parent_id=site.id)
+        evidences.append(ev)
+
+        if not ev.is_canonical:
+            proxy_keys.append(key)
+            continue
+
         obs = SiteObservation(
             site_id=site.id,
             project_id=project_id,
@@ -170,12 +206,11 @@ def record_fetch(
             observed_at=value.observed_at,
             retrieved_at=value.retrieved_at,
         )
-        store.put(C.EVIDENCE, ev, project_id=project_id, parent_id=site.id)
         store.put(C.OBSERVATIONS, obs, project_id=project_id, parent_id=site.id)
-        evidences.append(ev)
         observations.append(obs)
 
-    for key in result.unavailable:
+    # A concept that only received a proxy is still missing its own measurement.
+    for key in proxy_keys + list(result.unavailable):
         if key not in FIELD_INDEX:
             # A live service may report a field we do not model. Record nothing
             # rather than fabricating an observation with no dimension.
@@ -190,8 +225,9 @@ def record_fetch(
             ).get("id")
         except Exception as exc:  # noqa: BLE001 - a failed feature request must not block
             log.warning("feature request failed", extra={"field": key, "error": str(exc)})
-        gap = gap_for_missing_field(project_id, site, key, feature_request_id)
         spec = FIELD_INDEX[key]
+        is_proxy_only = key in proxy_keys
+        gap = gap_for_missing_field(project_id, site, key, feature_request_id, proxy_only=is_proxy_only)
         missing_ev = Evidence(
             project_id=project_id,
             subject_id=site.id,
@@ -205,7 +241,12 @@ def record_fetch(
                 source_name="Mireye /v1/fetch",
                 field_key=key,
                 endpoint="/v1/fetch",
-                notes="Field reported unavailable — no value substituted.",
+                notes=(
+                    "Only contextual evidence is available for this concept — see the "
+                    f"'{spec.provider_field}' record. No value substituted."
+                    if is_proxy_only
+                    else "Field reported unavailable — no value substituted."
+                ),
             ),
             status=EvidenceStatus.MISSING,
             confidence=0.0,

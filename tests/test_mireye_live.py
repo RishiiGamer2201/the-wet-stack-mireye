@@ -33,8 +33,11 @@ pytestmark = pytest.mark.skipif(
     reason="live Mireye test is opt-in and consumes credits; set RUN_MIREYE_LIVE_TESTS=1",
 )
 
-#: Cascade Flats — the demo's leading candidate site.
+#: ONE location, always. Cascade Flats, the demo's leading candidate. There is no
+#: sweep here and no loop over sites: a second location doubles the bill and adds
+#: nothing, because this test checks the contract, not the data.
 LAT, LNG = 47.4235, -120.3103
+LOCATIONS = 1
 #: 3 credits. Deliberately small, and none is in the parcel_record group.
 FIELDS = ["elevation_m", "mean_slope_pct", "flood_zone"]
 
@@ -44,9 +47,17 @@ def live_client() -> LiveMireyeClient:
     settings = Settings()
     if not settings.mireye_live:
         pytest.skip("MIREYE_BASE_URL / MIREYE_API_KEY are not configured")
+    assert not settings.mireye_include_parcel_fields, (
+        "MIREYE_INCLUDE_PARCEL_FIELDS is on — the parcel_record group bills 300 "
+        "credits per location. Refusing to run the live test with it enabled."
+    )
     print(
-        f"\n*** LIVE MIREYE TEST: about to spend ~{len(FIELDS)} credits "
-        f"on {settings.mireye_base_url} ***"
+        f"\n*** LIVE MIREYE TEST ***"
+        f"\n  target      : {settings.mireye_base_url}"
+        f"\n  locations   : {LOCATIONS} ({LAT}, {LNG})"
+        f"\n  fields      : {FIELDS}"
+        f"\n  parcel group: excluded"
+        f"\n  estimated   : ~{LOCATIONS * len(FIELDS)} credits ***"
     )
     # A real store so the response cache is shared across the tests below and
     # the second call costs nothing.

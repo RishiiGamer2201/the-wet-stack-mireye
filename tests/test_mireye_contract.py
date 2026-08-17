@@ -24,6 +24,7 @@ from app.adapters.mireye import (
     MockMireyeClient,
 )
 from app.config import Settings
+from app.domain import EvidenceRelation
 from app.fields import FIELD_INDEX, provider_fields, to_internal
 from app.store import Store
 
@@ -341,7 +342,8 @@ def test_semantic_proxy_mappings_are_labelled():
     spec = FIELD_INDEX["ambient_design_db_c"]
     assert spec.provider_field == "design_wet_bulb_temperature_0_4pct_degc"
     assert spec.provider_availability == "proxy"
-    assert spec.provider_note and "wet-bulb" in spec.provider_note
+    assert spec.provider_note and "wet-bulb" in spec.provider_note.lower()
+    assert spec.relation == EvidenceRelation.CONTEXTUAL_PROXY
 
 
 # ---------------------------------------------------------------------------
