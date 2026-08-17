@@ -1,0 +1,48 @@
+# Optional local infrastructure for LIVE mode.
+#
+# The prototype runs completely without this file (SQLite + in-memory graph +
+# local vector index). Start it only when you want to exercise the pgvector and
+# Neo4j adapters:
+#
+#   docker compose -f infra/docker-compose.yml up -d
+#
+# then set DATABASE_URL and NEO4J_* in apps/api/.env and restart the API.
+
+name: wetstack-mireye
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: wetstack
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d wetstack"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  neo4j:
+    image: neo4j:5-community
+    environment:
+      NEO4J_AUTH: neo4j/wetstacklocal
+      NEO4J_PLUGINS: '["apoc"]'
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    volumes:
+      - neo4jdata:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:7474 >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:
+  neo4jdata:
