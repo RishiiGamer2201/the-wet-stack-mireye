@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pytest
-
 from app.domain import Quantity
 from app.engine import units
 

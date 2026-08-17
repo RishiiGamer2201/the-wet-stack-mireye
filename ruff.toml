@@ -1,0 +1,12 @@
+# Mirrors apps/api/pyproject.toml so `ruff check .` works from the repository root
+# as well as from inside apps/api.
+line-length = 100
+target-version = "py311"
+extend-exclude = ["apps/api/.venv", "apps/api/var", "node_modules"]
+
+[lint]
+select = ["E", "F", "I", "UP", "B"]
+# B008: FastAPI's Depends() default is idiomatic.
+# E501: line length is enforced by the formatter, not the linter.
+# UP042: `str, Enum` is deliberate — it keeps enum values JSON-serialisable for Pydantic.
+ignore = ["B008", "E501", "UP042"]
