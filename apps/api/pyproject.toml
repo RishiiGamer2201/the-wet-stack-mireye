@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "wetstack-mireye-api"
 version = "0.1.0"
@@ -19,6 +23,11 @@ dependencies = [
 # Live-mode services. The application runs fully without them.
 live = ["neo4j>=5.19", "psycopg[binary]>=3.1"]
 dev = ["pytest>=8.1", "pytest-asyncio>=0.23", "ruff>=0.4"]
+
+# Declared explicitly: the runtime writes `var/` (SQLite + uploads) next to `app/`,
+# and setuptools' flat-layout auto-discovery refuses to build once it sees both.
+[tool.setuptools.packages.find]
+include = ["app*"]
 
 [tool.ruff]
 line-length = 100

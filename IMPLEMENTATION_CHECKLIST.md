@@ -2,10 +2,10 @@
 
 Status legend: `[ ]` todo · `[~]` in progress · `[x]` done
 
-**Status: complete.** 111 backend tests pass, ruff clean, `tsc --noEmit` clean, production build
+**Status: complete.** 122 backend tests pass, ruff clean, `tsc --noEmit` clean, production build
 succeeds, and both workflows were verified end to end in a real browser session against the running
-API (screenshots taken of the ranking, the CH-01 `ENGINEER REVIEW` analysis with its impact graph,
-and the CH-02 `FIRST-PASS CHECKS CLOSED` case).
+API. Full record — including the defects found and fixed during verification, and what was *not*
+verified — in [`docs/verification-report.md`](docs/verification-report.md).
 
 ## 0. Foundations
 - [x] Read source PDF (6 pages) + architecture diagram (page 4)

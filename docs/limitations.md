@@ -55,9 +55,10 @@
 
 **Testing**
 
-* 110 backend tests cover the engine, adapters, ingestion, API and both end-to-end paths. There are
-  no frontend component tests and no browser-level end-to-end tests; the frontend is covered by
-  strict TypeScript and a production build only.
+* 122 backend tests cover the engine, adapters, ingestion, API and both end-to-end paths. There are
+  no frontend component tests and no committed browser-level end-to-end tests; the frontend is
+  covered by strict TypeScript and a production build in CI terms. The browser scenarios that were
+  driven manually for the QA pass are listed in [`verification-report.md`](verification-report.md).
 
 ## Production hardening checklist
 

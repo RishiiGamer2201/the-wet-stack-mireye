@@ -1,6 +1,7 @@
 # Demo walkthrough (~6 minutes)
 
-Start both servers (see the README), open <http://localhost:5173>, and confirm the amber **Demo
+Start both servers with `python scripts/dev.py` (or follow the README's two-terminal path), open
+<http://localhost:5173>, and confirm the amber **Demo
 mode** banner reads `Mireye: mock · graph: in_memory · vector: hybrid(lexical+local_vector) · store:
 sqlite · LLM: deterministic`. That banner is the honesty statement: nothing here is real data.
 
@@ -30,9 +31,11 @@ endpoint, retrieval time, observation time, confidence, coordinates, location re
 amber *Synthetic demo* badge. Scroll to a `missing` item — it reads **"no value — not substituted"**.
 That is the product thesis in one line.
 
-**5. Show what is missing.** The information-gap panel lists Prairie Junction's unavailable fields
-(grid capacity, permit lead time, wetland fraction), each with *why it matters*, the expected source,
-the suggested action, and the **Mireye feature request id** that was filed instead of a guess.
+**5. Show what is missing.** The *Missing information* panel lists the two fields Mireye could not
+supply for Prairie Junction — **available grid capacity** and **wetland fraction** — each with *why
+it matters*, the expected source, the suggested action, and the **Mireye feature request id** that
+was filed instead of a guess. (Prairie Junction never reaches the deep pass, so its deep fields are
+simply never requested; they show as `missing` on the score card rather than as gaps.)
 
 **6. What-if — weights.** Drag **Water** down and **Power & grid** up. The backend re-scores against
 the same evidence and the blue panel names every rank change. Nothing is recomputed in the browser.
@@ -66,12 +69,14 @@ TRIGGERED** — the Rio Verde Mesa design dry-bulb of 46 °C exceeds the propose
 the capacity must be re-rated at site conditions. *That* is the two workflows connecting: a site fact
 from workflow 1 invalidating an equipment claim in workflow 2.
 
-**4. Read the deltas.** Weight +9.07 % (4,850 → 5,290 kg), max support point +9.09 %, MCA +12.08 %,
-refrigerant charge +10.48 %, capacity +0.48 % (CLOSED, inside 2 %). Every one in canonical units,
-with the threshold that classified it.
+**4. Read the deltas.** Weight +9.1 % (4,850 → 5,290 kg), max support point +9.1 %, MCA +12.1 %,
+MOCP +14.3 %, refrigerant charge +10.5 %, capacity +0.5 % (CLOSED, inside 2 %). Every one in
+canonical units, with the threshold that classified it. Eleven results are TRIGGERED in total.
 
-**5. Stale assumptions.** Five of seven project assumptions flip to **STALE**, each naming the
+**5. Stale assumptions.** Five of the six CH-01 assumptions flip to **STALE**, each naming the
 evidence that changed — dunnage, feeder sizing, N+1 redundancy, refrigerant monitoring, crane pick.
+The sixth (the BMS points list) stays **active**: it depends on model identity and configuration
+comparability, and both of those gates CLOSED. Re-running the analysis reports the same five.
 
 **6. Impact graph.** Six impacts across structural, electrical, mechanical, controls and
 installation. The graph view lays out `Change → Stale assumption → Discipline → Activity →
@@ -89,9 +94,14 @@ system is discriminating, not alarmist.
 
 ### Case C — PDU-3 substitution → **NEEDS INFORMATION**
 
-The submittal arrived without weight, dimensions or current. Gates go OPEN, deltas go OPEN, and the
-**Replan** phase adds a blocked step per open gate rather than assuming a value. The drafted vendor
-evidence request names each missing item and asks for the conditions each value is stated at.
+The submittal arrived without weight, dimensions or current. Two gates go OPEN, six deltas go OPEN,
+eight gaps are raised, and the **Replan** phase adds a blocked step per open gate rather than
+assuming a value. The drafted vendor evidence request names each missing item and asks for the
+conditions each value is stated at.
+
+Note what does *not* happen: the PDU-3 structural assumption stays **active**. The proposed weight is
+unknown, so the platform cannot claim the assumption is stale any more than it can claim it holds —
+missing data produces a gap, not a conclusion in either direction.
 
 ---
 

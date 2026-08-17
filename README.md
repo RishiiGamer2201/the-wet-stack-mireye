@@ -25,6 +25,24 @@ No score, delta, threshold, unit conversion or decision state is ever produced b
 
 Requires Python 3.11+ and Node 18+. Nothing else — no Docker, no database, no API keys.
 
+### One command
+
+```bash
+python scripts/dev.py
+```
+
+From a clean checkout this creates the backend virtualenv, installs both dependency sets, seeds the
+synthetic demo data and runs the API and the UI together. Then open <http://localhost:5173>.
+Ctrl-C stops both.
+
+```bash
+python scripts/dev.py --reset   # wipe and re-seed the demo data first
+python scripts/dev.py --check   # tests + lint + type-check + production build, then exit
+python scripts/dev.py --api-only / --ui-only
+```
+
+The manual equivalent, if you prefer to run the two halves yourself:
+
 ### 1. Backend
 
 ```bash
@@ -56,7 +74,7 @@ UI: <http://localhost:5173> (Vite proxies `/api` to the backend, so there is no 
 
 ```bash
 cd apps/api
-python -m pytest ../../tests -q      # 110 tests
+python -m pytest ../../tests -q      # 122 tests
 python -m ruff check app ../../tests # lint
 ```
 
@@ -125,8 +143,9 @@ apps/api/            FastAPI backend
   app/agent/           LangGraph workflow + supervisor planner
   app/routers/         typed HTTP API
 apps/web/            React + TypeScript + Vite + Tailwind frontend
-tests/               110 tests (unit, adapter, API, end-to-end)
+tests/               122 tests (unit, adapter, API, end-to-end)
 sample_data/         synthetic source PDFs (generated on first seed)
+scripts/dev.py       one-command install / seed / run / verify
 infra/               docker-compose (pgvector + Neo4j), render.yaml
 docs/                architecture, domain model, API, Mireye contract, scoring, rules, walkthrough
 ```
@@ -144,6 +163,7 @@ docs/                architecture, domain model, API, Mireye contract, scoring, 
 | [`docs/live-vs-demo.md`](docs/live-vs-demo.md) | What changes when credentials are supplied |
 | [`docs/demo-walkthrough.md`](docs/demo-walkthrough.md) | A 6-minute scripted demo of both workflows |
 | [`docs/limitations.md`](docs/limitations.md) | Assumptions, safety limits and production hardening |
+| [`docs/verification-report.md`](docs/verification-report.md) | Requirement coverage, commands run, defects found and fixed |
 | [`IMPLEMENTATION_CHECKLIST.md`](IMPLEMENTATION_CHECKLIST.md) | Build checklist |
 
 ## Deployment
