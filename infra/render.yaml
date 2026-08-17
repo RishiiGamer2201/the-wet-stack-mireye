@@ -1,34 +1,9 @@
-# Render/Railway-compatible backend deployment.
-# Every service credential is optional: with none set, the deployed API runs in
-# the same deterministic demo mode as a local checkout.
-
-services:
-  - type: web
-    name: wetstack-mireye-api
-    runtime: python
-    plan: starter
-    rootDir: apps/api
-    buildCommand: pip install --upgrade pip && pip install -e .
-    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
-    healthCheckPath: /api/health
-    envVars:
-      - key: ENVIRONMENT
-        value: production
-      - key: LOG_LEVEL
-        value: INFO
-      - key: CORS_ORIGINS
-        sync: false # e.g. https://wetstack-mireye.vercel.app
-      - key: MIREYE_BASE_URL
-        sync: false
-      - key: MIREYE_API_KEY
-        sync: false
-      - key: DATABASE_URL
-        sync: false
-      - key: NEO4J_URI
-        sync: false
-      - key: NEO4J_USER
-        sync: false
-      - key: NEO4J_PASSWORD
-        sync: false
-      - key: ANTHROPIC_API_KEY
-        sync: false
+# Moved to the repository root.
+#
+# Render only auto-detects a Blueprint named `render.yaml` at the root of the
+# repository, so keeping the real one here made it invisible to Render. The
+# canonical, deployable Blueprint is now:
+#
+#     ../render.yaml
+#
+# Setup steps and environment variables: ../docs/deployment.md

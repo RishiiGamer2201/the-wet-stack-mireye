@@ -1,0 +1,70 @@
+# Render Blueprint for the backend API.
+#
+# Render only auto-detects a Blueprint named `render.yaml` at the repository
+# root, which is why this file lives here rather than under `infra/`.
+#
+# Every service credential is optional. With none set, the deployed API runs the
+# same deterministic demo mode as a local checkout: mock Mireye, in-memory impact
+# graph, local hybrid retrieval, SQLite storage and template explanations.
+#
+# EPHEMERAL FILESYSTEM: Render gives this service a fresh disk on every deploy
+# and on every restart. The SQLite database and uploaded PDFs live on it, so both
+# are lost each time and the demo project is re-seeded automatically on startup.
+# That is acceptable for a demo and is NOT production persistence — see
+# docs/deployment.md before pointing this at anything real.
+
+services:
+  - type: web
+    name: wetstack-mireye-api
+    runtime: python
+    # `starter` keeps the service warm. `free` also works and costs nothing, but
+    # it spins down after ~15 minutes idle: the next request takes ~50 s and the
+    # ephemeral disk is wiped, so the demo re-seeds. Reliability vs cost.
+    plan: starter
+    region: oregon
+    rootDir: apps/api
+    autoDeploy: false
+    buildCommand: pip install --upgrade pip && pip install .
+    # Single worker, deliberately. The impact-graph store is in-process memory and
+    # the SQLite store holds one guarded connection, so a second worker would
+    # serve a different graph depending on which process answered.
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1 --proxy-headers --no-access-log
+    healthCheckPath: /api/health
+    envVars:
+      # Python version is also pinned by apps/api/.python-version.
+      - key: PYTHON_VERSION
+        value: 3.13.4
+      - key: ENVIRONMENT
+        value: production
+      - key: LOG_LEVEL
+        value: INFO
+      # Render terminates TLS at its proxy. Set as an env var rather than a
+      # `--forwarded-allow-ips '*'` flag so no shell quoting can mangle it.
+      - key: FORWARDED_ALLOW_IPS
+        value: "*"
+      # Writable path on the ephemeral disk for SQLite + uploads.
+      - key: DATA_DIR
+        value: /tmp/wetstack
+      # Demo data is seeded only when the store is empty. Set to false for any
+      # deployment with a real DATABASE_URL.
+      - key: SEED_ON_STARTUP
+        value: "true"
+      # REQUIRED. Comma-separated exact frontend origins — no wildcard.
+      # e.g. https://wetstack-mireye.vercel.app
+      - key: CORS_ORIGINS
+        sync: false
+      # --- everything below is optional; unset means the local adapter ---
+      - key: MIREYE_BASE_URL
+        sync: false
+      - key: MIREYE_API_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: NEO4J_URI
+        sync: false
+      - key: NEO4J_USER
+        sync: false
+      - key: NEO4J_PASSWORD
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false

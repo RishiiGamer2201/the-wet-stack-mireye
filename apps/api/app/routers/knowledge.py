@@ -112,7 +112,14 @@ async def upload_document(
             + ", ".join(k.value for k in DocumentKind),
         ) from exc
 
-    target = settings.upload_dir / f"{project.id}_{filename}"
+    upload_dir = settings.upload_dir.resolve()
+    target = (upload_dir / f"{project.id}_{filename}").resolve()
+    # `safe_filename` already removed every path separator; this second check is
+    # the one that actually touches the filesystem, so it is the one that must be
+    # true. Uploads are ephemeral on Render — see docs/deployment.md.
+    if target.parent != upload_dir:
+        log.error("upload path escaped the upload directory", extra={"filename": filename})
+        raise HTTPException(status_code=422, detail="invalid filename")
     target.write_bytes(data)
     try:
         document, chunks, requirements = ingest_pdf(

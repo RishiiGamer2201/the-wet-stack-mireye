@@ -164,15 +164,25 @@ docs/                architecture, domain model, API, Mireye contract, scoring, 
 | [`docs/demo-walkthrough.md`](docs/demo-walkthrough.md) | A 6-minute scripted demo of both workflows |
 | [`docs/limitations.md`](docs/limitations.md) | Assumptions, safety limits and production hardening |
 | [`docs/verification-report.md`](docs/verification-report.md) | Requirement coverage, commands run, defects found and fixed |
+| [`docs/deployment.md`](docs/deployment.md) | Vercel + Render setup, environment variables, ephemeral-storage behaviour, smoke tests |
 | [`IMPLEMENTATION_CHECKLIST.md`](IMPLEMENTATION_CHECKLIST.md) | Build checklist |
 
 ## Deployment
 
-* **Frontend → Vercel:** root `apps/web`, `npm run build`, output `dist`, set `VITE_API_BASE_URL`
-  to the API origin. Config in [`apps/web/vercel.json`](apps/web/vercel.json).
-* **Backend → Render/Railway:** [`infra/render.yaml`](infra/render.yaml). Set `CORS_ORIGINS` to the
-  frontend origin; all service credentials are optional.
+Full instructions, environment variables and smoke tests: **[`docs/deployment.md`](docs/deployment.md)**.
+
+* **Frontend → Vercel:** root directory `apps/web`; set `VITE_API_BASE_URL` to the Render origin.
+  Config in [`apps/web/vercel.json`](apps/web/vercel.json). A production build *fails* if that URL
+  points at localhost or is not `https://`.
+* **Backend → Render:** [`render.yaml`](render.yaml) at the repository root (Render only detects a
+  Blueprint there). Set `CORS_ORIGINS` to the Vercel origin — there is no wildcard. All service
+  credentials are optional; with none set the deployment runs the same demo mode as a local checkout.
+* **Smoke test a deployment:** `python scripts/smoke_test.py --api <api-origin> --origin <web-origin>`.
 * **Local live infrastructure:** `docker compose -f infra/docker-compose.yml up -d`.
+
+> **Render's filesystem is ephemeral.** The SQLite database and every uploaded PDF are destroyed on
+> each deploy and restart; the demo re-seeds itself automatically. That is fine for a demo and is not
+> production persistence — see [`docs/deployment.md`](docs/deployment.md) §5.
 
 Secrets never reach the browser: the frontend only ever talks to this backend, which holds the
 Mireye, Supabase, Neo4j and LLM credentials.

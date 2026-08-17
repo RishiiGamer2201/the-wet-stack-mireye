@@ -54,12 +54,53 @@ class Settings(BaseSettings):
     max_upload_bytes: int = 25 * 1024 * 1024
     allowed_upload_types: tuple[str, ...] = ("application/pdf",)
 
+    # --- demo data ---------------------------------------------------------
+    # A deployment with an empty store seeds the synthetic demo project on start
+    # so the hackathon demo is usable immediately. Turn this off for any
+    # deployment pointed at a real database — synthetic engineering data must
+    # never be written into one.
+    seed_on_startup: bool = True
+
     # --- http --------------------------------------------------------------
+    #: Comma-separated browser origins allowed to call this API. There is no
+    #: wildcard: production must name the frontend origin explicitly.
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
 
     @property
+    def is_production(self) -> bool:
+        return self.environment.strip().lower() in ("production", "prod")
+
+    @property
     def cors_origin_list(self) -> list[str]:
-        return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+        """Explicit origins only. `*` is rejected rather than silently honoured."""
+        origins = [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+        return [o for o in origins if o != "*"]
+
+    def cors_warnings(self) -> list[str]:
+        """Configuration problems worth shouting about at startup, not crashing on:
+        a misconfigured demo that still serves /api/health is easier to diagnose
+        than one that refuses to boot."""
+        problems: list[str] = []
+        raw = [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+        if "*" in raw:
+            problems.append(
+                "CORS_ORIGINS contains '*', which is ignored — list the frontend origin explicitly."
+            )
+        if not self.cors_origin_list:
+            problems.append("CORS_ORIGINS is empty: no browser origin can call this API.")
+        if self.is_production:
+            local = [o for o in self.cors_origin_list if "localhost" in o or "127.0.0.1" in o]
+            if local:
+                problems.append(
+                    "CORS_ORIGINS still contains development origins in production: "
+                    + ", ".join(local)
+                )
+            if self.database_url and self.seed_on_startup:
+                problems.append(
+                    "SEED_ON_STARTUP is on while DATABASE_URL is set: synthetic demo data would be "
+                    "written to a real database. Set SEED_ON_STARTUP=false."
+                )
+        return problems
 
     @property
     def db_path(self) -> Path:

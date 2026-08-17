@@ -42,13 +42,27 @@ async def lifespan(app: FastAPI):
     store = get_store()
     log.info(
         "api starting",
-        extra={"services": settings.service_modes(), "demo_mode": settings.demo_mode},
+        extra={
+            "environment": settings.environment,
+            "services": settings.service_modes(),
+            "demo_mode": settings.demo_mode,
+            "cors_origins": settings.cors_origin_list,
+        },
     )
-    if store.count(C.PROJECTS) == 0:
+    for problem in settings.cors_warnings():
+        log.warning("configuration", extra={"problem": problem})
+
+    # Idempotent by construction: only an empty store is seeded, and the seed is
+    # run with reset=False so a restart can never wipe or duplicate existing data.
+    # On Render's ephemeral disk this is what makes the demo self-heal after a
+    # redeploy; with a real DATABASE_URL it must be turned off (see config).
+    if settings.seed_on_startup and store.count(C.PROJECTS) == 0:
         from .seed import seed
 
         project = seed(store, reset=False)
         log.info("auto-seeded demo project", extra={"project_id": project.id})
+    elif store.count(C.PROJECTS) == 0:
+        log.warning("store is empty and SEED_ON_STARTUP is disabled; POST /api/admin/seed to load demo data")
     yield
 
 

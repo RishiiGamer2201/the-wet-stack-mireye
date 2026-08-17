@@ -15,7 +15,19 @@ import type {
   WhatIfResponse,
 } from "./types";
 
+/** The API origin comes from the environment and nowhere else.
+ *
+ *  Empty is correct in development: Vite proxies `/api` to the local backend.
+ *  In a production build an empty value means `VITE_API_BASE_URL` was not set
+ *  when the bundle was built, so every call would hit the static host and 404.
+ *  Say that, rather than shipping a localhost address to a deployed user. */
 const BASE = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
+
+const UNREACHABLE = import.meta.env.DEV
+  ? "Cannot reach the API. Is the backend running on http://127.0.0.1:8000?"
+  : BASE
+    ? `Cannot reach the API at ${BASE}. It may be starting up, or its CORS_ORIGINS may not include this site.`
+    : "This build has no API origin configured. Set VITE_API_BASE_URL for the deployment and rebuild.";
 
 export class ApiError extends Error {
   constructor(
@@ -38,11 +50,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       },
     });
   } catch (cause) {
-    throw new ApiError(
-      "Cannot reach the API. Is the backend running on http://127.0.0.1:8000?",
-      0,
-      cause,
-    );
+    throw new ApiError(UNREACHABLE, 0, cause);
   }
   if (!response.ok) {
     let detail: unknown;
