@@ -33,7 +33,7 @@ from ..engine import decisions, gates
 from ..engine import deltas as delta_engine
 from ..engine import impact as impact_engine
 from ..store import C, Store
-from .evidence import observations_for_site, refresh_status
+from .evidence import observations_for_site, put_gap, refresh_status
 
 log = logging.getLogger("changes")
 
@@ -171,9 +171,8 @@ def analyze_change(
 
     if persist:
         for gap in analysis.gaps:
-            store.put(C.GAPS, gap, project_id=project.id, parent_id=change.id)
+            put_gap(store, gap, parent_id=change.id)
         for assumption in analysis.stale:
-            assumption.updated_at = assumption.updated_at
             store.put(C.ASSUMPTIONS, assumption, project_id=project.id)
         graph_store.upsert(analysis.graph)
         change.status = "analyzed"

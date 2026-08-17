@@ -74,13 +74,14 @@ export default function App() {
             </div>
           </div>
 
-          <div className="ml-auto flex flex-wrap items-center gap-2">
+          <div className="ml-auto flex min-w-0 flex-wrap items-center gap-2">
             <label htmlFor="project-select" className="sr-only">
               Project
             </label>
+            {/* A long project name must not stretch the header past the viewport. */}
             <select
               id="project-select"
-              className="rounded-lg border border-ink-600 bg-ink-800 px-2.5 py-1.5 text-sm text-white"
+              className="max-w-[min(20rem,60vw)] truncate rounded-lg border border-ink-600 bg-ink-800 px-2.5 py-1.5 text-sm text-white"
               value={projectId ?? ""}
               onChange={(e) => setProjectId(e.target.value)}
             >

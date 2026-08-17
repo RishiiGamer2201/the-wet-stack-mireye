@@ -28,57 +28,53 @@ class InMemoryGraphStore:
     backend = "in_memory"
 
     def __init__(self) -> None:
-        self._nodes: dict[str, ImpactNode] = {}
-        self._edges: set[tuple[str, str, str]] = set()
-        self._roots: dict[str, str] = {}
+        # One isolated sub-graph per change. Re-analysing a change *replaces* its
+        # sub-graph, exactly as Neo4jGraphStore.upsert does with DETACH DELETE —
+        # otherwise superseded impacts would linger after the evidence is fixed.
+        self._graphs: dict[str, tuple[dict[str, ImpactNode], set[tuple[str, str, str]]]] = {}
 
     def upsert(self, graph: ImpactGraph) -> None:
-        for node in graph.nodes:
-            self._nodes[node.id] = node
-        for edge in graph.edges:
-            self._edges.add((edge.source, edge.target, edge.relation))
-        self._roots[graph.change_id] = f"change:{graph.change_id}"
+        self._graphs[graph.change_id] = (
+            {node.id: node for node in graph.nodes},
+            {(e.source, e.target, e.relation) for e in graph.edges},
+        )
 
     def traverse(self, change_id: str, max_depth: int = 5) -> ImpactGraph | None:
-        root = self._roots.get(change_id)
-        if not root or root not in self._nodes:
+        stored = self._graphs.get(change_id)
+        root = f"change:{change_id}"
+        if not stored or root not in stored[0]:
             return None
+        all_nodes, all_edges = stored
         seen = {root}
-        frontier = [root]
         edges: list[ImpactEdge] = []
         paths: list[list[str]] = [[root]]
         for _ in range(max_depth):
-            next_frontier: list[str] = []
+            grew = False
             new_paths: list[list[str]] = []
             for path in paths:
                 tail = path[-1]
-                children = [(s, t, r) for (s, t, r) in self._edges if s == tail]
+                children = [(s, t, r) for (s, t, r) in all_edges if s == tail and t not in path]
                 if not children:
                     new_paths.append(path)
                     continue
+                grew = True
                 for _s, target, relation in children:
                     edges.append(ImpactEdge(source=tail, target=target, relation=relation))
                     new_paths.append(path + [target])
-                    if target not in seen:
-                        seen.add(target)
-                        next_frontier.append(target)
+                    seen.add(target)
             paths = new_paths
-            if not next_frontier:
+            if not grew:
                 break
-            frontier = next_frontier
-        _ = frontier
         return ImpactGraph(
             change_id=change_id,
-            nodes=[self._nodes[n] for n in seen if n in self._nodes],
+            nodes=[all_nodes[n] for n in seen if n in all_nodes],
             edges=list({(e.source, e.target, e.relation): e for e in edges}.values()),
             paths=[p for p in paths if len(p) > 1],
             backend=self.backend,
         )
 
     def clear(self) -> None:
-        self._nodes.clear()
-        self._edges.clear()
-        self._roots.clear()
+        self._graphs.clear()
 
 
 class Neo4jGraphStore:

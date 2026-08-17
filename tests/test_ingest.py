@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from app.adapters.vectorstore import (
     HybridIndex,
@@ -16,6 +18,7 @@ from app.services.ingest import (
     chunk_pages,
     extract_requirements,
     ingest_pdf,
+    safe_filename,
     validate_upload,
 )
 from app.store import C
@@ -43,6 +46,46 @@ def test_upload_validation_rejects_wrong_type_and_size():
     with pytest.raises(IngestionError):
         validate_upload("x.pdf", "application/pdf", 999_999_999)
     validate_upload("x.pdf", "application/pdf", 1000)
+
+
+def test_safe_filename_strips_any_path_component():
+    for hostile in ("../../../pwn.pdf", "..\\..\\pwn.pdf", "/etc/pwn.pdf", "C:\\Windows\\pwn.pdf"):
+        clean = safe_filename(hostile)
+        assert clean == "pwn.pdf", hostile
+    assert safe_filename("") == "upload.pdf"
+    assert safe_filename("...") == "upload.pdf"
+    assert safe_filename("Spec Rev-2.pdf") == "Spec Rev-2.pdf"
+
+
+def test_upload_endpoint_cannot_write_outside_the_upload_directory(api, tmp_path):
+    from app.config import get_settings
+
+    pid = api.get("/api/projects").json()[0]["id"]
+    body = write_sample_pdf(tmp_path / "ok.pdf", "t", ["Operating weight: 100 kg"]).read_bytes()
+    response = api.post(
+        f"/api/projects/{pid}/documents",
+        files={"file": ("../../../pwn.pdf", body, "application/pdf")},
+    )
+    assert response.status_code == 201
+    stored = Path(response.json()["document"]["stored_path"]).resolve()
+    assert stored.parent == get_settings().upload_dir.resolve()
+    stored.unlink(missing_ok=True)
+
+
+def test_unreadable_upload_is_not_left_on_disk(api):
+    from app.config import get_settings
+
+    pid = api.get("/api/projects").json()[0]["id"]
+    before = set(get_settings().upload_dir.glob("*"))
+    response = api.post(
+        f"/api/projects/{pid}/documents",
+        files={"file": ("broken.pdf", b"%PDF-1.4 not really a pdf", "application/pdf")},
+    )
+    assert response.status_code == 422
+    detail = response.json()["detail"]
+    assert "broken.pdf" in detail
+    assert str(get_settings().upload_dir) not in detail  # no server path leaked
+    assert set(get_settings().upload_dir.glob("*")) == before
 
 
 # --- chunking + extraction --------------------------------------------------

@@ -8,6 +8,7 @@ module invents values: a missing fact is represented by an
 
 from __future__ import annotations
 
+import hashlib
 import uuid
 from datetime import UTC, datetime
 from enum import Enum
@@ -238,6 +239,13 @@ class Assumption(Base):
     status: AssumptionStatus = AssumptionStatus.ACTIVE
     stale_reason: str | None = None
     updated_at: datetime = Field(default_factory=now)
+
+
+def gap_id(project_id: str, subject_id: str | None, field_key: str) -> str:
+    """Stable id for a gap, so re-running an analysis updates the same record
+    instead of appending a duplicate."""
+    digest = hashlib.sha256(f"{project_id}|{subject_id or '-'}|{field_key}".encode()).hexdigest()
+    return f"gap_{digest[:12]}"
 
 
 class InformationGap(Base):

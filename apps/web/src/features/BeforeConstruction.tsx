@@ -1,5 +1,5 @@
 import { MapPin, Play, RotateCcw, Sparkles, Trash2 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Bar,
   BarChart,
@@ -79,6 +79,7 @@ export function BeforeConstruction({
   const [evidenceFor, setEvidenceFor] = useState<{ id: string; name: string } | null>(null);
   const [busyOverride, setBusyOverride] = useState(false);
   const [newSite, setNewSite] = useState({ name: "", address: "", latitude: "", longitude: "" });
+  const weightSeq = useRef(0);
 
   const refresh = useCallback(async () => {
     const [siteList, gapList, investigations] = await Promise.all([
@@ -144,12 +145,16 @@ export function BeforeConstruction({
   async function applyWeights(next: Record<string, number>) {
     setWeights(next);
     if (!ranking) return;
+    // Dragging a slider fires one request per step and the responses can arrive
+    // out of order; only the newest one is allowed to update the ranking.
+    const seq = ++weightSeq.current;
     try {
       const result = await api.ranking(projectId, { weights: next });
+      if (seq !== weightSeq.current) return;
       setRanking(result.ranking);
       setWhatIf(result.explanation);
     } catch (e) {
-      setError(e);
+      if (seq === weightSeq.current) setError(e);
     }
   }
 

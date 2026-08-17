@@ -16,6 +16,7 @@ from ..domain import (
     SiteObservation,
     SourceType,
     VerificationStatus,
+    gap_id,
 )
 from ..fields import FIELD_INDEX
 from ..store import C, Store
@@ -87,6 +88,7 @@ def gap_for_missing_field(
     spec = FIELD_INDEX.get(field_key)
     label = spec.label if spec else field_key
     return InformationGap(
+        id=gap_id(project_id, site.id, field_key),
         project_id=project_id,
         subject_id=site.id,
         field_key=field_key,
@@ -102,6 +104,22 @@ def gap_for_missing_field(
         blocking=False,
         feature_request_id=feature_request_id,
     )
+
+
+def put_gap(store: Store, gap: InformationGap, *, parent_id: str | None = None) -> InformationGap:
+    """Persist a gap under its stable id, keeping any human triage already applied.
+
+    Gap ids are derived from (project, subject, field), so re-running an analysis
+    updates the same record. A gap a user already marked *requested* or *resolved*
+    keeps that status and its original creation time.
+    """
+    existing = store.get(C.GAPS, gap.id, InformationGap)
+    if existing is not None:
+        gap.status = existing.status
+        gap.created_at = existing.created_at
+        gap.feature_request_id = gap.feature_request_id or existing.feature_request_id
+    store.put(C.GAPS, gap, project_id=gap.project_id, parent_id=parent_id)
+    return gap
 
 
 def record_fetch(
@@ -139,6 +157,11 @@ def record_fetch(
         observations.append(obs)
 
     for key in result.unavailable:
+        if key not in FIELD_INDEX:
+            # A live service may report a field we do not model. Record nothing
+            # rather than fabricating an observation with no dimension.
+            log.warning("unavailable field is not in the catalog", extra={"field": key})
+            continue
         feature_request_id = None
         try:
             feature_request_id = client.feature_request(
@@ -149,14 +172,14 @@ def record_fetch(
         except Exception as exc:  # noqa: BLE001 - a failed feature request must not block
             log.warning("feature request failed", extra={"field": key, "error": str(exc)})
         gap = gap_for_missing_field(project_id, site, key, feature_request_id)
-        spec = FIELD_INDEX.get(key)
+        spec = FIELD_INDEX[key]
         missing_ev = Evidence(
             project_id=project_id,
             subject_id=site.id,
-            claim=f"{spec.label if spec else key} at {site.name}",
+            claim=f"{spec.label} at {site.name}",
             field_key=key,
             value=None,
-            unit=spec.unit if spec else None,
+            unit=spec.unit,
             source=EvidenceSource(
                 source_type=SourceType.MIREYE,
                 source_id=key,
@@ -172,16 +195,16 @@ def record_fetch(
             site_id=site.id,
             project_id=project_id,
             field_key=key,
-            dimension=spec.dimension if spec else None,
+            dimension=spec.dimension,
             value=None,
-            unit=spec.unit if spec else None,
+            unit=spec.unit,
             evidence_id=missing_ev.id,
             status=EvidenceStatus.MISSING,
             confidence=0.0,
         )
         store.put(C.EVIDENCE, missing_ev, project_id=project_id, parent_id=site.id)
         store.put(C.OBSERVATIONS, obs, project_id=project_id, parent_id=site.id)
-        store.put(C.GAPS, gap, project_id=project_id, parent_id=site.id)
+        put_gap(store, gap, parent_id=site.id)
         evidences.append(missing_ev)
         observations.append(obs)
         gaps.append(gap)

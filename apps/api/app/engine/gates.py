@@ -24,6 +24,7 @@ from ..domain import (
     Severity,
     SiteObservation,
     SourceType,
+    gap_id,
 )
 from . import units
 
@@ -41,6 +42,15 @@ COMPARED_FIELDS = [
     "mca",
     "cooling_capacity",
 ]
+
+
+def _as_float(value) -> float | None:
+    """None for anything not numeric — a non-numeric site fact is missing data,
+    never a zero."""
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _check(key: str, name: str, status: CheckStatus, severity: Severity, detail: str, **kw):
@@ -337,7 +347,11 @@ def gate_site_compatibility(
         )
     rated = new.rating_conditions.ambient_temp if new.rating_conditions else None
     obs = observations.get("ambient_design_db_c")
-    usable = obs and obs.status not in (EvidenceStatus.MISSING, EvidenceStatus.STALE)
+    usable = bool(
+        obs
+        and obs.status not in (EvidenceStatus.MISSING, EvidenceStatus.STALE)
+        and _as_float(obs.value) is not None
+    )
     if rated is None or not usable:
         return _check(
             "site_compatibility",
@@ -352,7 +366,7 @@ def gate_site_compatibility(
             observed=f"rated={units.fmt(rated) if rated else 'unknown'}, "
             f"site={obs.value if obs else 'unknown'}",
         )
-    site_temp = units.convert(Quantity(value=float(obs.value), unit="degC"), "kelvin").value
+    site_temp = units.convert(Quantity(value=_as_float(obs.value), unit="degC"), "kelvin").value
     rated_k = units.convert(rated, "kelvin").value
     if site_temp > rated_k:
         return _check(
@@ -535,6 +549,7 @@ def gaps_from_checks(
             continue
         source = source_by_key.get(check.key, SourceType.PROJECT_DOCUMENT)
         gap = InformationGap(
+            id=gap_id(project_id, subject_id, check.key),
             project_id=project_id,
             subject_id=subject_id,
             field_key=check.key,

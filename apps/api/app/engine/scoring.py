@@ -61,6 +61,15 @@ def clamp(x: float, lo: float = 0.0, hi: float = 1.0) -> float:
     return max(lo, min(hi, x))
 
 
+def _as_float(value) -> float | None:
+    """None for anything not numeric. A value that cannot be read as a number is
+    unverifiable evidence, never an implicit zero."""
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def normalize(spec: FieldSpec, value: float | str | None) -> float | None:
     """Map a raw field value to 0–100 (higher is better). None means 'no score'."""
     if value is None:
@@ -210,7 +219,8 @@ def check_requirements(
         spec = FIELD_INDEX[field_key]
         unit = f" {spec.unit}" if spec.unit and spec.unit != "dimensionless" else ""
         obs = observations.get(field_key)
-        if obs is None or obs.status not in USABLE or obs.value is None:
+        value = _as_float(obs.value) if obs is not None else None
+        if obs is None or obs.status not in USABLE or value is None:
             flags.append(
                 RequirementFlag(
                     requirement=label,
@@ -218,11 +228,10 @@ def check_requirements(
                     actual=None,
                     passed=None,
                     severity=Severity.HIGH,
-                    explanation=f"{label} cannot be verified: no evidence for {field_key}.",
+                    explanation=f"{label} cannot be verified: no usable evidence for {field_key}.",
                 )
             )
             continue
-        value = float(obs.value)
         passed = value >= target if op == "ge" else value <= target
         margin = abs(value - target) / target * 100 if target else 0.0
         severity = (

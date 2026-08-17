@@ -20,11 +20,12 @@ from ..domain import (
     SiteScore,
     SourceType,
     VerificationStatus,
+    gap_id,
 )
 from ..engine import scoring
 from ..fields import DEFAULT_DIMENSION_WEIGHTS, UnknownFieldError, broad_fields, deep_fields
 from ..store import C, Store
-from .evidence import observations_for_site, record_fetch
+from .evidence import observations_for_site, put_gap, record_fetch
 
 log = logging.getLogger("sites")
 
@@ -53,6 +54,7 @@ def fetch_site_fields(
     """One Mireye /fetch round-trip recorded as evidence. Returns a tool-event dict."""
     if site.latitude is None or site.longitude is None:
         gap = InformationGap(
+            id=gap_id(project.id, site.id, "coordinates"),
             project_id=project.id,
             subject_id=site.id,
             field_key="coordinates",
@@ -61,7 +63,7 @@ def fetch_site_fields(
             expected_source=SourceType.USER_INPUT,
             suggested_action=NextActionType.CLARIFICATION_REQUEST,
         )
-        store.put(C.GAPS, gap, project_id=project.id, parent_id=site.id)
+        put_gap(store, gap, parent_id=site.id)
         return {
             "ok": False,
             "summary": f"{site.name}: no coordinates — 1 gap recorded, no values assumed.",
@@ -83,6 +85,7 @@ def fetch_site_fields(
         gaps = []
         for key in field_keys:
             gap = InformationGap(
+                id=gap_id(project.id, site.id, key),
                 project_id=project.id,
                 subject_id=site.id,
                 field_key=key,
@@ -92,7 +95,7 @@ def fetch_site_fields(
                 suggested_action=NextActionType.CLARIFICATION_REQUEST,
                 blocking=False,
             )
-            store.put(C.GAPS, gap, project_id=project.id, parent_id=site.id)
+            put_gap(store, gap, parent_id=site.id)
             gaps.append(gap)
         log.warning("mireye fetch failed", extra={"site": site.id, "error": str(exc)})
         return {

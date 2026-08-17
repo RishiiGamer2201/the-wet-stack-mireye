@@ -26,7 +26,9 @@ export function Card({
   return (
     <section
       className={cx(
-        "rounded-xl border border-ink-200 bg-white shadow-sm",
+        // min-w-0: grid/flex items default to min-width:auto, which lets a wide
+        // child (a chart, a table) push the whole page into horizontal scroll.
+        "min-w-0 rounded-xl border border-ink-200 bg-white shadow-sm",
         className,
       )}
     >

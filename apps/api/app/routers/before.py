@@ -61,6 +61,9 @@ def create_site(
 def delete_site(
     site_id: str, project: Project = Depends(get_project), store: Store = Depends(store_dep)
 ):
+    site = store.get(C.SITES, site_id, CandidateSite)
+    if site is None or site.project_id != project.id:
+        raise HTTPException(status_code=404, detail="site not found on this project")
     store.delete(C.SITES, site_id)
 
 

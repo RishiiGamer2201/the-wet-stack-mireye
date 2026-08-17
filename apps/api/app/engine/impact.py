@@ -10,6 +10,7 @@ changes when the equipment change changes.
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
 
 from ..domain import (
@@ -24,7 +25,14 @@ from ..domain import (
     ImpactGraph,
     ImpactNode,
     Severity,
+    now,
 )
+
+
+def _slug(text: str) -> str:
+    """Stable node-id suffix. `hash()` is salted per process, so it would give a
+    different graph on every restart — the graph must be reproducible."""
+    return hashlib.blake2b(text.encode(), digest_size=5).hexdigest()
 
 
 @dataclass(frozen=True)
@@ -162,23 +170,28 @@ def mark_stale_assumptions(
 ) -> list[Assumption]:
     """An assumption goes STALE when any field it depends on has actually changed.
 
-    Returns the assumptions that transitioned in this run.
+    Returns *every* assumption this analysis invalidates, not only the ones that
+    flipped on this particular run — re-analysing the same change must report the
+    same set, otherwise the impact graph silently loses its assumption layer.
+    Already-stale assumptions keep their original reason and timestamp.
     """
     fired = _triggered_keys(deltas, checks)
     changed_fields = {
         d.field for d in deltas if d.direction in ("increase", "decrease", "changed")
     } | set(fired)
-    transitioned: list[Assumption] = []
+    invalidated: list[Assumption] = []
     for a in assumptions:
         hits = [f for f in a.depends_on_fields if f in changed_fields]
-        if not hits or a.status == AssumptionStatus.STALE:
+        if not hits:
             continue
-        a.status = AssumptionStatus.STALE
-        a.stale_reason = "Upstream evidence changed: " + "; ".join(
-            fired.get(h, f"{h} changed") for h in hits
-        )
-        transitioned.append(a)
-    return transitioned
+        if a.status != AssumptionStatus.STALE:
+            a.status = AssumptionStatus.STALE
+            a.stale_reason = "Upstream evidence changed: " + "; ".join(
+                fired.get(h, f"{h} changed") for h in hits
+            )
+            a.updated_at = now()
+        invalidated.append(a)
+    return invalidated
 
 
 def derive_impacts(
@@ -261,11 +274,11 @@ def build_graph(
             edges.append(ImpactEdge(source=root, target=disc, relation="AFFECTS"))
 
         for activity in imp.activities:
-            aid = f"activity:{imp.discipline.value}:{abs(hash(activity)) % 10**8}"
+            aid = f"activity:{imp.discipline.value}:{_slug(activity)}"
             nodes.setdefault(aid, ImpactNode(id=aid, label=activity, kind="activity"))
             edges.append(ImpactEdge(source=disc, target=aid, relation="REQUIRES"))
             for comm in imp.commissioning:
-                cid = f"commissioning:{abs(hash(comm)) % 10**8}"
+                cid = f"commissioning:{_slug(comm)}"
                 nodes.setdefault(cid, ImpactNode(id=cid, label=comm, kind="commissioning"))
                 edges.append(ImpactEdge(source=aid, target=cid, relation="VERIFIED_BY"))
                 start = upstream[1] if len(upstream) > 1 else root

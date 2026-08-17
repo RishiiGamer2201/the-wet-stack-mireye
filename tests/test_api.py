@@ -231,6 +231,27 @@ def test_during_construction_end_to_end(api):
     assert graph["paths"]
 
 
+def test_impact_graph_survives_a_graph_store_restart(api):
+    """A volatile graph backend must not turn an analysed change into 'no impact'."""
+    from app.adapters.graphstore import InMemoryGraphStore, get_graph_store, set_graph_store
+
+    pid = project_id(api)
+    change = _change_by_tag(api, pid, "CH-01")
+    api.post(f"/api/projects/{pid}/changes/{change['id']}/analyze", json={})
+    before = api.get(f"/api/impact/{change['id']}").json()
+    assert len(before["nodes"]) > 1
+
+    set_graph_store(InMemoryGraphStore())  # simulate an API restart
+    assert get_graph_store().traverse(change["id"]) is None
+
+    after = api.get(f"/api/impact/{change['id']}")
+    assert after.status_code == 200
+    rebuilt = after.json()
+    assert {n["kind"] for n in rebuilt["nodes"]} == {n["kind"] for n in before["nodes"]}
+    assert len(rebuilt["nodes"]) == len(before["nodes"])
+    assert any(n["kind"] == "assumption" for n in rebuilt["nodes"])
+
+
 def test_like_for_like_change_closes_first_pass(api):
     pid = project_id(api)
     change = _change_by_tag(api, pid, "CH-02")
@@ -249,6 +270,66 @@ def test_incomplete_submittal_needs_information(api):
     gaps = api.get(f"/api/projects/{pid}/gaps").json()
     assert any(g["subject_id"] == change["id"] for g in gaps)
     assert any(a["type"] == "vendor_evidence_request" for a in investigation["next_actions"])
+
+
+def test_reanalysis_is_idempotent(api):
+    """Re-running a demo case must not inflate the gap count, drop the stale
+    assumptions or grow the impact graph."""
+    pid = project_id(api)
+    change = _change_by_tag(api, pid, "CH-01")
+    url = f"/api/projects/{pid}/changes/{change['id']}/analyze"
+
+    first = api.post(url, json={}).json()
+    gaps_after_first = api.get(f"/api/projects/{pid}/gaps").json()
+    graph_first = api.get(f"/api/impact/{change['id']}").json()
+
+    second = api.post(url, json={}).json()
+    assert sorted(second["stale_assumption_ids"]) == sorted(first["stale_assumption_ids"])
+    assert second["stale_assumption_ids"], "re-analysis must still report stale assumptions"
+    assert len(api.get(f"/api/projects/{pid}/gaps").json()) == len(gaps_after_first)
+
+    graph_second = api.get(f"/api/impact/{change['id']}").json()
+    assert len(graph_second["nodes"]) == len(graph_first["nodes"])
+    assert len(graph_second["edges"]) == len(graph_first["edges"])
+
+    # The same holds for the case that does produce gaps.
+    pdu = _change_by_tag(api, pid, "PDU-3")
+    api.post(f"/api/projects/{pid}/changes/{pdu['id']}/analyze", json={})
+    before = api.get(f"/api/projects/{pid}/gaps").json()
+    api.post(f"/api/projects/{pid}/changes/{pdu['id']}/analyze", json={})
+    assert len(api.get(f"/api/projects/{pid}/gaps").json()) == len(before)
+
+
+def test_triaged_gap_keeps_its_status_across_a_reanalysis(api):
+    pid = project_id(api)
+    change = _change_by_tag(api, pid, "PDU-3")
+    api.post(f"/api/projects/{pid}/changes/{change['id']}/analyze", json={})
+    gap = next(g for g in api.get(f"/api/projects/{pid}/gaps").json() if g["subject_id"] == change["id"])
+    api.patch(f"/api/projects/{pid}/gaps/{gap['id']}", json={"status": "requested"})
+
+    api.post(f"/api/projects/{pid}/changes/{change['id']}/analyze", json={})
+    again = next(g for g in api.get(f"/api/projects/{pid}/gaps").json() if g["id"] == gap["id"])
+    assert again["status"] == "requested"
+
+
+def test_repeat_site_investigation_does_not_multiply_gaps(api):
+    pid = project_id(api)
+    api.post(f"/api/projects/{pid}/investigations/site", json={})
+    first = api.get(f"/api/projects/{pid}/gaps").json()
+    assert first, "Prairie Junction has unavailable fields, so gaps are expected"
+    api.post(f"/api/projects/{pid}/investigations/site", json={})
+    assert len(api.get(f"/api/projects/{pid}/gaps").json()) == len(first)
+
+
+def test_changes_are_listed_in_the_same_order_everywhere(api):
+    """The During Construction tab preselects projectdetail.changes[0]; it must be
+    the same case that GET /changes lists first."""
+    pid = project_id(api)
+    change = _change_by_tag(api, pid, "CH-01")
+    api.post(f"/api/projects/{pid}/changes/{change['id']}/analyze", json={})
+    listed = [c["id"] for c in api.get(f"/api/projects/{pid}/changes").json()]
+    detail = [c["id"] for c in api.get(f"/api/projects/{pid}").json()["changes"]]
+    assert listed == detail
 
 
 # --- documents & requirements -----------------------------------------------

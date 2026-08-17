@@ -39,6 +39,21 @@ def project():
     )
 
 
+def test_non_numeric_value_is_unverifiable_not_zero(project):
+    """A user override that is not a number must leave the target unknown and be
+    excluded from the score — never read as 0."""
+    observations = [obs("grid_capacity_mw", "not a number", EvidenceStatus.USER_CONFIRMED)]
+    score = scoring.score_site(project, "s1", "S1", observations)
+    flag = next(f for f in score.requirement_flags if f.requirement == "Grid capacity")
+    assert flag.passed is None
+    assert flag.actual is None
+    metric = next(
+        m for d in score.dimensions for m in d.metrics if m.field_key == "grid_capacity_mw"
+    )
+    assert metric.normalized is None
+    assert score.overall_score is None  # nothing else was evidenced
+
+
 def test_normalize_higher_better_clamps():
     fs = spec("grid_capacity_mw")
     assert scoring.normalize(fs, 400) == 100

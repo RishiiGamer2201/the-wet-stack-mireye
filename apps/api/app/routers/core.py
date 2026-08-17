@@ -116,7 +116,12 @@ def project_detail(
         project=project,
         sites=store.list(C.SITES, CandidateSite, project_id=project.id),
         documents=store.list(C.DOCUMENTS, ProjectDocument, project_id=project.id),
-        changes=store.list(C.CHANGES, EquipmentChange, project_id=project.id),
+        # Same creation order as GET /changes, so the UI does not preselect a
+        # different case than the list shows once a change has been analysed.
+        changes=sorted(
+            store.list(C.CHANGES, EquipmentChange, project_id=project.id),
+            key=lambda c: c.created_at,
+        ),
         requirement_count=len(store.list(C.REQUIREMENTS, Requirement, project_id=project.id)),
         evidence_count=len(store.list(C.EVIDENCE, Evidence, project_id=project.id)),
         open_gap_count=sum(1 for g in gaps if g.status != GapStatus.RESOLVED),

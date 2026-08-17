@@ -32,7 +32,7 @@ from ..schemas import (
     SearchResponse,
     UploadResponse,
 )
-from ..services.ingest import IngestionError, ingest_pdf, validate_upload
+from ..services.ingest import IngestionError, ingest_pdf, safe_filename, validate_upload
 from ..store import C, Store
 from .deps import get_project, store_dep
 
@@ -97,19 +97,32 @@ async def upload_document(
 ):
     settings = get_settings()
     data = await file.read()
+    # The client controls the filename, so it is reduced to a bare name before it
+    # is ever joined onto a path — `../../x.pdf` must not escape the upload dir.
+    filename = safe_filename(file.filename or "upload.pdf")
     try:
-        validate_upload(file.filename or "upload.pdf", file.content_type or "", len(data))
+        validate_upload(filename, file.content_type or "", len(data))
+        DocumentKind(kind)
     except IngestionError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=f"unknown document kind '{kind}'; allowed: "
+            + ", ".join(k.value for k in DocumentKind),
+        ) from exc
 
-    target = settings.upload_dir / f"{project.id}_{file.filename}"
+    target = settings.upload_dir / f"{project.id}_{filename}"
     target.write_bytes(data)
     try:
         document, chunks, requirements = ingest_pdf(
-            store, project.id, target, file.filename or target.name, kind=DocumentKind(kind)
+            store, project.id, target, filename, kind=DocumentKind(kind)
         )
     except IngestionError as exc:
-        raise HTTPException(status_code=422, detail=f"extraction failed: {exc}") from exc
+        target.unlink(missing_ok=True)  # do not keep a file we could not read
+        raise HTTPException(
+            status_code=422, detail=f"extraction failed for {filename}: {exc}"
+        ) from exc
     return UploadResponse(
         document=document,
         chunk_count=len(chunks),

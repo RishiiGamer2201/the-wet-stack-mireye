@@ -10,7 +10,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import re
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 
 from ..adapters.vectorstore import LocalVectorIndex, PgVectorIndex, get_index
 from ..config import get_settings
@@ -87,6 +87,17 @@ class IngestionError(ValueError):
     pass
 
 
+def safe_filename(filename: str) -> str:
+    """Strip any directory component from a client-supplied filename.
+
+    An upload named `../../x.pdf` must never be able to write outside the upload
+    directory, so only the final path segment is ever used.
+    """
+    name = PurePosixPath(PureWindowsPath(filename or "").as_posix()).name
+    name = re.sub(r"[^A-Za-z0-9._ -]", "_", name).lstrip(". ").strip()
+    return name[:120] or "upload.pdf"
+
+
 def validate_upload(filename: str, content_type: str, size: int) -> None:
     settings = get_settings()
     if content_type not in settings.allowed_upload_types:
@@ -111,10 +122,14 @@ def extract_pages(path: Path) -> list[str]:
     except ImportError as exc:  # pragma: no cover - dependency is declared
         raise IngestionError("PyMuPDF is not installed") from exc
     try:
-        with pymupdf.open(str(path)) as doc:
+        # Opened from a byte stream, not the path: PyMuPDF keeps a file handle on a
+        # failed open (so the rejected upload could not be deleted on Windows), and
+        # the resulting error message would carry the server's absolute path.
+        with pymupdf.open(stream=path.read_bytes(), filetype="pdf") as doc:
             return [page.get_text() or "" for page in doc]
     except Exception as exc:  # noqa: BLE001 - corrupt/encrypted PDFs land here
-        raise IngestionError(f"could not read PDF: {exc}") from exc
+        detail = str(exc).replace(str(path), path.name)
+        raise IngestionError(f"could not read PDF: {detail}") from exc
 
 
 def chunk_pages(document: ProjectDocument, pages: list[str]) -> list[DocumentChunk]:

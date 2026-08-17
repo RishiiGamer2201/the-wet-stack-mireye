@@ -18,6 +18,7 @@ from ..domain import (
     Quantity,
     Severity,
     SourceType,
+    gap_id,
 )
 from . import units
 
@@ -338,6 +339,7 @@ def gaps_from_deltas(
             continue
         gaps.append(
             InformationGap(
+                id=gap_id(project_id, subject_id, d.field),
                 project_id=project_id,
                 subject_id=subject_id,
                 field_key=d.field,

@@ -17,6 +17,7 @@ from ..domain import (
     Requirement,
     Workflow,
 )
+from ..engine import impact as impact_engine
 from ..schemas import ChangeDetail
 from ..store import C, Store
 from .deps import get_project, store_dep
@@ -78,12 +79,47 @@ def analyze_change(
 
 
 @router.get("/impact/{change_id}", response_model=ImpactGraph)
-def impact_graph(change_id: str, max_depth: int = 5):
-    """Traverse Change → Stale Assumption → Discipline → Activity → Commissioning."""
-    graph = get_graph_store().traverse(change_id, max_depth=max_depth)
-    if graph is None:
+def impact_graph(
+    change_id: str, max_depth: int = 5, store: Store = Depends(store_dep)
+):
+    """Traverse Change → Stale Assumption → Discipline → Activity → Commissioning.
+
+    The in-memory graph store is volatile, so a restart would otherwise turn an
+    analysed change with six impacts into "no downstream impact". The analysis
+    result itself is durable, so the graph is rebuilt from it on a miss rather
+    than reporting an absence that is not true.
+    """
+    graph_store = get_graph_store()
+    graph = graph_store.traverse(change_id, max_depth=max_depth)
+    if graph is not None:
+        return graph
+
+    change = store.get(C.CHANGES, change_id, EquipmentChange)
+    investigation = _latest_investigation(store, change) if change else None
+    if change is None or investigation is None:
         raise HTTPException(
             status_code=404,
             detail="no impact graph for this change yet — run the analysis first",
         )
-    return graph
+    assumptions = {
+        a.id: a
+        for a in store.list(C.ASSUMPTIONS, Assumption, project_id=change.project_id)
+    }
+    rebuilt = impact_engine.build_graph(
+        change_id,
+        f"{change.equipment_tag}: {change.title}",
+        investigation.impacts,
+        [assumptions[i] for i in investigation.stale_assumption_ids if i in assumptions],
+        backend=graph_store.backend,
+    )
+    graph_store.upsert(rebuilt)
+    return graph_store.traverse(change_id, max_depth=max_depth) or rebuilt
+
+
+def _latest_investigation(store: Store, change: EquipmentChange) -> Investigation | None:
+    runs = [
+        i
+        for i in store.list(C.INVESTIGATIONS, Investigation, project_id=change.project_id)
+        if i.workflow == Workflow.DURING_CONSTRUCTION and i.subject_id == change.id
+    ]
+    return runs[-1] if runs else None

@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+import os
+import subprocess
+import sys
+from pathlib import Path
+
 from app.adapters.graphstore import InMemoryGraphStore
 from app.domain import (
     Assumption,
@@ -14,6 +19,8 @@ from app.domain import (
     Severity,
 )
 from app.engine import impact
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def delta(field, status=CheckStatus.TRIGGERED, direction="increase", pct=9.0):
@@ -70,10 +77,16 @@ def test_unchanged_delta_does_not_stale_anything():
 
 
 def test_stale_is_idempotent():
+    """Re-analysing the same change must report the same invalidated assumptions,
+    without rewriting the reason or the timestamp of one already marked stale."""
     items = assumptions()
-    impact.mark_stale_assumptions(items, [delta("weight")], [])
+    first = impact.mark_stale_assumptions(items, [delta("weight")], [])
+    reason, updated = first[0].stale_reason, first[0].updated_at
     again = impact.mark_stale_assumptions(items, [delta("weight")], [])
-    assert again == []
+    assert [a.id for a in again] == [a.id for a in first]
+    assert again[0].stale_reason == reason
+    assert again[0].updated_at == updated
+    assert items[1].status == AssumptionStatus.ACTIVE
 
 
 def test_triggered_check_also_stales_assumptions():
@@ -128,6 +141,56 @@ def test_in_memory_graph_store_traversal_round_trip():
     assert traversed.backend == "in_memory"
     assert any(n.kind == "commissioning" for n in traversed.nodes)
     assert store.traverse("does-not-exist") is None
+
+
+def test_node_ids_are_stable_across_processes():
+    """`hash()` is salted per process; the graph must be reproducible."""
+    items, deltas = assumptions(), [delta("weight")]
+    stale = impact.mark_stale_assumptions(items, deltas, [])
+    impacts = impact.derive_impacts("chg1", deltas, [], stale)
+    # Assumption ids are per-record uuids; only the derived ids must be stable.
+    derived = lambda g: sorted(  # noqa: E731
+        n.id for n in g.nodes if n.kind in ("activity", "commissioning", "discipline")
+    )
+    ids = derived(impact.build_graph("chg1", "CH-01", impacts, stale))
+    assert ids == derived(impact.build_graph("chg1", "CH-01", impacts, stale))
+    assert any(i.startswith("activity:structural:") for i in ids)
+    # Recomputed in a fresh interpreter with a different PYTHONHASHSEED.
+    code = (
+        f"import sys; sys.path.insert(0, r'{REPO_ROOT}');"
+        "from tests.test_impact import assumptions, delta;"
+        "from app.engine import impact;"
+        "i=assumptions(); d=[delta('weight')];"
+        "s=impact.mark_stale_assumptions(i,d,[]);"
+        "im=impact.derive_impacts('chg1',d,[],s);"
+        "g=impact.build_graph('chg1','CH-01',im,s);"
+        "print('\\n'.join(sorted(n.id for n in g.nodes "
+        "if n.kind in ('activity','commissioning','discipline'))))"
+    )
+    env = {**os.environ, "PYTHONHASHSEED": "12345", "PYTHONPATH": str(REPO_ROOT / "apps" / "api")}
+    out = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True, env=env, cwd=str(REPO_ROOT)
+    )
+    assert out.returncode == 0, out.stderr
+    assert sorted(out.stdout.split()) == sorted(ids)
+
+
+def test_reanalysis_replaces_a_change_subgraph_instead_of_growing_it():
+    store = InMemoryGraphStore()
+    items, deltas = assumptions(), [delta("weight"), delta("mca")]
+    stale = impact.mark_stale_assumptions(items, deltas, [])
+    impacts = impact.derive_impacts("chg1", deltas, [], stale)
+    store.upsert(impact.build_graph("chg1", "CH-01", impacts, stale))
+    first = store.traverse("chg1")
+
+    # Same analysis run again: identical graph, not a bigger one.
+    store.upsert(impact.build_graph("chg1", "CH-01", impacts, stale))
+    assert len(store.traverse("chg1").edges) == len(first.edges)
+
+    # The evidence is corrected and nothing is triggered any more.
+    store.upsert(impact.build_graph("chg1", "CH-01", [], []))
+    after = store.traverse("chg1")
+    assert after.edges == [] and [n.kind for n in after.nodes] == ["change"]
 
 
 def test_graph_reflects_a_different_change():
