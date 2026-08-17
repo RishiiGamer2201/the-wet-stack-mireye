@@ -26,6 +26,7 @@ export const EVIDENCE_STATUS_LABEL: Record<EvidenceStatus, string> = {
   live: "Live",
   cached: "Cached",
   synthetic: "Synthetic demo",
+  fallback: "Fallback (live failed)",
   user_confirmed: "User confirmed",
   missing: "Missing",
   stale: "Stale",
@@ -35,6 +36,8 @@ export const EVIDENCE_STATUS_STYLE: Record<EvidenceStatus, string> = {
   live: "bg-emerald-100 text-emerald-900 border-emerald-300",
   cached: "bg-sky-100 text-sky-900 border-sky-300",
   synthetic: "bg-amber-100 text-amber-900 border-amber-300",
+  // Deliberately not the emerald of `live`: a stand-in must never read as data.
+  fallback: "bg-fuchsia-100 text-fuchsia-900 border-fuchsia-300",
   user_confirmed: "bg-violet-100 text-violet-900 border-violet-300",
   missing: "bg-rose-100 text-rose-900 border-rose-300",
   stale: "bg-orange-100 text-orange-900 border-orange-300",

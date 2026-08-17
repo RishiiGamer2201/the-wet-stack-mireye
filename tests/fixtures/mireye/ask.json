@@ -1,0 +1,9 @@
+{
+  "_recorded": "POST https://api.mireye.com/v1/ask  body={\"question\":\"What is the terrain like here?\",\"lat\":47.4235,\"lng\":-120.3103}",
+  "_note": "Answer text truncated for the fixture; the shape is verbatim. There is no `citations` array — the assumed contract invented one.",
+  "lat": 47.4235,
+  "lng": -120.3103,
+  "question": "What is the terrain like here?",
+  "answered_at": "2026-08-17T19:14:13.556892+00:00",
+  "answer": "The terrain at 47.4235, -120.3103 is gently rolling and is not a constraint for a level pad at this scale."
+}

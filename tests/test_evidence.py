@@ -151,26 +151,31 @@ def test_live_client_retries_then_raises(store):
     assert calls["n"] == 3  # initial + 2 retries
 
 
+# Payload shapes below are the real ones: the catalog identifies fields by
+# `name`, and /v1/fetch returns them under `fields`. See test_mireye_contract.py.
+
+
 def test_live_client_caches_repeat_fetches(store):
     calls = {"n": 0}
 
     def handler(request):
         calls["n"] += 1
         if request.url.path == "/v1/meta/fields":
-            return httpx.Response(200, json={"fields": [{"key": "elevation_m"}]})
+            return httpx.Response(200, json={"fields": [{"name": "elevation"}]})
         return httpx.Response(
             200,
             json={
-                "results": {
-                    "elevation_m": {
+                "lat": 47.4,
+                "lng": -120.3,
+                "fields": {
+                    "elevation": {
                         "value": 321,
-                        "unit": "m",
-                        "confidence": 0.9,
+                        "unit": "meters",
+                        "confidence": "high",
                         "source": "usgs",
-                        "observed_at": "2025-01-01T00:00:00+00:00",
+                        "fetched_at": "2025-01-01T00:00:00+00:00",
                     }
                 },
-                "unavailable": [],
             },
         )
 
@@ -186,24 +191,61 @@ def test_live_client_marks_fields_the_server_omits_as_unavailable(store):
     def handler(request):
         if request.url.path == "/v1/meta/fields":
             return httpx.Response(
-                200, json={"fields": [{"key": "elevation_m"}, {"key": "flood_zone"}]}
+                200, json={"fields": [{"name": "elevation"}, {"name": "fema_flood_zone"}]}
             )
-        return httpx.Response(200, json={"results": {}, "unavailable": []})
+        return httpx.Response(200, json={"lat": 47.4, "lng": -120.3, "fields": {}})
 
     result = _live(handler, store).fetch(47.4, -120.3, ["elevation_m", "flood_zone"])
     assert sorted(result.unavailable) == ["elevation_m", "flood_zone"]
     assert not result.values
 
 
-def test_fallback_client_degrades_to_mock_and_records_the_reason(store):
+def test_fallback_client_degrades_and_records_the_reason(store):
     def handler(request):
         raise httpx.ConnectError("connection refused")
 
     fallback = FallbackMireyeClient(_live(handler, store, retries=0), MockMireyeClient())
     result = fallback.fetch(47.4235, -120.3103, ["elevation_m"])
-    assert fallback.mode == "degraded_mock"
+    assert fallback.mode == "degraded_fallback"
     assert fallback.degraded_reason
-    assert result.values["elevation_m"].status == "synthetic"
+    # A stand-in served because a configured live service failed is `fallback`,
+    # distinct from both `live` and the plain `synthetic` of demo mode.
+    value = result.values["elevation_m"]
+    assert value.status == "fallback"
+    assert "not an observation" in (value.note or "")
+
+
+def test_a_drifted_contract_degrades_rather_than_failing_the_investigation(store):
+    """MireyeContractError must be caught by the fallback, so a provider changing
+    its payload shape cannot take the whole analysis down."""
+
+    def handler(request):
+        if request.url.path == "/v1/meta/fields":
+            return httpx.Response(200, json={"fields": [{"name": "elevation"}]})
+        return httpx.Response(200, json={"unexpected": "shape"})
+
+    fallback = FallbackMireyeClient(_live(handler, store, retries=0), MockMireyeClient())
+    result = fallback.fetch(47.4235, -120.3103, ["elevation_m"])
+    assert fallback.mode == "degraded_fallback"
+    assert "MireyeContractError" in fallback.degraded_reason
+    assert result.values["elevation_m"].status == "fallback"
+
+
+def test_feature_requests_are_submitted_once_per_field(store):
+    calls = {"n": 0}
+
+    def handler(request):
+        calls["n"] += 1
+        return httpx.Response(200, json={"id": "fr_1", "status": "recorded"})
+
+    client = _live(handler, store)
+    first = client.feature_request("grid_capacity_mw", "no provider equivalent")
+    second = client.feature_request("grid_capacity_mw", "no provider equivalent")
+    assert calls["n"] == 1, "the same gap must not be resubmitted"
+    assert first["id"] == second["id"]
+    assert second["deduplicated"] is True
+    client.feature_request("latency_to_ix_ms", "no provider equivalent")
+    assert calls["n"] == 2  # a different field is a different request
 
 
 def test_service_records_gaps_when_mireye_is_down(store, seeded):

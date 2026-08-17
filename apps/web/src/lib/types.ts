@@ -8,6 +8,9 @@ export type EvidenceStatus =
   | "live"
   | "cached"
   | "synthetic"
+  // A configured live service failed and a deterministic local stand-in was
+  // used. Distinct from `synthetic`, which is ordinary demo mode.
+  | "fallback"
   | "user_confirmed"
   | "missing"
   | "stale";

@@ -50,7 +50,9 @@ class EvidenceStatus(str, Enum):
 
     LIVE = "live"  # retrieved from a live external service this session
     CACHED = "cached"  # served from local cache within TTL
-    SYNTHETIC = "synthetic"  # deterministic demo value — clearly labelled in the UI
+    SYNTHETIC = "synthetic"  # deterministic demo/mock value — clearly labelled in the UI
+    FALLBACK = "fallback"  # a live service was configured but failed; this is the
+    # local stand-in that replaced it. Never labelled `live`.
     USER_CONFIRMED = "user_confirmed"  # a human confirmed/corrected the value
     MISSING = "missing"  # requested but not available anywhere
     STALE = "stale"  # was valid, upstream input changed or TTL expired

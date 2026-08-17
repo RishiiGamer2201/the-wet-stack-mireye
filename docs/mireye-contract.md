@@ -1,112 +1,214 @@
 # Mireye integration contract
 
-> **This document describes an *assumed* contract.** The published Mireye documentation lists the
-> endpoints but not their payload shapes. Every assumption is isolated in one file —
-> [`apps/api/app/adapters/mireye.py`](../apps/api/app/adapters/mireye.py) — so correcting it when
-> the real specification arrives touches nothing else in the codebase.
+> **This contract is observed, not assumed.** Every shape below was captured from the live service
+> at `https://api.mireye.com` and is recorded in [`tests/fixtures/mireye/`](../tests/fixtures/mireye/).
+> [`tests/test_mireye_contract.py`](../tests/test_mireye_contract.py) pins each one offline, so the
+> adapter cannot drift back to guesswork without a test failing.
+>
+> An earlier revision of this document described an *assumed* contract. It was wrong on five
+> separate points; §"What the assumed contract got wrong" records them, because they are the reason
+> the adapter is shaped the way it is.
 
-## Endpoints used
+**Base URL:** `https://api.mireye.com` · **Auth:** `Authorization: Bearer <MIREYE_API_KEY>`
+(`GET /v1/meta/fields` needs no auth).
 
-| Endpoint | Used for | Where |
-| --- | --- | --- |
-| `GET /v1/meta/fields` | Field catalog, cached. The only source of legal field names. | `meta_fields()` |
-| `POST /v1/geocode` | Address → coordinates + resolution | Site creation, `Evidence` phase |
-| `POST /v1/fetch` | **Primary endpoint.** Only the fields the agent actually needs | Scoring, site compatibility checks |
-| `POST /v1/ask` | Exploratory natural-language questions | "Ask Mireye" in the knowledge panel |
-| `POST /v1/ask/stream` | Streaming variant for live agent output | `ask_stream()` |
-| `POST /v1/sites` | Register a candidate site | `create_site()` |
-| `GET /v1/sites/{site_id}` | Read a registered site | `get_site()` |
-| `POST /v1/ask-site` | Question scoped to a registered site | `ask_site()` |
-| `POST /v1/feature-requests` | Record an unavailable field instead of inventing a value | Every unavailable field in `record_fetch()` |
+## Endpoints
+
+| Endpoint | Used for | Where | Verified |
+| --- | --- | --- | --- |
+| `GET /v1/meta/fields` | Catalog of 306 provider fields, cached. The only source of legal provider names. | `meta_fields()`, `catalog_names()` | yes |
+| `POST /v1/geocode` | Address → coordinates + accuracy | Site creation, Evidence phase | yes |
+| `POST /v1/fetch` | **Primary endpoint.** Only the fields the agent actually needs | Scoring, site-compatibility checks | yes |
+| `POST /v1/ask` | Exploratory natural-language questions | "Ask Mireye" panel | yes |
+| `POST /v1/ask/stream` | Streaming variant | `ask_stream()` | no — shape assumed |
+| `POST /v1/feature-requests` | Record an unavailable field instead of inventing a value | `record_fetch()` | no — shape assumed |
+| `POST /v1/sites`, `GET /v1/sites/{id}`, `POST /v1/ask-site` | Registered candidate sites | `create_site()` etc. | no — unused, unverified |
 
 `/fetch` is used for anything repeatable — scoring, ranking, engineering checks. `/ask` is used only
-for exploration and its answers are labelled as such; they never enter a calculation.
+for exploration, its answers are labelled as such, and they never enter a calculation.
 
-## Assumed payloads
+## Observed payloads
 
 ```jsonc
-// GET /v1/meta/fields
-{ "fields": [ { "key": "elevation_m", "label": "Elevation", "unit": "m", "description": "…" } ] }
+// GET /v1/meta/fields  — entries are identified by `name`. There is no `key`.
+{ "billing": { "fetch_credits_per_field": 1,
+               "metered_groups": { "parcel_record": { "credits_per_location_by_plan": { "build": 300, … },
+                                                      "fields": ["parcel_zoning", …] } } },
+  "fields": [ { "name": "elevation", "unit": "meters", "type": "float", "layer": "terrain",
+                "nullable": false, "null_meaning": null, "source": "USGS_3DEP",
+                "source_url": "…", "presets": ["terrain", …], "ttl_seconds": 31536000,
+                "description": "…", "interpretation_hints": "…" } ],
+  "presets": { "data_center_siting": [ … ], … }, "us_envelope": …, "version": … }
 
 // POST /v1/geocode
 { "address": "1400 Grant Rd, East Wenatchee, WA" }
-{ "latitude": 47.4235, "longitude": -120.3103, "resolution": "parcel",
-  "formatted_address": "…", "confidence": 0.9 }
+{ "lat": 47.405845, "lng": -120.265701, "accuracy": 1.0,
+  "accuracy_type": "range_interpolation", "match_type": null,
+  "normalized_address": "1400 Grant Rd, East Wenatchee, WA 98802",
+  "provider": "geocodio", "source": "TIGER/Line® from the US Census Bureau" }
 
-// POST /v1/fetch
-{ "latitude": 47.4235, "longitude": -120.3103,
-  "fields": ["elevation_m", "flood_zone"], "site_id": "optional" }
-{ "results": {
-    "elevation_m": { "value": 320, "unit": "m", "confidence": 0.9,
-                     "observed_at": "2025-01-01T00:00:00+00:00", "source": "usgs-3dep" } },
-  "unavailable": ["flood_zone"] }
+// POST /v1/fetch — coordinates OR address, never both (sending both returns 422)
+{ "lat": 47.4235, "lng": -120.3103, "fields": ["elevation", "slope_degrees", "fema_flood_zone"] }
+{ "address": "1400 Grant Rd, East Wenatchee, WA", "fields": ["fema_flood_zone"] }
 
-// POST /v1/ask  ·  POST /v1/ask-site
-{ "question": "…", "latitude": 47.4, "longitude": -120.3 }        // or { "site_id", "question" }
-{ "answer": "…", "citations": [ … ], "confidence": 0.7 }
+{ "lat": 47.4235, "lng": -120.3103, "fetched_at": "2026-08-17T19:13:50.141882+00:00",
+  "fields": {
+    "elevation":       { "value": 203.6425018310547, "unit": "meters", "source": "USGS_3DEP_COG",
+                         "source_url": "…", "confidence": "medium",
+                         "fetched_at": "…", "dataset_vintage": "3DEP 1/3 arc-second seamless DEM",
+                         "ttl_seconds": 31536000, "notes": null, "status": "ok" },
+    "fema_flood_zone": { "value": null, … }        // a real absence, not an error
+  } }
 
-// POST /v1/sites
-{ "name": "Cascade Flats", "latitude": 47.4235, "longitude": -120.3103, "address": "…" }
-{ "site_id": "…" }
-
-// POST /v1/feature-requests
-{ "field": "grid_capacity_mw", "reason": "…", "context": "project=… site=…" }
-{ "id": "fr_…", "status": "received" }
+// POST /v1/ask — no citations array
+{ "question": "What is the terrain like here?", "lat": 47.4235, "lng": -120.3103 }
+{ "lat": …, "lng": …, "question": "…", "answered_at": "…", "answer": "…" }
 ```
 
-## Correcting the contract
+## What the assumed contract got wrong
 
-1. Replace the request builders in `LiveMireyeClient` (`fetch`, `geocode`, `ask`, …).
-2. Replace `LiveMireyeClient._to_observation` — the single mapping from a raw field payload to the
-   internal `FieldValue` (value, unit, confidence, observed_at, source, status).
-3. If field *names* differ, edit [`apps/api/app/fields.py`](../apps/api/app/fields.py); the catalog
-   there doubles as the scoring specification, so the two can never drift apart.
+Each of these produced a hard failure the first time the adapter was pointed at the live service.
 
-Nothing else needs to change: services, the engine, the agent and the UI only see `FieldValue`,
-`FetchResult`, `GeocodeResult` and `AskResult`.
+| # | Assumed | Observed | Symptom |
+| --- | --- | --- | --- |
+| 1 | catalog entries have `key` | they have `name` | `KeyError: 'key'` on every fetch |
+| 2 | our 34 internal names are provider names | 306 provider names, only 2 coincide | every field rejected |
+| 3 | geocode returns `latitude`/`longitude`/`resolution`/`formatted_address` | `lat`/`lng`/`accuracy_type`/`normalized_address` | `KeyError: 'latitude'` |
+| 4 | fetch body takes `latitude`/`longitude` | `lat`/`lng`, or `address`, never both | HTTP 422 |
+| 5 | response has `results{}` + `unavailable[]`, numeric `confidence` | `fields{}`, absence is `value: null`, `confidence` is a word | `ValueError: could not convert 'medium'` |
+
+`KeyError` was not caught by `FallbackMireyeClient`, so failures 1, 3 and 5 killed the whole
+investigation rather than degrading. That is why `MireyeContractError` now exists.
+
+## Two vocabularies, translated at the boundary
+
+The scoring engine speaks internal concept names; Mireye speaks its own. They never mix:
+`fields.PROVIDER_MAP` translates on the way out, `PROVIDER_TO_INTERNAL` on the way back.
+
+| Internal concept | Provider field | Conversion |
+| --- | --- | --- |
+| `elevation_m` | `elevation` | identity (m) |
+| `mean_slope_pct` | `slope_degrees` | `tan(radians(x)) · 100` |
+| `flood_zone` | `fema_flood_zone` | categorical |
+| `distance_to_substation_km` | `nearest_substation_distance_m` | ÷1000 |
+| `distance_to_highway_km` | `nearest_major_road_distance_m` | ÷1000 |
+| `depth_to_bedrock_m` | `bedrock_depth_cm` | ÷100 |
+| `seismic_pga_g` | `seismic_pga_2pct_50yr_g` | identity |
+| `design_wind_speed_mph` | `design_wind_speed_mph` | identity |
+| `extreme_heat_days_per_year` | `days_above_32c_annual_count` | identity |
+| `soil_drainage_class` | `soil_drainage_class` | categorical, `"Well drained"` → `well_drained` |
+| `ambient_design_db_c` | `design_wet_bulb_temperature_0_4pct_degc` | identity — **proxy, see below** |
+| `fiber_routes_count` | `fiber_provider_count` | identity — **proxy** |
+| `planned_grid_expansion_mw` | `interconnection_queue_active_capacity_county_mw` | identity — **proxy** |
+| `wetland_fraction` | `wetland_fraction_of_parcel` | identity — **billed extra** |
+| `zoning_class` | `parcel_zoning` | identity — **billed extra** |
+
+The original provider field, value, unit and confidence word are written onto every `Evidence`
+record, so a converted number can always be audited back to the reading it came from.
+
+### Proxies — mapped, but not the same quantity
+
+A proxy is labelled on the evidence and in the UI. It is never presented as an exact match.
+
+* **`ambient_design_db_c` ← `design_wet_bulb_temperature_0_4pct_degc`.** The provider supplies the
+  0.4% design **wet-bulb**; the concept is the design **dry-bulb**. Wet-bulb is the lower of the
+  two, so the CH-01 site-compatibility gate (rated ambient ≥ site design dry-bulb) is
+  **optimistic** on this input. Confirm the dry-bulb from project climate data before relying on
+  that check in live mode.
+* **`fiber_routes_count` ← `fiber_provider_count`.** Counts providers in the hex, not physically
+  diverse long-haul routes; two providers may share one conduit.
+* **`planned_grid_expansion_mw` ← `interconnection_queue_active_capacity_county_mw`.** Generation
+  seeking connection, not utility-committed additions.
+
+### Billed separately
+
+`wetland_fraction_of_parcel` and `parcel_zoning` belong to Mireye's `parcel_record` group, billed at
+**300 credits per location** against 1 credit for an ordinary field. They are mapped but excluded
+from every request unless `MIREYE_INCLUDE_PARCEL_FIELDS=true`. Left off, they behave as unavailable
+and become information gaps.
+
+### Concepts with no provider equivalent
+
+19 of the 34 have nothing in the 306-field catalog that measures the same thing. They are declared
+`unavailable`, become `Evidence{status: missing}` + an `InformationGap` + one deduplicated
+`/v1/feature-requests` submission, and are excluded from the score — never defaulted to zero.
+
+`grid_capacity_mw` · `grid_reliability_saidi_min` · `latency_to_ix_ms` · `distance_to_fiber_km` ·
+`permit_lead_time_months` · `incentive_score` · `jurisdiction_complexity_index` ·
+`water_stress_index` · `water_quality_tds_mg_l` · `groundwater_availability_l_s` ·
+`distance_to_water_source_km` · `terrain_ruggedness_index` · `land_cover_class` ·
+`cut_fill_volume_m3` · `soil_bearing_capacity_kpa` · `wildfire_risk_index` ·
+`protected_area_distance_km` · `cropland_fraction` · `biodiversity_sensitivity_index`
+
+Each carries a specific reason (in `fields.NO_PROVIDER_EQUIVALENT`) rather than a generic
+"unavailable" — e.g. the catalog *does* expose interconnection-queue capacity, but that is
+generation seeking connection, not deliverable load capacity, so it is not a substitute for
+`grid_capacity_mw`.
 
 ## Rules the adapter enforces
 
 | Rule | Implementation |
 | --- | --- |
-| Never guess a field name | `fetch()` validates every key against the cached catalog and raises `UnknownFieldError` |
-| Never invent a value | Unavailable fields become `Evidence{status: missing}` + `InformationGap` + a `/v1/feature-requests` submission |
-| Always record provenance | Source, endpoint, retrieval time, observation time, confidence, coordinates and location resolution are stored on every value |
-| Bound the blast radius of an outage | 12 s timeout, 2 retries with exponential backoff (0.25 s → 0.5 s → 1 s), TTL cache, and mock fallback that marks itself `degraded_mock` |
-| Cache the catalog | `mireye:meta:fields`, TTL `MIREYE_CACHE_TTL_SECONDS` (default 900 s) |
-| Cache repeat fetches | Key `mireye:fetch:{lat}:{lon}:{sorted fields}`; a cache hit returns `status = cached`, not `live` |
+| Never guess a provider field name | `_partition()` maps internal → provider names; the result is checked against the live catalog, and a name the catalog lacks raises `MireyeContractError` |
+| Never invent a value | `value: null`, an omitted field, an unmapped concept and a billed-extra concept all become `Evidence{status: missing}` + `InformationGap` |
+| Never send a contradictory request | coordinates and `address` are mutually exclusive in `fetch()` / `fetch_by_address()` |
+| Convert deterministically | named entries in `fields.CONVERSIONS`, unit-tested at boundary and null values |
+| Keep the raw reading | `provider_field`, `provider_value`, `provider_unit`, `provider_confidence`, `provider_source_url` on every `FieldValue` and in the evidence notes |
+| Degrade, don't die | response-validation, missing-key, type and confidence failures raise `MireyeContractError` ⊂ `MireyeError`, which `FallbackMireyeClient` catches |
+| Don't hide bugs | only Mireye/transport errors are caught; an unrelated exception still propagates |
+| Don't spam the provider | feature requests are deduplicated per field in the local cache for 30 days |
+| Distinguish stand-ins from data | fallback values are `status = fallback` — never `live`, and distinct from demo-mode `synthetic` |
 
 ## Failure behaviour
 
 ```mermaid
 flowchart TD
     F[fetch] --> T{HTTP ok?}
-    T -->|2xx| V[values with status live/cached]
+    T -->|2xx| P{payload matches contract?}
+    P -->|yes| V[values with status live/cached]
+    P -->|no| C[MireyeContractError]
     T -->|5xx or network| R{retries left?}
     R -->|yes| F
-    R -->|no| D{fallback configured?}
-    D -->|yes| M[mock values, status synthetic, mode=degraded_mock]
-    D -->|no| G["MireyeUnavailableError → one InformationGap per requested field<br/>scoring continues with reduced coverage"]
+    R -->|no| C2[MireyeUnavailableError]
+    C --> D{fallback configured?}
+    C2 --> D
+    D -->|yes| M["local values, status fallback, mode=degraded_fallback"]
+    D -->|no| G["one InformationGap per requested field<br/>scoring continues with reduced coverage"]
     T -->|4xx| E[MireyeError → gap, no retry]
 ```
 
-Tests covering this: `tests/test_evidence.py::test_live_client_retries_then_raises`,
-`::test_live_client_caches_repeat_fetches`, `::test_fallback_client_degrades_to_mock_and_records_the_reason`,
-`::test_service_records_gaps_when_mireye_is_down`, `::test_unknown_field_is_rejected_not_invented`.
+Covered by `tests/test_mireye_contract.py` (27 tests) and `tests/test_evidence.py`
+(`::test_fallback_client_degrades_and_records_the_reason`,
+`::test_a_drifted_contract_degrades_rather_than_failing_the_investigation`,
+`::test_feature_requests_are_submitted_once_per_field`).
+
+## Live mode is opt-in
+
+Mock mode needs no network and no credentials, and is unchanged by this integration. Live mode
+turns on only when **both** `MIREYE_BASE_URL` and `MIREYE_API_KEY` are set.
+
+```bash
+MIREYE_BASE_URL=https://api.mireye.com
+MIREYE_API_KEY=<token>
+# MIREYE_INCLUDE_PARCEL_FIELDS=true   # opt into the 300-credit parcel_record group
+```
+
+An opt-in live test guards against provider drift and costs ~3 credits:
+
+```bash
+RUN_MIREYE_LIVE_TESTS=1 python -m pytest tests/test_mireye_live.py -q -s
+```
 
 ## Demo adapter
 
-`MockMireyeClient` is deterministic: the same coordinates always return the same values. Five
-curated site profiles back the seeded demo; any other coordinate is generated from a SHA-256 of
-`field|lat|lon` mapped into the field's plausible range. Two profiles deliberately omit fields
-(`grid_capacity_mw`, `permit_lead_time_months`, `wetland_fraction` at Prairie Junction) so the
-information-gap and feature-request paths are exercised in every demo run.
-
-Every mock value is returned with `status = "synthetic"` and a note reading
-*"Deterministic demo value — not a real observation"*, which the UI renders as an amber badge.
+`MockMireyeClient` is unchanged and still speaks **internal** field names, so demo mode is
+completely independent of the provider vocabulary. The same coordinates always return the same
+values; five curated profiles back the seeded demo and Prairie Junction deliberately omits fields so
+the gap and feature-request paths run in every demo. Every mock value carries
+`status = "synthetic"` and the note *"Deterministic demo value — not a real observation"*.
 
 ## Mireye MCP
 
 The documented MCP tools (`mireye_ask`, `mireye_fetch`, `mireye_geocode`) map one-to-one onto
-`MireyeClient.ask/fetch/geocode`. Adding an MCP-backed implementation means writing one more class
-against the same protocol; no caller changes.
+`MireyeClient.ask/fetch/geocode`. An MCP-backed implementation is one more class against the same
+protocol; no caller changes.

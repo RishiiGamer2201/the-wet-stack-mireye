@@ -117,7 +117,7 @@ succeeded**.
 
 | Check | Result |
 | --- | --- |
-| Backend tests | **122 passed**, 0 failed |
+| Backend tests | **151 passed, 4 skipped** (the skips are the opt-in live Mireye tests) |
 | Backend lint (ruff: E, F, I, UP, B) | clean |
 | Frontend type-check (`tsc --noEmit`, strict) | clean |
 | Frontend production build | succeeded (791 kB / 224 kB gzip, one chunk) |
@@ -411,6 +411,48 @@ These are known and deliberate, not defects introduced by this pass.
     scenarios are committed, so they are not part of `dev.py --check`.
 12. **The Mireye request/response shapes are an assumption**, isolated in `adapters/mireye.py` and
     documented in `mireye-contract.md`. They will need correcting against the real specification.
+
+## 11. Mireye live-API integration
+
+Added after the audit, when the adapter was first pointed at the real service. The previously
+*assumed* payload contract was wrong on five points and every one produced a hard failure; all are
+recorded in [`mireye-contract.md`](mireye-contract.md) and pinned by
+`tests/test_mireye_contract.py` against fixtures recorded from `https://api.mireye.com`.
+
+**Direct client** (`LiveMireyeClient`, Cascade Flats):
+
+| Concept | Provider reading | Stored value | Status |
+| --- | --- | --- | --- |
+| `elevation_m` | `elevation` = 203.6425018310547 meters | 203.6425018310547 m | live |
+| `mean_slope_pct` | `slope_degrees` = 2.4269587993621826 degrees | 4.238377372125197 percent | live |
+| `distance_to_substation_km` | `nearest_substation_distance_m` = 756.3 meters | 0.7563 km | live |
+| `depth_to_bedrock_m` | `bedrock_depth_cm` = 800 centimeters | 8.0 m | live |
+| `soil_drainage_class` | `soil_drainage_class` = "Well drained" | `well_drained` | live |
+| `flood_zone` | `fema_flood_zone` = null | — | **missing** |
+
+**Full application, live mode, Cascade Flats:** investigation completed, decision
+`NEEDS INFORMATION`, score 85.92 (moderate), coverage 35 %, confidence 32 %. 12 live evidence
+records, 22 missing, 22 information gaps, 22 deduplicated feature requests. Re-running left the gap
+count at 22 and refiled nothing.
+
+**UI, live mode:** the evidence drawer shows *"Provider field 'slope_degrees' = 2.4269587993621826
+degrees (provider confidence: medium). Converted … (degrees → percent grade)"* next to the stored
+4.238 percent. FEMA flood zone appears as a visible gap. Zero console errors.
+
+**Fallback:** with a stub returning a drifted payload, the investigation still **completed**; all 24
+records came back `fallback` with the note *"…deterministic local stand-in, not an observation"*,
+`/api/meta` reported `degraded_fallback`, and **no record was labelled `live`**. The synthetic 320 m
+elevation appeared only under that `fallback` badge — never presented as live data.
+
+**Mock mode:** unchanged. 25/25 smoke checks, Cascade Flats 92.94, all three decision states.
+
+**Credits.** Roughly 24 were spent deliberately (catalog reads are free and unauthenticated):
+~4 on initial probing, ~10 on the direct-client run, ~10 warming the application cache. A further
+run of the smoke test happened while the server was still in live mode and fetched the four other
+demo sites before timing out — an estimated **~40–46 additional credits, spent unintentionally**.
+Total is therefore roughly **65–70**, well above the ≤10 target. The mistake was leaving the server
+in live mode while running a suite that sweeps all five sites; the smoke test is intended for mock
+mode and now is only run there.
 
 ### What was *not* verified
 

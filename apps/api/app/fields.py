@@ -8,6 +8,7 @@ becomes an InformationGap plus a Mireye feature request instead.
 
 from __future__ import annotations
 
+import math
 from typing import Literal
 
 from pydantic import BaseModel
@@ -15,6 +16,28 @@ from pydantic import BaseModel
 from .domain import SiteDimension
 
 Direction = Literal["higher_better", "lower_better", "band", "categorical"]
+
+#: How a concept relates to the real Mireye catalog.
+#:
+#:   mapped        a verified provider field measures the same thing
+#:   proxy         a verified provider field is close but not identical — the
+#:                 difference is recorded on the evidence, never hidden
+#:   billed_extra  mapped, but the field sits in Mireye's `parcel_record` group
+#:                 (300 credits per location), so it is opt-in
+#:   unavailable   the catalog has no equivalent; the concept becomes an
+#:                 InformationGap and a Mireye feature request, never a value
+ProviderAvailability = Literal["mapped", "proxy", "billed_extra", "unavailable"]
+
+#: Named conversions from a provider unit to the unit the scoring engine uses.
+#: Every one is deterministic and unit-tested; `None` in, `None` out — a missing
+#: provider value must never become a number.
+CONVERSIONS: dict[str, tuple[str, callable]] = {
+    "identity": ("same unit", lambda v: v),
+    "m_to_km": ("metres -> kilometres", lambda v: v / 1000.0),
+    "cm_to_m": ("centimetres -> metres", lambda v: v / 100.0),
+    # Grade, not angle: a 45° slope is a 100% grade.
+    "degrees_to_slope_percent": ("degrees -> percent grade", lambda v: math.tan(math.radians(v)) * 100.0),
+}
 
 
 class FieldSpec(BaseModel):
@@ -34,6 +57,22 @@ class FieldSpec(BaseModel):
     description: str = ""
     depth: Literal["broad", "deep"] = "broad"
     provider: str = "mireye"
+
+    # --- real-provider mapping ---------------------------------------------
+    #: Name in Mireye's catalog. None means the catalog has no equivalent.
+    provider_field: str | None = None
+    #: Unit as the provider states it, kept for provenance.
+    provider_unit: str | None = None
+    #: Key into CONVERSIONS, applied at the provider boundary.
+    conversion: str = "identity"
+    provider_availability: ProviderAvailability = "unavailable"
+    #: Why a mapping is a proxy, or why nothing maps. Surfaced on the evidence.
+    provider_note: str | None = None
+
+    @property
+    def internal_unit(self) -> str | None:
+        """The unit scoring works in — `unit` under its explicit name."""
+        return self.unit
 
 
 def _f(**kw) -> FieldSpec:
@@ -448,7 +487,115 @@ FIELDS: list[FieldSpec] = [
     ),
 ]
 
+#: Internal concept -> real Mireye catalog field.
+#:
+#: Every provider name below was verified against the recorded 306-field catalog
+#: in `tests/fixtures/mireye/meta_fields.json`; `test_no_mapping_invents_a_field_
+#: absent_from_the_catalog` enforces that. A concept absent from this table has
+#: no equivalent and becomes an InformationGap — it is never given a value.
+#:
+#:   key: (provider_field, provider_unit, conversion, availability, note)
+PROVIDER_MAP: dict[str, tuple[str, str | None, str, ProviderAvailability, str | None]] = {
+    # --- direct, same quantity --------------------------------------------
+    "elevation_m": ("elevation", "meters", "identity", "mapped", None),
+    "seismic_pga_g": ("seismic_pga_2pct_50yr_g", "g", "identity", "mapped", None),
+    "design_wind_speed_mph": ("design_wind_speed_mph", "mph", "identity", "mapped", None),
+    "extreme_heat_days_per_year": ("days_above_32c_annual_count", "days", "identity", "mapped", None),
+    "flood_zone": ("fema_flood_zone", None, "identity", "mapped", None),
+    "soil_drainage_class": ("soil_drainage_class", None, "identity", "mapped", None),
+    # --- converted at the boundary ----------------------------------------
+    "mean_slope_pct": (
+        "slope_degrees", "degrees", "degrees_to_slope_percent", "mapped",
+        "Provider states slope as an angle; scoring uses percent grade.",
+    ),
+    "distance_to_substation_km": ("nearest_substation_distance_m", "meters", "m_to_km", "mapped", None),
+    "distance_to_highway_km": (
+        "nearest_major_road_distance_m", "meters", "m_to_km", "mapped", None,
+    ),
+    "depth_to_bedrock_m": ("bedrock_depth_cm", "centimeters", "cm_to_m", "mapped", None),
+    # --- proxies: close, but not the same quantity -------------------------
+    "ambient_design_db_c": (
+        "design_wet_bulb_temperature_0_4pct_degc", "degC", "identity", "proxy",
+        "PROXY: the provider supplies the 0.4% design wet-bulb temperature; this concept "
+        "is the design dry-bulb. Wet-bulb is the lower of the two, so an equipment "
+        "rating check against it is optimistic. Treat as indicative and confirm the "
+        "dry-bulb from project climate data before relying on it.",
+    ),
+    "fiber_routes_count": (
+        "fiber_provider_count", None, "identity", "proxy",
+        "PROXY: the provider counts broadband providers in the hex, not physically "
+        "diverse long-haul routes. Two providers may share one conduit.",
+    ),
+    "planned_grid_expansion_mw": (
+        "interconnection_queue_active_capacity_county_mw", "MW", "identity", "proxy",
+        "PROXY: active interconnection-queue capacity in the county is generation "
+        "seeking connection, not utility-committed capacity additions.",
+    ),
+    # --- mapped but billed separately (Mireye `parcel_record`, 300 credits) --
+    "wetland_fraction": (
+        "wetland_fraction_of_parcel", None, "identity", "billed_extra",
+        "Mireye bills the parcel_record group at 300 credits per location, so this "
+        "field is not part of the default request. Enable MIREYE_INCLUDE_PARCEL_FIELDS.",
+    ),
+    "zoning_class": (
+        "parcel_zoning", None, "identity", "billed_extra",
+        "Mireye bills the parcel_record group at 300 credits per location, so this "
+        "field is not part of the default request. Enable MIREYE_INCLUDE_PARCEL_FIELDS.",
+    ),
+}
+
+#: Why a concept has no provider field. Shown on the gap it produces.
+NO_PROVIDER_EQUIVALENT: dict[str, str] = {
+    "grid_capacity_mw": "The catalog exposes interconnection-queue capacity, which is generation "
+    "seeking connection — not deliverable load capacity at the point of interconnection.",
+    "latency_to_ix_ms": "No network-latency or internet-exchange field exists in the catalog.",
+    "permit_lead_time_months": "The catalog exposes county building-permit counts, not approval "
+    "duration for comparable projects.",
+    "incentive_score": "The catalog exposes opportunity-zone membership only, not a composite "
+    "incentive strength.",
+    "jurisdiction_complexity_index": "No field describes the number or overlap of authorities "
+    "having jurisdiction.",
+    "water_stress_index": "The catalog exposes a US Drought Monitor category (D0–D4), which is a "
+    "short-term drought class, not a baseline water-stress index.",
+    "grid_reliability_saidi_min": "No utility reliability (SAIDI/SAIFI) field exists in the catalog.",
+    "terrain_ruggedness_index": "No ruggedness or local-relief index exists in the catalog.",
+    "land_cover_class": "No single land-cover classification field exists in the catalog.",
+    "water_quality_tds_mg_l": "No total-dissolved-solids or raw water-quality field exists.",
+    "groundwater_availability_l_s": "The catalog exposes well counts and depth to water, not a "
+    "sustainable abstraction rate.",
+    "distance_to_water_source_km": "The catalog exposes wastewater-plant distance and water-system "
+    "names, not distance to a usable supply connection.",
+    "distance_to_fiber_km": "The catalog reports fiber availability and provider counts, not "
+    "distance to a long-haul route.",
+    "cut_fill_volume_m3": "Earthworks volume is a derived design quantity, not a physical-world "
+    "observation the provider offers.",
+    "wildfire_risk_index": "The catalog exposes an annual wildfire frequency and hazard-zone "
+    "classes, neither of which is a 0–100 composite hazard index.",
+    "protected_area_distance_km": "The catalog reports protected-area intersection and designation, "
+    "not distance to the nearest one.",
+    "cropland_fraction": "The catalog exposes a dominant CDL class and farmland classification, not "
+    "the cropland share of the parcel.",
+    "biodiversity_sensitivity_index": "The catalog exposes critical-habitat status, not a composite "
+    "habitat-sensitivity index.",
+}
+
 FIELD_INDEX: dict[str, FieldSpec] = {f.key: f for f in FIELDS}
+
+for _key, (_pf, _pu, _conv, _avail, _note) in PROVIDER_MAP.items():
+    _spec = FIELD_INDEX[_key]
+    _spec.provider_field = _pf
+    _spec.provider_unit = _pu
+    _spec.conversion = _conv
+    _spec.provider_availability = _avail
+    _spec.provider_note = _note
+
+for _key, _why in NO_PROVIDER_EQUIVALENT.items():
+    FIELD_INDEX[_key].provider_note = _why  # availability stays "unavailable"
+
+#: Provider name -> internal key, for reading a fetch response back.
+PROVIDER_TO_INTERNAL: dict[str, str] = {
+    spec.provider_field: spec.key for spec in FIELD_INDEX.values() if spec.provider_field
+}
 
 DIMENSION_FIELDS: dict[SiteDimension, list[FieldSpec]] = {
     dim: [f for f in FIELDS if f.dimension == dim] for dim in SiteDimension
@@ -477,14 +624,71 @@ DIMENSION_LABELS: dict[SiteDimension, str] = {
 }
 
 
-def broad_fields() -> list[str]:
+def _billable(spec: FieldSpec, include_billed_extra: bool) -> bool:
+    """Concepts in Mireye's 300-credit parcel_record group are opt-in.
+
+    They are still *requested* in mock mode — the mock is free — so demo
+    behaviour is unchanged; the live client is what drops them.
+    """
+    return include_billed_extra or spec.provider_availability != "billed_extra"
+
+
+def broad_fields(include_billed_extra: bool = True) -> list[str]:
     """Fields fetched during the first, cheap pass over every candidate."""
-    return [f.key for f in FIELDS if f.depth == "broad"]
+    return [f.key for f in FIELDS if f.depth == "broad" and _billable(f, include_billed_extra)]
 
 
-def deep_fields() -> list[str]:
+def deep_fields(include_billed_extra: bool = True) -> list[str]:
     """Extra fields fetched only for shortlisted sites."""
-    return [f.key for f in FIELDS if f.depth == "deep"]
+    return [f.key for f in FIELDS if f.depth == "deep" and _billable(f, include_billed_extra)]
+
+
+def _snake(value: str) -> str:
+    return "_".join(value.strip().lower().split())
+
+
+def to_internal(key: str, provider_value):
+    """Convert one provider value into the unit and vocabulary scoring expects.
+
+    `None` in, `None` out — a value the provider does not have must stay absent
+    rather than becoming a zero. An unrecognised category is returned normalised
+    and left for the scoring engine to treat as missing.
+    """
+    spec = FIELD_INDEX[key]
+    if provider_value is None:
+        return None
+    if spec.direction == "categorical" or spec.kind == "category":
+        text = str(provider_value)
+        options = spec.categories or {}
+        if text in options:
+            return text
+        snake = _snake(text)
+        return snake if snake in options else text
+    try:
+        number = float(provider_value)
+    except (TypeError, ValueError):
+        return None
+    return CONVERSIONS[spec.conversion][1](number)
+
+
+def provider_fields(
+    specs: dict[str, FieldSpec] | None = None,
+    *,
+    include_billed_extra: bool = False,
+) -> list[str]:
+    """Provider field names to request. Excludes Mireye's 300-credit
+    `parcel_record` group unless it is explicitly asked for."""
+    allowed = {"mapped", "proxy"} | ({"billed_extra"} if include_billed_extra else set())
+    return [
+        spec.provider_field
+        for spec in (specs or FIELD_INDEX).values()
+        if spec.provider_field and spec.provider_availability in allowed
+    ]
+
+
+def unmapped_fields() -> list[str]:
+    """Concepts the provider has no equivalent for. These become gaps."""
+    return [k for k, s in FIELD_INDEX.items() if s.provider_availability == "unavailable"]
 
 
 class UnknownFieldError(KeyError):

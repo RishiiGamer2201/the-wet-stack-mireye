@@ -30,8 +30,12 @@ STATUS_MAP = {
     "live": EvidenceStatus.LIVE,
     "cached": EvidenceStatus.CACHED,
     "synthetic": EvidenceStatus.SYNTHETIC,
+    "fallback": EvidenceStatus.FALLBACK,
     "missing": EvidenceStatus.MISSING,
 }
+
+#: Statuses whose values did not come from a real observation.
+NOT_OBSERVED = (EvidenceStatus.SYNTHETIC, EvidenceStatus.FALLBACK)
 
 
 def evidence_from_field_value(
@@ -39,6 +43,20 @@ def evidence_from_field_value(
 ) -> Evidence:
     spec = FIELD_INDEX.get(value.field_key)
     status = STATUS_MAP.get(value.status, EvidenceStatus.SYNTHETIC)
+
+    # Keep what the provider actually said next to the value scoring uses, so a
+    # converted number can always be traced back to its source reading.
+    provider_field = getattr(value, "provider_field", None)
+    notes = value.note
+    if provider_field:
+        raw = getattr(value, "provider_value", None)
+        raw_unit = getattr(value, "provider_unit", None) or ""
+        confidence_word = getattr(value, "provider_confidence", None)
+        trace = f"Provider field '{provider_field}' = {raw} {raw_unit}".strip()
+        if confidence_word:
+            trace += f" (provider confidence: {confidence_word})"
+        notes = f"{trace}. {notes}" if notes else trace
+
     return Evidence(
         project_id=project_id,
         subject_id=site.id,
@@ -48,12 +66,13 @@ def evidence_from_field_value(
         unit=value.unit,
         source=EvidenceSource(
             source_type=SourceType.MIREYE,
-            source_id=value.field_key,
+            source_id=provider_field or value.field_key,
             source_name=f"Mireye {endpoint} ({value.source})",
             field_key=value.field_key,
             endpoint=endpoint,
-            synthetic=status == EvidenceStatus.SYNTHETIC,
-            notes=value.note,
+            url=getattr(value, "provider_source_url", None),
+            synthetic=status in NOT_OBSERVED,
+            notes=notes,
         ),
         status=status,
         verification=VerificationStatus.UNVERIFIED,

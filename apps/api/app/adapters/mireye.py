@@ -1,31 +1,50 @@
 """Mireye client abstraction.
 
-ASSUMED REQUEST/RESPONSE CONTRACT
----------------------------------
-The published documentation lists the endpoints below but not their payload
-shapes, so the shapes here are *our assumption* and are deliberately confined to
-this module (see `docs/mireye-contract.md`). When the real specification arrives,
-only `LiveMireyeClient._to_observation` / the request builders should need edits.
+OBSERVED REQUEST/RESPONSE CONTRACT
+----------------------------------
+These shapes are recorded from the live service at https://api.mireye.com, not
+assumed. The fixtures behind them are in `tests/fixtures/mireye/` and are pinned
+by `tests/test_mireye_contract.py`.
 
-    GET  /v1/meta/fields          -> {"fields": [{"key","label","unit","description"}]}
-    POST /v1/geocode              {"address"} -> {"latitude","longitude","resolution",
-                                                  "formatted_address","confidence"}
-    POST /v1/fetch                {"latitude","longitude","fields":[...],"site_id"?}
-                                  -> {"results": {field: {"value","unit","confidence",
-                                                          "observed_at","source"}},
-                                      "unavailable": [field]}
-    POST /v1/ask                  {"question","latitude"?,"longitude"?,"site_id"?}
-                                  -> {"answer","citations":[...],"confidence"}
-    POST /v1/ask/stream           same as /ask, streamed as text/event-stream
-    POST /v1/sites                {"name","latitude","longitude","address"?} -> {"site_id"}
-    GET  /v1/sites/{site_id}      -> {"site_id","name","latitude","longitude"}
-    POST /v1/ask-site             {"site_id","question"} -> like /ask
-    POST /v1/feature-requests     {"field","reason","context"} -> {"id","status"}
+    GET  /v1/meta/fields  -> {"billing", "fields": [{"name","unit","type","layer",
+                              "nullable","null_meaning","source","presets", ...}],
+                              "presets", "us_envelope", "version"}
+                             NOTE: entries are identified by `name`. There is no `key`.
+
+    POST /v1/geocode      {"address"}
+                          -> {"lat","lng","accuracy","accuracy_type","match_type",
+                              "normalized_address","provider","source"}
+
+    POST /v1/fetch        {"lat","lng","fields":[...]}  OR  {"address","fields":[...]}
+                          Sending coordinates *and* an address is rejected with 422.
+                          -> {"lat","lng","fetched_at",
+                              "fields": {name: {"value","unit","source","source_url",
+                                                "confidence","fetched_at",
+                                                "dataset_vintage","ttl_seconds",
+                                                "notes","status"}}}
+                             NOTE: there is no `results` map and no `unavailable`
+                             list. An absent value is `value: null`, and
+                             `confidence` is a word such as "medium".
+
+    POST /v1/ask          {"question","lat"?,"lng"?}
+                          -> {"lat","lng","question","answered_at","answer"}
+                             NOTE: no citations array.
+
+    POST /v1/ask/stream   same as /ask, streamed
+    POST /v1/feature-requests  {"field","reason","context"} -> {"id","status"}
+
+The `/v1/sites` endpoints are documented by Mireye but unused here and remain
+unverified; they are marked as such in `docs/mireye-contract.md`.
 
 Rules enforced here:
-  * the field catalog is cached and is the only source of legal field names;
-  * an unknown or unavailable field raises/records a gap — it never gets a value;
-  * every returned observation carries source, timestamp, confidence and status.
+  * the live catalog is the only source of legal provider field names;
+  * our internal concept names are translated to provider names on the way out
+    and back on the way in — the two vocabularies never mix;
+  * a null or omitted provider value becomes MISSING, never a zero;
+  * a response that does not match the shapes above raises MireyeContractError,
+    so the fallback client degrades instead of the request dying on a KeyError;
+  * every observation keeps the provider's own field, value, unit, confidence
+    word, source and timestamp alongside the converted value.
 """
 
 from __future__ import annotations
@@ -40,12 +59,72 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol
 
 import httpx
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 from ..config import Settings, get_settings
-from ..fields import FIELD_INDEX, FIELDS, UnknownFieldError
+from ..fields import CONVERSIONS, FIELD_INDEX, FIELDS, UnknownFieldError, to_internal
 from ..store import Store, get_store
 
 log = logging.getLogger("mireye")
+
+
+# ---------------------------------------------------------------------------
+# Typed provider payloads
+#
+# These mirror the responses recorded in tests/fixtures/mireye/, captured from
+# https://api.mireye.com. Validation failures become MireyeContractError so the
+# fallback client can degrade instead of the request dying on a KeyError.
+# ---------------------------------------------------------------------------
+
+
+class ProviderPayload(BaseModel):
+    # Mireye adds attributes over time; unknown ones are kept, not rejected.
+    model_config = ConfigDict(extra="allow")
+
+
+class GeocodeResponse(ProviderPayload):
+    lat: float
+    lng: float
+    accuracy: float | None = None
+    accuracy_type: str | None = None
+    match_type: str | None = None
+    normalized_address: str | None = None
+    provider: str | None = None
+    source: str | None = None
+
+
+class ProviderField(ProviderPayload):
+    """One field inside a /v1/fetch response's `fields` map."""
+
+    value: float | int | str | bool | None = None
+    unit: str | None = None
+    source: str | None = None
+    source_url: str | None = None
+    confidence: Any = None  # a word such as "medium", occasionally a number
+    fetched_at: datetime | None = None
+    dataset_vintage: str | None = None
+    ttl_seconds: int | None = None
+    notes: str | None = None
+    status: str | None = None
+
+
+class FetchResponse(ProviderPayload):
+    lat: float | None = None
+    lng: float | None = None
+    fetched_at: datetime | None = None
+    # The assumed contract called this `results` and paired it with an
+    # `unavailable` list. Neither exists: absence is a null value in here.
+    # Required: the live API always returns it, so a response without one is a
+    # drifted contract rather than an empty result.
+    fields: dict[str, ProviderField]
+
+
+class AskResponse(ProviderPayload):
+    answer: str = ""
+    question: str | None = None
+    lat: float | None = None
+    lng: float | None = None
+    answered_at: datetime | None = None
 
 
 class MireyeError(RuntimeError):
@@ -56,9 +135,60 @@ class MireyeUnavailableError(MireyeError):
     pass
 
 
+class MireyeContractError(MireyeError):
+    """The service answered, but not in the shape this adapter understands.
+
+    Raised for response-validation, missing-key, invalid-type and
+    confidence-parsing failures — the specific, expected ways a provider
+    contract drifts. It derives from MireyeError so FallbackMireyeClient
+    degrades gracefully, and it is deliberately narrow: an unrelated
+    programming bug must still surface as itself.
+    """
+
+
+#: Mireye reports confidence as a word. Scoring needs a number, and the word is
+#: kept alongside it so the original is never lost.
+CONFIDENCE_WORDS: dict[str, float] = {
+    "very_high": 0.95, "very high": 0.95,
+    "high": 0.85,
+    "medium": 0.65, "moderate": 0.65,
+    "low": 0.4,
+    "very_low": 0.2, "very low": 0.2,
+    "unknown": 0.3,
+}
+
+
+def parse_confidence(raw: Any, default: float = 0.6) -> float:
+    """Accept the word form, the numeric form, or nothing.
+
+    Anything else is a contract change, not a value to guess at.
+    """
+    if raw is None:
+        return default
+    if isinstance(raw, bool):
+        raise MireyeContractError(f"confidence must be a number or a word, got {raw!r}")
+    if isinstance(raw, (int, float)):
+        value = float(raw)
+        return value / 100.0 if value > 1.0 else value
+    if isinstance(raw, str):
+        word = raw.strip().lower()
+        if word in CONFIDENCE_WORDS:
+            return CONFIDENCE_WORDS[word]
+        try:
+            return parse_confidence(float(word), default)
+        except ValueError as exc:
+            raise MireyeContractError(f"unrecognised confidence {raw!r}") from exc
+    raise MireyeContractError(f"confidence has unexpected type {type(raw).__name__}")
+
+
 @dataclass
 class FieldValue:
-    """One physical-world value plus everything needed to trace it."""
+    """One physical-world value plus everything needed to trace it.
+
+    `value`/`unit` are what scoring uses; every `provider_*` attribute is what
+    Mireye actually said, kept so a converted number can always be audited back
+    to its source.
+    """
 
     field_key: str
     value: float | str | None
@@ -67,11 +197,18 @@ class FieldValue:
     observed_at: datetime | None
     retrieved_at: datetime
     source: str
-    status: str  # live | cached | synthetic | missing
+    status: str  # live | cached | synthetic | fallback | missing
     latitude: float | None = None
     longitude: float | None = None
     endpoint: str = "/v1/fetch"
     note: str | None = None
+    # -- provenance from the provider, pre-conversion ------------------------
+    provider_field: str | None = None
+    provider_value: float | str | None = None
+    provider_unit: str | None = None
+    provider_confidence: str | None = None
+    provider_source_url: str | None = None
+    provider_dataset_vintage: str | None = None
 
 
 @dataclass
@@ -456,88 +593,195 @@ class LiveMireyeClient:
         payload, _ = self._cached(
             "mireye:meta:fields", lambda: self._request("GET", "/v1/meta/fields")
         )
-        return payload.get("fields", [])
+        fields = payload.get("fields")
+        if not isinstance(fields, list):
+            raise MireyeContractError("/v1/meta/fields did not return a 'fields' list")
+        return fields
+
+    def catalog_names(self) -> set[str]:
+        """Provider field names, from the catalog's `name` attribute.
+
+        The assumed contract read `key`; the real catalog has no such attribute.
+        """
+        names = {f.get("name") for f in self.meta_fields() if isinstance(f, dict)}
+        names.discard(None)
+        if not names:
+            raise MireyeContractError("catalog entries carry no 'name'")
+        return names
 
     def geocode(self, address: str) -> GeocodeResult:
         data = self._request("POST", "/v1/geocode", {"address": address})
+        try:
+            payload = GeocodeResponse.model_validate(data)
+        except ValidationError as exc:
+            raise MireyeContractError(f"/v1/geocode response did not validate: {exc}") from exc
         return GeocodeResult(
-            latitude=float(data["latitude"]),
-            longitude=float(data["longitude"]),
-            resolution=data.get("resolution", "unknown"),
-            formatted_address=data.get("formatted_address", address),
-            confidence=float(data.get("confidence", 0.7)),
+            latitude=payload.lat,
+            longitude=payload.lng,
+            # Mireye describes precision as `accuracy_type` (e.g. rooftop,
+            # range_interpolation, place); the assumed contract called it `resolution`.
+            resolution=payload.accuracy_type or payload.match_type or "unknown",
+            formatted_address=payload.normalized_address or address,
+            confidence=parse_confidence(payload.accuracy, default=0.7),
             mode="live",
         )
 
     def _to_observation(
-        self, key: str, raw: dict, latitude: float, longitude: float, cached: bool
+        self,
+        internal_key: str,
+        provider_field: str,
+        raw: ProviderField,
+        latitude: float | None,
+        longitude: float | None,
+        cached: bool,
     ) -> FieldValue:
-        observed = raw.get("observed_at")
+        spec = FIELD_INDEX[internal_key]
+        try:
+            value = to_internal(internal_key, raw.value)
+        except (TypeError, ValueError, KeyError) as exc:
+            raise MireyeContractError(
+                f"{provider_field}: cannot convert {raw.value!r} for {internal_key}: {exc}"
+            ) from exc
+        note = spec.provider_note
+        if spec.conversion != "identity":
+            conversion = CONVERSIONS[spec.conversion][0]
+            note = f"Converted {raw.value} {raw.unit or ''} ({conversion}). {note or ''}".strip()
         return FieldValue(
-            field_key=key,
-            value=raw.get("value"),
-            unit=raw.get("unit") or (FIELD_INDEX[key].unit if key in FIELD_INDEX else None),
-            confidence=float(raw.get("confidence", 0.8)),
-            observed_at=datetime.fromisoformat(observed) if observed else None,
+            field_key=internal_key,
+            value=value,
+            unit=spec.internal_unit,
+            confidence=parse_confidence(raw.confidence),
+            observed_at=raw.fetched_at,
             retrieved_at=datetime.now(UTC),
-            source=raw.get("source", "mireye"),
+            source=raw.source or "mireye",
             status="cached" if cached else "live",
             latitude=latitude,
             longitude=longitude,
+            note=note,
+            provider_field=provider_field,
+            provider_value=raw.value,
+            provider_unit=raw.unit,
+            provider_confidence=raw.confidence if isinstance(raw.confidence, str) else None,
+            provider_source_url=raw.source_url,
+            provider_dataset_vintage=raw.dataset_vintage,
         )
+
+    def _read_fetch(
+        self,
+        payload: dict,
+        requested: list[str],
+        latitude: float | None,
+        longitude: float | None,
+        cached: bool,
+        started: float,
+    ) -> FetchResult:
+        try:
+            response = FetchResponse.model_validate(payload)
+        except ValidationError as exc:
+            raise MireyeContractError(f"/v1/fetch response did not validate: {exc}") from exc
+
+        result = FetchResult(mode="live", latency_ms=int((time.perf_counter() - started) * 1000))
+        for internal_key in requested:
+            spec = FIELD_INDEX[internal_key]
+            provider_field = spec.provider_field
+            raw = response.fields.get(provider_field) if provider_field else None
+            # A null value is a real absence the provider is telling us about,
+            # and an omitted field is one it never answered. Both are missing —
+            # neither is a zero.
+            if raw is None or raw.value is None:
+                result.unavailable.append(internal_key)
+                continue
+            result.values[internal_key] = self._to_observation(
+                internal_key,
+                provider_field,
+                raw,
+                latitude if latitude is not None else response.lat,
+                longitude if longitude is not None else response.lng,
+                cached,
+            )
+        return result
+
+    def _partition(self, fields: list[str]) -> tuple[list[str], list[str], list[str]]:
+        """Split requested concepts into (requestable, provider names, skipped).
+
+        Skipped covers both concepts Mireye has no field for and the ones in its
+        300-credit parcel_record group when those are not enabled. Either way the
+        caller turns them into InformationGaps rather than values.
+        """
+        unknown = [f for f in fields if f not in FIELD_INDEX]
+        if unknown:
+            raise UnknownFieldError(f"unknown Mireye field(s): {', '.join(unknown)}")
+        allowed = {"mapped", "proxy"}
+        if self.settings.mireye_include_parcel_fields:
+            allowed.add("billed_extra")
+        requestable = [f for f in fields if FIELD_INDEX[f].provider_availability in allowed]
+        skipped = [f for f in fields if f not in requestable]
+        return requestable, [FIELD_INDEX[f].provider_field for f in requestable], skipped
 
     def fetch(
         self, latitude: float, longitude: float, fields: list[str], site_id: str | None = None
     ) -> FetchResult:
-        catalog = {f["key"] for f in self.meta_fields()} or set(FIELD_INDEX)
-        unknown = [f for f in fields if f not in catalog]
-        if unknown:
-            raise UnknownFieldError(f"unknown Mireye field(s): {', '.join(unknown)}")
-        cache_key = f"mireye:fetch:{latitude:.5f}:{longitude:.5f}:{','.join(sorted(fields))}"
+        mapped, provider_names, unmapped = self._partition(fields)
+        if not provider_names:
+            return FetchResult(mode="live", unavailable=list(unmapped))
+
+        catalog = self.catalog_names()
+        missing = [n for n in provider_names if n not in catalog]
+        if missing:
+            raise MireyeContractError(
+                f"mapped field(s) absent from the live catalog: {', '.join(missing)}"
+            )
+
+        cache_key = f"mireye:fetch:{latitude:.5f}:{longitude:.5f}:{','.join(sorted(provider_names))}"
         started = time.perf_counter()
         payload, cached = self._cached(
             cache_key,
+            # Coordinates OR address, never both: the API rejects the pair with 422.
             lambda: self._request(
-                "POST",
-                "/v1/fetch",
-                {
-                    "latitude": latitude,
-                    "longitude": longitude,
-                    "fields": fields,
-                    **({"site_id": site_id} if site_id else {}),
-                },
+                "POST", "/v1/fetch", {"lat": latitude, "lng": longitude, "fields": provider_names}
             ),
         )
-        result = FetchResult(
-            mode="live", latency_ms=int((time.perf_counter() - started) * 1000)
+        result = self._read_fetch(payload, mapped, latitude, longitude, cached, started)
+        result.unavailable.extend(unmapped)
+        return result
+
+    def fetch_by_address(self, address: str, fields: list[str]) -> FetchResult:
+        """Let Mireye resolve the address server-side — no separate geocode call."""
+        mapped, provider_names, unmapped = self._partition(fields)
+        if not provider_names:
+            return FetchResult(mode="live", unavailable=list(unmapped))
+        started = time.perf_counter()
+        payload, cached = self._cached(
+            f"mireye:fetch:addr:{address}:{','.join(sorted(provider_names))}",
+            lambda: self._request("POST", "/v1/fetch", {"address": address, "fields": provider_names}),
         )
-        for key, raw in (payload.get("results") or {}).items():
-            result.values[key] = self._to_observation(key, raw, latitude, longitude, cached)
-        result.unavailable = list(payload.get("unavailable") or [])
-        for key in fields:
-            if key not in result.values and key not in result.unavailable:
-                result.unavailable.append(key)
+        result = self._read_fetch(payload, mapped, None, None, cached, started)
+        result.unavailable.extend(unmapped)
         return result
 
     def ask(self, question, latitude=None, longitude=None) -> AskResult:
-        data = self._request(
-            "POST",
-            "/v1/ask",
-            {"question": question, "latitude": latitude, "longitude": longitude},
-        )
+        body: dict[str, Any] = {"question": question}
+        if latitude is not None and longitude is not None:
+            body["lat"], body["lng"] = latitude, longitude
+        data = self._request("POST", "/v1/ask", body)
+        try:
+            payload = AskResponse.model_validate(data)
+        except ValidationError as exc:
+            raise MireyeContractError(f"/v1/ask response did not validate: {exc}") from exc
         return AskResult(
-            answer=data.get("answer", ""),
-            citations=data.get("citations", []),
-            confidence=float(data.get("confidence", 0.6)),
+            answer=payload.answer,
+            # The real response carries no citations. Returning an empty list is
+            # honest; inventing one would put unsourced text next to sourced data.
+            citations=[],
+            confidence=0.6,
             mode="live",
         )
 
     def ask_stream(self, question, latitude=None, longitude=None) -> Iterator[str]:
-        with self._client.stream(
-            "POST",
-            "/v1/ask/stream",
-            json={"question": question, "latitude": latitude, "longitude": longitude},
-        ) as response:
+        body: dict[str, Any] = {"question": question}
+        if latitude is not None and longitude is not None:
+            body["lat"], body["lng"] = latitude, longitude
+        with self._client.stream("POST", "/v1/ask/stream", json=body) as response:
             for line in response.iter_lines():
                 if line:
                     yield line
@@ -563,16 +807,32 @@ class LiveMireyeClient:
         )
 
     def feature_request(self, field_key: str, reason: str, context: str = "") -> dict[str, Any]:
-        return self._request(
+        """Record a gap with Mireye — at most once per field.
+
+        A site investigation re-runs freely, and every run finds the same
+        unmapped concepts. Submitting the same request each time would spam the
+        provider, so the first submission is remembered locally and replayed.
+        """
+        cache_key = f"mireye:feature-request:{field_key}"
+        existing = self.store.cache_get(cache_key)
+        if existing is not None:
+            return {**existing, "deduplicated": True}
+        payload = self._request(
             "POST", "/v1/feature-requests", {"field": field_key, "reason": reason, "context": context}
         )
+        # Long TTL: the point is to avoid resubmitting the same gap for the life
+        # of the deployment, not to cache a value.
+        self.store.cache_set(cache_key, payload, 30 * 24 * 3600)
+        return payload
 
 
 class FallbackMireyeClient:
-    """Live-first, mock-on-failure.
+    """Live-first, local-on-failure.
 
-    Values served by the fallback are marked `synthetic` so the UI can label them,
-    and the failure is recorded on `self.degraded_reason`.
+    Values served by the fallback are marked `fallback`, never `live` and never
+    `synthetic`: they came from the deterministic local stand-in *because a
+    configured live service failed*, and the UI has to be able to say so. The
+    failure is recorded on `self.degraded_reason`.
     """
 
     def __init__(self, live: MireyeClient, mock: MockMireyeClient) -> None:
@@ -587,10 +847,29 @@ class FallbackMireyeClient:
             self.mode = "live"
             return result
         except (MireyeError, httpx.HTTPError) as exc:
-            self.degraded_reason = str(exc)
-            self.mode = "degraded_mock"
-            log.warning("mireye degraded to mock", extra={"call": name, "error": str(exc)})
-            return getattr(self.mock, name)(*args, **kwargs)
+            # MireyeContractError lands here too, so a drifted provider contract
+            # degrades instead of failing the investigation. Anything that is not
+            # a Mireye/transport problem is a bug and is left to propagate.
+            self.degraded_reason = f"{type(exc).__name__}: {exc}"
+            self.mode = "degraded_fallback"
+            log.warning(
+                "mireye degraded to local fallback",
+                extra={"call": name, "error": str(exc), "kind": type(exc).__name__},
+            )
+            result = getattr(self.mock, name)(*args, **kwargs)
+            return self._relabel(result)
+
+    @staticmethod
+    def _relabel(result):
+        """Mark stand-in values `fallback`, so they can never read as live data."""
+        if isinstance(result, FetchResult):
+            for value in result.values.values():
+                value.status = "fallback"
+                value.note = (
+                    "Live Mireye was configured but unavailable; this is a deterministic "
+                    "local stand-in, not an observation."
+                )
+        return result
 
     def meta_fields(self):
         return self._run("meta_fields")

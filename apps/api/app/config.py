@@ -41,6 +41,10 @@ class Settings(BaseSettings):
     mireye_timeout_seconds: float = 12.0
     mireye_max_retries: int = 2
     mireye_cache_ttl_seconds: int = 900
+    #: Mireye bills its `parcel_record` group at 300 credits per location, against
+    #: 1 credit for an ordinary field. Those fields stay out of every request
+    #: unless this is deliberately turned on.
+    mireye_include_parcel_fields: bool = False
 
     # --- llm ---------------------------------------------------------------
     llm_provider: str = "auto"  # auto | anthropic | none

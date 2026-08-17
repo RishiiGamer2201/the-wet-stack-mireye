@@ -107,8 +107,15 @@ export default function App() {
                 Mireye: {meta.services.mireye} · graph: {meta.services.graph} · vector:{" "}
                 {meta.services.vector} · store: {meta.services.store} · LLM: {meta.services.llm}
               </span>
+              {/* With a live adapter configured the analysis is a mix, so the
+                  blanket "everything is synthetic" claim would be false. Each
+                  value still carries its own status badge either way. */}
               <span className="hidden md:inline">
-                — all site, equipment and document values shown are synthetic and clearly labelled.
+                {meta.services.mireye === "mock"
+                  ? "— all site, equipment and document values shown are synthetic and clearly labelled."
+                  : meta.services.mireye === "degraded_fallback"
+                    ? "— live Mireye is configured but failing; site values are local stand-ins badged “fallback”, never live."
+                    : "— mixed: site values come from live Mireye and are badged individually; equipment and document values remain synthetic."}
               </span>
             </div>
           </div>

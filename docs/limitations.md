@@ -19,7 +19,8 @@
 
 | Assumption | Rationale | If wrong |
 | --- | --- | --- |
-| The Mireye payload shapes in `docs/mireye-contract.md` | The published documentation lists endpoints, not schemas | Confined to one file; see the correction procedure in that document |
+| Mireye's `/v1/ask/stream`, `/v1/feature-requests` and `/v1/sites*` payload shapes | Unlike `/v1/meta/fields`, `/v1/geocode`, `/v1/fetch` and `/v1/ask`, these were not exercised against the live service | Confined to one file; the four verified shapes are recorded in `tests/fixtures/mireye/` |
+| Three provider mappings are proxies, not exact matches | The catalog has no field measuring precisely the same quantity | Each is labelled `proxy` on the evidence and in the UI; see `docs/mireye-contract.md`. The wet-bulb → dry-bulb proxy makes the CH-01 site check *optimistic* in live mode |
 | 34 site fields are enough to rank candidates | Covers all eight dimensions from the source document | Add a `FieldSpec` — scoring picks it up with no other change |
 | Weight/support-load increase is the structural trigger | It is the coordination trigger a reviewer would use | Thresholds are one dict in `engine/deltas.py` |
 | Missing evidence outranks a threshold breach | You cannot ask for judgement on an invalid comparison | Precedence is one function, `decisions.decide` |
@@ -70,9 +71,12 @@
    WebSocket so the timeline fills in live.
 4. **Retrieval** — real embeddings (Voyage/OpenAI/Cohere) into pgvector, plus a reranker; add
    table-aware and OCR extraction (Docling) for drawings and scanned submittals.
-5. **Mireye** — replace the assumed contract with the published one, add a circuit breaker, per-field
-   TTLs matched to how fast each dataset actually changes, and a background refresh that re-marks
-   stale observations.
+5. **Mireye** — the four endpoints the product uses are now aligned with the live API, but only 15 of
+   34 concepts have a provider equivalent (3 of those are proxies). Close the remaining 19 by
+   deriving them from other catalog fields, sourcing them elsewhere, or dropping them from the
+   scoring model. Then add a circuit breaker, per-field TTLs matched to how fast each dataset
+   actually changes (the catalog publishes `ttl_seconds` per field — currently ignored in favour of
+   one global TTL), and a background refresh that re-marks stale observations.
 6. **Engineering rules** — make thresholds project-configurable with an approval trail; add
    AHRI-certified performance lookups; add per-discipline rule packs reviewed by a licensed engineer.
 7. **Graph** — Neo4j Aura with a schema migration, plus versioned graph snapshots per analysis so an
