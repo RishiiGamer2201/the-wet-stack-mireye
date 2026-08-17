@@ -193,16 +193,22 @@ export default function App() {
               ]}
             />
 
+            {/* Keyed on the project: switching or reseeding must drop the previous
+                project's ranking, investigation and selected change rather than
+                leaving stale results on screen. */}
             <div className="mt-4">
               {workflow === "before" && (
                 <BeforeConstruction
+                  key={detail.project.id}
                   detail={detail}
                   meta={meta}
                   onProjectChanged={() => loadProject(detail.project.id)}
                 />
               )}
-              {workflow === "during" && <DuringConstruction detail={detail} />}
-              {workflow === "knowledge" && <KnowledgePanel detail={detail} />}
+              {workflow === "during" && (
+                <DuringConstruction key={detail.project.id} detail={detail} />
+              )}
+              {workflow === "knowledge" && <KnowledgePanel key={detail.project.id} detail={detail} />}
             </div>
 
             <footer className="mt-8 border-t border-ink-200 pt-3 text-[11px] text-ink-500">
