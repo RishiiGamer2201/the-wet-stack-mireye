@@ -41,7 +41,15 @@ from app.store import C, Store
 FIXTURES = Path(__file__).parent / "fixtures" / "mireye"
 
 #: Every concept whose provider mapping is a different measurement.
-PROXY_CONCEPTS = ["ambient_design_db_c", "fiber_routes_count", "planned_grid_expansion_mw"]
+PROXY_CONCEPTS = [
+    "ambient_design_db_c",
+    "fiber_routes_count",
+    "planned_grid_expansion_mw",
+    # Class I federal areas are a strict subset of protected areas, so the
+    # distance is overstated — and this concept is higher-is-better, so using it
+    # as the value would flatter the site.
+    "protected_area_distance_km",
+]
 
 
 def fixture(name: str) -> dict:
@@ -79,6 +87,10 @@ def proxy_payload() -> dict:
                 "value": 100.0, "unit": "MW", "source": "LBNL_QUEUES", "confidence": "medium",
                 "fetched_at": "2026-08-17T19:13:50+00:00", "status": "ok",
             },
+            "nearest_class_i_area_distance_m": {
+                "value": 24150.0, "unit": "meters", "source": "EPA", "confidence": "medium",
+                "fetched_at": "2026-08-17T19:13:50+00:00", "status": "ok",
+            },
         },
     }
 
@@ -105,7 +117,7 @@ def test_each_mapping_declares_how_it_relates_to_its_concept():
         assert FIELD_INDEX[key].relation == relation, key
 
 
-def test_only_the_three_known_proxies_are_contextual():
+def test_only_the_known_proxies_are_contextual():
     contextual = {k for k, s in FIELD_INDEX.items() if s.relation == EvidenceRelation.CONTEXTUAL_PROXY}
     assert contextual == set(PROXY_CONCEPTS)
 
@@ -353,3 +365,28 @@ def test_site_scoring_never_calls_ask(store: Store, seeded):
     sites = store.list(C.SITES, CandidateSite, project_id=seeded.id)
     site_service.broad_pass(store, NoAsk(), seeded, sites)
     site_service.deep_pass(store, NoAsk(), seeded, sites[:1])
+
+
+def test_a_narrower_measurement_cannot_flatter_a_higher_is_better_concept():
+    """Distance to the nearest EPA Class I area is >= distance to the nearest
+    protected area, and this concept scores higher-is-better. Treating the
+    subset as the value would raise the score on a site that is actually closer
+    to protected land."""
+    spec = FIELD_INDEX["protected_area_distance_km"]
+    assert spec.provider_field == "nearest_class_i_area_distance_m"
+    assert spec.relation == EvidenceRelation.CONTEXTUAL_PROXY
+    assert spec.direction == "higher_better"
+    assert "SUBSET" in spec.provider_note
+
+
+def test_untranslatable_provider_categories_score_as_missing_not_as_a_guess():
+    """LCMS has no crop class and merges barren with impervious, which score 100
+    and 60 here. An unmapped class must not be rounded to the nearer-looking one."""
+    from app.engine.scoring import normalize
+    from app.fields import to_internal
+
+    spec = FIELD_INDEX["land_cover_class"]
+    assert to_internal("land_cover_class", "Trees") == "forest"
+    assert to_internal("land_cover_class", "Grass/Forb/Herb") == "grassland"
+    for ambiguous in ("Barren or Impervious", "Water", "Snow or Ice", "Not Specified"):
+        assert normalize(spec, to_internal("land_cover_class", ambiguous)) is None, ambiguous

@@ -66,6 +66,10 @@ class FieldSpec(BaseModel):
     #: Key into CONVERSIONS, applied at the provider boundary.
     conversion: str = "identity"
     provider_availability: ProviderAvailability = "unavailable"
+    #: Provider category value -> our vocabulary. A provider value absent from
+    #: this map stays unmapped, which scoring treats as missing rather than
+    #: guessing at the nearest-looking category.
+    provider_categories: dict[str, str] | None = None
     #: Why a mapping is a proxy, or why nothing maps. Surfaced on the evidence.
     provider_note: str | None = None
 
@@ -528,8 +532,23 @@ PROVIDER_MAP: dict[str, tuple[str, str | None, str, ProviderAvailability, str | 
         "It is shown as evaporative-cooling context; the dry-bulb must come from "
         "project climate data.",
     ),
-    "protected_area_distance_km": ("nearest_class_i_area_distance_m", "meters", "m_to_km", "mapped", None),
-    "land_cover_class": ("lcms_class", None, "identity", "mapped", "Mapped from USGS LCMS land cover class"),
+    "protected_area_distance_km": (
+        "nearest_class_i_area_distance_m", "meters", "m_to_km", "proxy",
+        "CONTEXTUAL ONLY — this is the distance to the nearest EPA mandatory Class I "
+        "federal area (national park or wilderness over 6000 acres), which is a strict "
+        "SUBSET of protected areas. The nearest Class I area is always at least as far as "
+        "the nearest protected area, and this concept scores higher-is-better, so using it "
+        "as the value would make a site look more remote from protected land than it is. "
+        "Shown as a Clean Air Act context indicator; the real distance needs the full "
+        "protected-area inventory.",
+    ),
+    "land_cover_class": (
+        "lcms_class", None, "identity", "mapped",
+        "USFS LCMS life-form taxonomy, translated to our vocabulary. LCMS has no crop "
+        "class and reports 'Barren or Impervious' as one class, so cropland, brownfield, "
+        "urban and wetland cannot be expressed and those readings stay unmapped — "
+        "scored as missing rather than guessed.",
+    ),
 
     # --- converted at the boundary ----------------------------------------
     "mean_slope_pct": (
@@ -638,9 +657,29 @@ for _key, (_pf, _pu, _conv, _avail, _note) in PROVIDER_MAP.items():
     _spec.provider_note = _note
 
 for _key, _why in NO_PROVIDER_EQUIVALENT.items():
-    FIELD_INDEX[_key].provider_note = _why  # availability stays "unavailable"
+    # Only explain the absence for concepts that really have no mapping. A key
+    # left in this table after it gains one must not clobber the mapping's own
+    # note — that silently erased the proxy warning once already.
+    if not FIELD_INDEX[_key].provider_field:
+        FIELD_INDEX[_key].provider_note = _why  # availability stays "unavailable"
 
 #: Provider name -> internal key, for reading a fetch response back.
+#: USFS LCMS life-form classes -> our land-cover vocabulary.
+#:
+#: Only unambiguous translations are listed. LCMS has no crop class, and its
+#: "Barren or Impervious" merges two of our categories that score very
+#: differently (barren 100, urban 60), so it is deliberately absent: an
+#: untranslated value is scored as missing, never as the nearer-looking guess.
+LCMS_LAND_COVER: dict[str, str] = {
+    "Trees": "forest",
+    "Tall Shrubs & Trees Mix": "forest",
+    "Shrubs & Trees Mix": "forest",
+    "Tall Shrubs": "shrubland",
+    "Shrubs": "shrubland",
+    "Grass/Forb/Herb": "grassland",
+}
+FIELD_INDEX["land_cover_class"].provider_categories = LCMS_LAND_COVER
+
 PROVIDER_TO_INTERNAL: dict[str, str] = {
     spec.provider_field: spec.key for spec in FIELD_INDEX.values() if spec.provider_field
 }
@@ -719,6 +758,11 @@ def to_internal(key: str, provider_value):
     if spec.direction == "categorical" or spec.kind == "category":
         text = str(provider_value)
         options = spec.categories or {}
+        if spec.provider_categories is not None:
+            # The provider speaks a different taxonomy. Only translations we can
+            # make unambiguously are listed; anything else falls through and is
+            # scored as missing.
+            return spec.provider_categories.get(text, text)
         if text in options:
             return text
         snake = _snake(text)
