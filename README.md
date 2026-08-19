@@ -121,7 +121,8 @@ The three change cases are built to reach all three decision states:
 | Impact graph | In-memory graph store | Neo4j — `NEO4J_URI/USER/PASSWORD` |
 | Retrieval | Hybrid BM25 + local hashed-ngram vectors over SQLite | pgvector — `DATABASE_URL` |
 | Storage | SQLite (`apps/api/var/wetstack.db`) | Postgres / Supabase — `DATABASE_URL` |
-| Explanations | Deterministic templates | Anthropic — `ANTHROPIC_API_KEY` |
+| Explanations & planning | Deterministic templates | Google Gemini — `GEMINI_API_KEY` |
+| Agent tracing | off | LangSmith — `LANGSMITH_API_KEY` |
 
 The UI shows a persistent **Demo mode** banner naming the adapter in use for each service, and every
 synthetic value is badged wherever it appears. Live services degrade back to their local

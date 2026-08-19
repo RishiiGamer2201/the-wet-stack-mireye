@@ -69,12 +69,21 @@ class Settings(BaseSettings):
     mireye_enable_feature_requests: bool = False
 
     # --- llm ---------------------------------------------------------------
-    llm_provider: str = "auto"  # auto | anthropic | none
-    anthropic_api_key: str | None = None
-    anthropic_model: str = "claude-opus-5"
-    embedding_provider: str = "auto"  # auto | openai | none
-    openai_api_key: str | None = None
-    embedding_model: str = "text-embedding-3-small"
+    # The model may plan an investigation and explain findings. It can never
+    # produce a score, delta, threshold or decision state — those are
+    # deterministic Python, and `test_llm.py` enforces it.
+    llm_provider: str = "auto"  # auto | gemini | none
+    gemini_api_key: str | None = None
+    gemini_model: str = "gemini-2.0-flash"
+    llm_timeout_seconds: float = 30.0
+
+    # --- tracing (LangSmith) -----------------------------------------------
+    # Off unless a key is supplied. The workflow already runs on LangGraph, so
+    # enabling this traces every Understand -> ... -> Action run with no code
+    # change; leaving it unset changes nothing at all.
+    langsmith_api_key: str | None = None
+    langsmith_project: str = "wetstack-mireye"
+    langsmith_endpoint: str = "https://api.smith.langchain.com"
 
     # --- uploads -----------------------------------------------------------
     max_upload_bytes: int = 25 * 1024 * 1024
@@ -150,7 +159,12 @@ class Settings(BaseSettings):
     def llm_live(self) -> bool:
         if self.llm_provider == "none":
             return False
-        return bool(self.anthropic_api_key)
+        return bool(self.gemini_api_key)
+
+    @property
+    def tracing_live(self) -> bool:
+        """LangSmith tracing is opt-in: a key is the switch."""
+        return bool(self.langsmith_api_key)
 
     @property
     def pgvector_live(self) -> bool:
@@ -167,7 +181,8 @@ class Settings(BaseSettings):
             "graph": "neo4j" if self.neo4j_live else "in_memory",
             "vector": "pgvector" if self.pgvector_live else "lexical_sqlite",
             "store": "postgres" if self.database_url else "sqlite",
-            "llm": "anthropic" if self.llm_live else "deterministic",
+            "llm": "gemini" if self.llm_live else "deterministic",
+            "tracing": "langsmith" if self.tracing_live else "off",
         }
 
 

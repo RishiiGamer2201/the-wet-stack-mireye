@@ -4,6 +4,7 @@ The LLM may decide *what to investigate* and may *explain* findings. It never
 produces a number that a decision depends on: scores, deltas, thresholds and
 decision states all come from `app.engine`. When no key is configured the
 `DeterministicNarrator` is used and the API reports `llm_mode = "deterministic"`.
+Providers are interchangeable: adding one is a class satisfying `LLMProvider`.
 """
 
 from __future__ import annotations
@@ -43,37 +44,49 @@ class DeterministicNarrator:
         return None
 
 
-class AnthropicProvider:
-    name = "anthropic"
+class GeminiProvider:
+    """Google Gemini via the REST API.
+
+    Deliberately thin: one text-in, text-out call. The model is never handed a
+    number to compute and its output is never parsed into one — callers append
+    it as prose (`_llm_explain`) or validate it against the field catalog
+    (`_llm_extra_steps`). Any failure returns None so the deterministic pipeline
+    continues untouched.
+    """
+
+    name = "gemini"
     available = True
 
     def __init__(self, api_key: str, model: str, timeout: float = 30.0) -> None:
         self.model = model
+        self._api_key = api_key
         self._client = httpx.Client(
-            base_url="https://api.anthropic.com",
+            base_url="https://generativelanguage.googleapis.com",
             timeout=timeout,
-            headers={
-                "x-api-key": api_key,
-                "anthropic-version": "2023-06-01",
-                "content-type": "application/json",
-            },
+            headers={"content-type": "application/json"},
         )
 
     def complete(self, system: str, user: str, max_tokens: int = 700) -> str | None:
         try:
             response = self._client.post(
-                "/v1/messages",
+                f"/v1beta/models/{self.model}:generateContent",
+                # The key travels as a header, not in the URL, so it cannot leak
+                # into an access log or an exception message.
+                headers={"x-goog-api-key": self._api_key},
                 json={
-                    "model": self.model,
-                    "max_tokens": max_tokens,
-                    "system": system,
-                    "messages": [{"role": "user", "content": user}],
+                    "system_instruction": {"parts": [{"text": system}]},
+                    "contents": [{"role": "user", "parts": [{"text": user}]}],
+                    "generationConfig": {"maxOutputTokens": max_tokens, "temperature": 0.2},
                 },
             )
             response.raise_for_status()
-            blocks = response.json().get("content", [])
-            return "".join(b.get("text", "") for b in blocks if b.get("type") == "text") or None
-        except (httpx.HTTPError, KeyError, ValueError) as exc:
+            candidates = response.json().get("candidates") or []
+            if not candidates:
+                log.warning("gemini returned no candidate", extra={"model": self.model})
+                return None
+            parts = candidates[0].get("content", {}).get("parts", [])
+            return "".join(p.get("text", "") for p in parts) or None
+        except (httpx.HTTPError, KeyError, ValueError, TypeError) as exc:
             # An LLM failure must never block the deterministic pipeline.
             log.warning("llm call failed, falling back", extra={"error": str(exc)})
             return None
@@ -87,7 +100,9 @@ def get_llm() -> LLMProvider:
     if _provider is None:
         settings = get_settings()
         if settings.llm_live:
-            _provider = AnthropicProvider(settings.anthropic_api_key, settings.anthropic_model)
+            _provider = GeminiProvider(
+                settings.gemini_api_key, settings.gemini_model, settings.llm_timeout_seconds
+            )
         else:
             _provider = DeterministicNarrator()
     return _provider

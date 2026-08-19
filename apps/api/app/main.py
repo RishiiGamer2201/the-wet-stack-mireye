@@ -12,6 +12,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from .adapters.tracing import configure_tracing
 from .config import get_settings
 from .engine.decisions import SAFETY_CAVEAT
 from .logging_conf import configure_logging
@@ -39,6 +40,7 @@ deltas and decision states run in deterministic, tested Python.
 async def lifespan(app: FastAPI):
     settings = get_settings()
     configure_logging(settings.log_level)
+    configure_tracing(settings)
     store = get_store()
     log.info(
         "api starting",

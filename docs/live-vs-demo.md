@@ -12,7 +12,8 @@ touching any caller.
 | Impact graph | `InMemoryGraphStore` | `Neo4jGraphStore` (Cypher, same traversal semantics) | `NEO4J_URI` + `NEO4J_USER` + `NEO4J_PASSWORD` |
 | Retrieval | `HybridIndex(LexicalIndex BM25, LocalVectorIndex)` | `HybridIndex(LexicalIndex, PgVectorIndex)` | `DATABASE_URL` |
 | Storage | SQLite document store | Postgres / Supabase (same `Store` interface) | `DATABASE_URL`, `SUPABASE_*` |
-| Explanations & planning | `DeterministicNarrator` (templates) | `AnthropicProvider` | `ANTHROPIC_API_KEY` |
+| Explanations & planning | `DeterministicNarrator` (templates) | `GeminiProvider` | `GEMINI_API_KEY` |
+| Agent tracing | off (nothing sent) | LangSmith traces of every LangGraph run | `LANGSMITH_API_KEY` |
 
 `GET /api/meta` reports `demo_mode` plus the adapter actually in use for each service — a
 configured service that failed to connect reports its fallback, not its intent. The UI renders this
@@ -67,8 +68,9 @@ unreachable, the API logs a warning and continues on the local implementation.
 
 ### LLM
 ```dotenv
-ANTHROPIC_API_KEY=...
-ANTHROPIC_MODEL=claude-opus-5
+GEMINI_API_KEY=...
+GEMINI_MODEL=gemini-2.0-flash
+LANGSMITH_API_KEY=...     # optional: agent tracing
 ```
 The LLM may add up to three investigation steps (validated against the field catalog) and write the
 explanation paragraph. An LLM failure is caught and logged; the deterministic pipeline continues.

@@ -66,5 +66,7 @@ services:
         sync: false
       - key: NEO4J_PASSWORD
         sync: false
-      - key: ANTHROPIC_API_KEY
+      - key: LANGSMITH_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
         sync: false

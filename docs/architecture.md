@@ -34,7 +34,7 @@ flowchart TB
         MI["Mireye client<br/>live · mock · fallback"]
         GR["Graph store<br/>Neo4j · in-memory"]
         VS["Retrieval<br/>pgvector · BM25 + local vectors"]
-        LLM["LLM provider<br/>Anthropic · deterministic"]
+        LLM["LLM provider<br/>Gemini · deterministic"]
         ST["Store<br/>Postgres/Supabase · SQLite"]
     end
 
@@ -129,7 +129,7 @@ timeline renders — the observability is the data, not a separate log.
 | Explain already-computed findings in prose, appended and labelled `(agent explanation)` | Decide the decision state |
 | Answer exploratory questions via Mireye `/v1/ask` | Supply a value that fills an information gap |
 
-With no `ANTHROPIC_API_KEY` the `DeterministicNarrator` returns `None` and every caller falls back
+With no `GEMINI_API_KEY` the `DeterministicNarrator` returns `None` and every caller falls back
 to its template text. Decisions are byte-identical with and without an LLM.
 
 ## Adapter pattern
@@ -155,7 +155,7 @@ classDiagram
 ```
 
 The same shape applies to `GraphStore` (Neo4j / in-memory), the retrieval `Index`
-(pgvector / local vectors / BM25, fused) and `LLMProvider` (Anthropic / deterministic).
+(pgvector / local vectors / BM25, fused) and `LLMProvider` (Gemini / deterministic).
 
 ## Storage
 

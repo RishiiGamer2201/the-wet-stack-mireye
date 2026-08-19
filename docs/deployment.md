@@ -20,7 +20,7 @@ Browser ──► Vercel (static bundle, apps/web/dist)
 ```
 
 The browser talks only to the Render API. Every credential (Mireye, Supabase,
-Neo4j, Anthropic) lives in the Render environment and never reaches the bundle.
+Neo4j, Gemini, LangSmith) lives in the Render environment and never reaches the bundle.
 There is no serverless function and no Vercel rewrite proxying `/api` — the API
 origin is compiled into the bundle from one environment variable, and CORS on the
 API names the Vercel origin explicitly.
@@ -199,7 +199,8 @@ disk. Do not upload anything confidential to a demo deployment.
 | `DATABASE_URL` | no | — | Postgres/Supabase; also enables pgvector. |
 | `NEO4J_URI` / `NEO4J_USER` / `NEO4J_PASSWORD` | no | — | Persistent impact graph. |
 | `MIREYE_BASE_URL` / `MIREYE_API_KEY` | no | — | Live physical-world data; without them the labelled mock is used. |
-| `ANTHROPIC_API_KEY` / `ANTHROPIC_MODEL` | no | — | Explanations only; never a calculation. |
+| `GEMINI_API_KEY` / `GEMINI_MODEL` | no | — | Explanations and planning only; never a calculation. |
+| `LANGSMITH_API_KEY` / `LANGSMITH_PROJECT` | no | — | Opt-in agent tracing; nothing is sent when unset. |
 
 Every optional variable left unset keeps a deterministic local adapter, and the
 UI keeps showing the amber **Demo mode** banner naming exactly what is simulated.
