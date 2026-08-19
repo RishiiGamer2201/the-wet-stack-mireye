@@ -59,7 +59,16 @@ def store(tmp_path, monkeypatch) -> Store:
     """
     monkeypatch.setenv("MIREYE_BASE_URL", "")
     monkeypatch.setenv("DATA_DIR", str(tmp_path / "var"))
+    monkeypatch.setenv("REDIS_CACHE_FILE", str(tmp_path / "var" / "redis_cache.json"))
+    monkeypatch.setenv("SEED_ON_STARTUP", "true")
     get_settings.cache_clear()
+    from app.adapters.rediscache import RedisCacheManager, set_redis_cache
+    rc = RedisCacheManager()
+    rc._redis_connected = False
+    rc._redis_client = None
+    rc._file_path = tmp_path / "var" / "redis_cache.json"
+    rc._file_cache = {}
+    set_redis_cache(rc)
     s = Store(tmp_path / "test.db")
     set_store(s)
     set_graph_store(InMemoryGraphStore())
@@ -72,6 +81,7 @@ def store(tmp_path, monkeypatch) -> Store:
     set_graph_store(None)
     set_index(None)
     set_llm(None)
+    set_redis_cache(None)
     s.close()
     get_settings.cache_clear()
 

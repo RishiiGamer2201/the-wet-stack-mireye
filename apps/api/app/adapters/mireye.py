@@ -65,6 +65,7 @@ from ..config import Settings, get_settings
 from ..domain import EvidenceRelation
 from ..fields import CONVERSIONS, FIELD_INDEX, FIELDS, UnknownFieldError, to_internal
 from ..store import Store, get_store
+from .rediscache import get_redis_cache
 
 UTC = timezone.utc
 
@@ -566,9 +567,17 @@ class LiveMireyeClient:
 
     mode = "live"
 
-    def __init__(self, settings: Settings, store: Store, client: httpx.Client | None = None) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        store: Store,
+        client: httpx.Client | None = None,
+        redis_cache: Any = None,
+    ) -> None:
         self.settings = settings
         self.store = store
+        self._is_memory = str(getattr(store, "path", "")) == ":memory:"
+        self.redis_cache = redis_cache or (None if self._is_memory else get_redis_cache())
         self._client = client or httpx.Client(
             base_url=settings.mireye_base_url or "",
             timeout=settings.mireye_timeout_seconds,
@@ -596,10 +605,16 @@ class LiveMireyeClient:
         raise MireyeUnavailableError(f"{path} failed after retries: {last}")
 
     def _cached(self, key: str, builder) -> tuple[dict, bool]:
-        hit = self.store.cache_get(key)
+        hit = None
+        if self.redis_cache:
+            hit = self.redis_cache.get(key)
+        if hit is None:
+            hit = self.store.cache_get(key)
         if hit is not None:
             return hit, True
         fresh = builder()
+        if self.redis_cache:
+            self.redis_cache.set(key, fresh, self.settings.mireye_cache_ttl_seconds)
         self.store.cache_set(key, fresh, self.settings.mireye_cache_ttl_seconds)
         return fresh, False
 
@@ -625,16 +640,35 @@ class LiveMireyeClient:
         return names
 
     def geocode(self, address: str) -> GeocodeResult:
+        if self.redis_cache:
+            cached_data = self.redis_cache.get_cached_geocode(address)
+            if cached_data is not None:
+                try:
+                    payload = GeocodeResponse.model_validate(cached_data)
+                    return GeocodeResult(
+                        latitude=payload.lat,
+                        longitude=payload.lng,
+                        resolution=payload.accuracy_type or payload.match_type or "unknown",
+                        formatted_address=payload.normalized_address or address,
+                        confidence=parse_confidence(payload.accuracy, default=0.7),
+                        mode="cached",
+                    )
+                except Exception:  # noqa: BLE001
+                    pass
+
         data = self._request("POST", "/v1/geocode", {"address": address})
         try:
             payload = GeocodeResponse.model_validate(data)
         except ValidationError as exc:
             raise MireyeContractError(f"/v1/geocode response did not validate: {exc}") from exc
+
+        # Save into Redis cache after task completion
+        if self.redis_cache:
+            self.redis_cache.set_cached_geocode(address, data)
+
         return GeocodeResult(
             latitude=payload.lat,
             longitude=payload.lng,
-            # Mireye describes precision as `accuracy_type` (e.g. rooftop,
-            # range_interpolation, place); the assumed contract called it `resolution`.
             resolution=payload.accuracy_type or payload.match_type or "unknown",
             formatted_address=payload.normalized_address or address,
             confidence=parse_confidence(payload.accuracy, default=0.7),
@@ -765,31 +799,73 @@ class LiveMireyeClient:
                 f"mapped field(s) absent from the live catalog: {', '.join(missing)}"
             )
 
-        cache_key = f"mireye:fetch:{latitude:.5f}:{longitude:.5f}:{','.join(sorted(provider_names))}"
-        self._log_plan(provider_names, f"{latitude:.5f},{longitude:.5f}")
         started = time.perf_counter()
-        payload, cached = self._cached(
-            cache_key,
-            # Coordinates OR address, never both: the API rejects the pair with 422.
-            lambda: self._request(
-                "POST", "/v1/fetch", {"lat": latitude, "lng": longitude, "fields": provider_names}
-            ),
+        cache_key = f"mireye:fetch:{latitude:.5f}:{longitude:.5f}:{','.join(sorted(provider_names))}"
+
+        # 1. First check Redis cache (or store cache) for coordinates
+        cached_payload = None
+        if self.redis_cache:
+            cached_payload, missing_from_cache = self.redis_cache.get_cached_coordinates_fetch(
+                latitude, longitude, provider_names
+            )
+            if missing_from_cache:
+                cached_payload = None
+        if cached_payload is None:
+            cached_payload = self.store.cache_get(cache_key)
+
+        if cached_payload is not None:
+            log.info(
+                "Mireye coordinates fetch served from cache",
+                extra={"lat": latitude, "lon": longitude, "fields_count": len(provider_names)},
+            )
+            result = self._read_fetch(cached_payload, mapped, latitude, longitude, cached=True, started=started)
+            result.unavailable.extend(unmapped)
+            return result
+
+        # 2. Cache miss -> call live Mireye API
+        self._log_plan(provider_names, f"{latitude:.5f},{longitude:.5f}")
+        payload = self._request(
+            "POST", "/v1/fetch", {"lat": latitude, "lng": longitude, "fields": provider_names}
         )
-        result = self._read_fetch(payload, mapped, latitude, longitude, cached, started)
+
+        # 3. Add details to Redis cache upon task completion
+        if self.redis_cache:
+            self.redis_cache.set_cached_coordinates_fetch(latitude, longitude, provider_names, payload)
+        self.store.cache_set(cache_key, payload, self.settings.mireye_cache_ttl_seconds)
+
+        result = self._read_fetch(payload, mapped, latitude, longitude, cached=False, started=started)
         result.unavailable.extend(unmapped)
         return result
 
     def fetch_by_address(self, address: str, fields: list[str]) -> FetchResult:
-        """Let Mireye resolve the address server-side — no separate geocode call."""
+        """Let Mireye resolve the address server-side with Redis cache verification."""
         mapped, provider_names, unmapped = self._partition(fields)
         if not provider_names:
             return FetchResult(mode="live", unavailable=list(unmapped))
+
+        cache_key = f"mireye:fetch:addr:{address.strip().lower()}:{','.join(sorted(provider_names))}"
         started = time.perf_counter()
-        payload, cached = self._cached(
-            f"mireye:fetch:addr:{address}:{','.join(sorted(provider_names))}",
-            lambda: self._request("POST", "/v1/fetch", {"address": address, "fields": provider_names}),
-        )
-        result = self._read_fetch(payload, mapped, None, None, cached, started)
+
+        # Check cache first
+        hit = None
+        if self.redis_cache:
+            hit = self.redis_cache.get(cache_key)
+        if hit is None:
+            hit = self.store.cache_get(cache_key)
+        if hit is not None and isinstance(hit, dict):
+            result = self._read_fetch(hit, mapped, None, None, cached=True, started=started)
+            result.unavailable.extend(unmapped)
+            return result
+
+        # Fetch from API
+        payload = self._request("POST", "/v1/fetch", {"address": address, "fields": provider_names})
+
+        # Save to Redis & store cache
+        if self.redis_cache:
+            self.redis_cache.set(cache_key, payload, ttl_seconds=self.settings.mireye_cache_ttl_seconds)
+        self.store.cache_set(cache_key, payload, self.settings.mireye_cache_ttl_seconds)
+
+        result = self._read_fetch(payload, mapped, None, None, cached=False, started=started)
         result.unavailable.extend(unmapped)
         return result
 

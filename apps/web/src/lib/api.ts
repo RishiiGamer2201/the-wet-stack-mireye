@@ -78,8 +78,11 @@ export const api = {
   ready: () => request<{ ready: boolean; checks: Record<string, string> }>("/ready"),
   projects: () => request<Project[]>("/projects"),
   project: (id: string) => request<ProjectDetail>(`/projects/${id}`),
+  createProject: (body: { name: string; client?: string; description?: string; region?: string }) =>
+    post<Project>("/projects", body),
   updateProject: (id: string, body: unknown) => patch<Project>(`/projects/${id}`, body),
   seed: () => post<{ project_id: string; project_name: string; message: string }>("/admin/seed"),
+  reset: () => post<{ project_id: string; project_name: string; message: string }>("/admin/reset"),
 
   // Before Construction
   createSite: (projectId: string, body: unknown) => post(`/projects/${projectId}/sites`, body),

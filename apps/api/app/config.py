@@ -35,6 +35,15 @@ class Settings(BaseSettings):
     neo4j_user: str | None = None
     neo4j_password: str | None = None
 
+    # --- redis cache -------------------------------------------------------
+    redis_url: str | None = None
+    redis_host: str = "localhost"
+    redis_port: int = 6379
+    redis_password: str | None = None
+    redis_db: int = 0
+    redis_cache_file: Path | None = None
+    redis_ttl_seconds: int = 86400 * 7  # 7 days default cache TTL
+
     # --- mireye ------------------------------------------------------------
     mireye_base_url: str | None = None
     mireye_api_key: str | None = None
@@ -72,11 +81,9 @@ class Settings(BaseSettings):
     allowed_upload_types: tuple[str, ...] = ("application/pdf",)
 
     # --- demo data ---------------------------------------------------------
-    # A deployment with an empty store seeds the synthetic demo project on start
-    # so the hackathon demo is usable immediately. Turn this off for any
-    # deployment pointed at a real database — synthetic engineering data must
-    # never be written into one.
-    seed_on_startup: bool = True
+    # When enabled, an empty store seeds the synthetic demo project on start.
+    # Set to False to start with a clean database.
+    seed_on_startup: bool = False
 
     # --- http --------------------------------------------------------------
     #: Comma-separated browser origins allowed to call this API. There is no
@@ -126,6 +133,10 @@ class Settings(BaseSettings):
     @property
     def upload_dir(self) -> Path:
         return self.data_dir / "uploads"
+
+    @property
+    def redis_path(self) -> Path:
+        return self.redis_cache_file or (self.data_dir / "redis_cache.json")
 
     @property
     def mireye_live(self) -> bool:
