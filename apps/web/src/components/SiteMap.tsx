@@ -1,11 +1,10 @@
 import L from "leaflet";
-import { useEffect } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { MapContainer, Marker, Popup, TileLayer, useMap } from "react-leaflet";
 
 import type { CandidateSite, SiteScore } from "../lib/types";
 
-/** Div icons avoid Leaflet's bundled image assets entirely, so the map still
- *  renders markers when tile servers are unreachable (offline demo). */
+/** Div icons avoid Leaflet's bundled image assets, so markers render offline. */
 function pin(rank: number | null, risk: string | undefined, selected: boolean) {
   const color =
     risk === "low"
@@ -28,15 +27,30 @@ function pin(rank: number | null, risk: string | undefined, selected: boolean) {
   });
 }
 
+/** Only re-fits when the positioned site IDs/coords actually change.
+ *  Prevents the map from jumping when the Add-Site modal opens/closes. */
 function FitBounds({ sites }: { sites: CandidateSite[] }) {
   const map = useMap();
+  const prevKey = useRef<string>("");
+
+  const key = useMemo(
+    () =>
+      sites
+        .filter((s) => s.latitude != null && s.longitude != null)
+        .map((s) => `${s.id}:${s.latitude},${s.longitude}`)
+        .join("|"),
+    [sites],
+  );
+
   useEffect(() => {
+    if (key === prevKey.current) return;
+    prevKey.current = key;
     const points = sites
       .filter((s) => s.latitude != null && s.longitude != null)
       .map((s) => [s.latitude as number, s.longitude as number] as [number, number]);
     if (points.length === 1) map.setView(points[0], 9);
     else if (points.length > 1) map.fitBounds(L.latLngBounds(points).pad(0.25));
-  }, [map, sites]);
+  }, [map, sites, key]);
   return null;
 }
 
@@ -63,7 +77,9 @@ export function SiteMap({
   }
 
   return (
-    <div className="h-80 overflow-hidden rounded-lg border border-ink-200">
+    // leaflet-map-wrapper applies isolation:isolate so Leaflet z-indexes (max 650)
+    // stay contained and never bleed through modals or drawers.
+    <div className="leaflet-map-wrapper h-80 overflow-hidden rounded-lg border border-ink-200">
       <MapContainer
         center={[39.5, -98.35]}
         zoom={4}

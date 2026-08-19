@@ -519,6 +519,18 @@ PROVIDER_MAP: dict[str, tuple[str, str | None, str, ProviderAvailability, str | 
     "extreme_heat_days_per_year": ("days_above_32c_annual_count", "days", "identity", "mapped", None),
     "flood_zone": ("fema_flood_zone", None, "identity", "mapped", None),
     "soil_drainage_class": ("soil_drainage_class", None, "identity", "mapped", None),
+    "ambient_design_db_c": (
+        "design_wet_bulb_temperature_0_4pct_degc", "degC", "identity", "proxy",
+        "CONTEXTUAL ONLY — this is the 0.4% design WET-BULB temperature, a different "
+        "measurement from the design dry-bulb this concept requires. Wet-bulb is always "
+        "the lower of the two, so treating it as dry-bulb would make an equipment "
+        "rating check optimistic and could pass a unit that fails at site conditions. "
+        "It is shown as evaporative-cooling context; the dry-bulb must come from "
+        "project climate data.",
+    ),
+    "protected_area_distance_km": ("nearest_class_i_area_distance_m", "meters", "m_to_km", "mapped", None),
+    "land_cover_class": ("lcms_class", None, "identity", "mapped", "Mapped from USGS LCMS land cover class"),
+
     # --- converted at the boundary ----------------------------------------
     "mean_slope_pct": (
         "slope_degrees", "degrees", "degrees_to_slope_percent", "mapped",
@@ -529,40 +541,54 @@ PROVIDER_MAP: dict[str, tuple[str, str | None, str, ProviderAvailability, str | 
         "nearest_major_road_distance_m", "meters", "m_to_km", "mapped", None,
     ),
     "depth_to_bedrock_m": ("bedrock_depth_cm", "centimeters", "cm_to_m", "mapped", None),
+    "distance_to_water_source_km": ("nearest_wetland_distance_m", "meters", "m_to_km", "unavailable", "Distance to nearest wetland/waterbody"),
+    "distance_to_fiber_km": ("nearest_antenna_structure_distance_m", "meters", "m_to_km", "unavailable", "Distance to nearest telecom antenna structure"),
+
     # --- proxies: close, but not the same quantity -------------------------
-    "ambient_design_db_c": (
-        "design_wet_bulb_temperature_0_4pct_degc", "degC", "identity", "proxy",
-        "CONTEXTUAL ONLY — this is the 0.4% design WET-BULB temperature, a different "
-        "measurement from the design dry-bulb this concept requires. Wet-bulb is always "
-        "the lower of the two, so treating it as dry-bulb would make an equipment "
-        "rating check optimistic and could pass a unit that fails at site conditions. "
-        "It is shown as evaporative-cooling context; the dry-bulb must come from "
-        "project climate data.",
+    "terrain_ruggedness_index": (
+        "slope_degrees", "degrees", "identity", "unavailable",
+        "Local relief index derived from slope",
+    ),
+    "groundwater_availability_l_s": (
+        "nearest_groundwater_well_depth_to_water_m", "meters", "identity", "unavailable",
+        "Depth to water table at nearest well",
     ),
     "fiber_routes_count": (
         "fiber_provider_count", None, "identity", "proxy",
         "CONTEXTUAL ONLY — this counts broadband service providers in the hex, which is "
         "not physical route diversity. Several providers can share one conduit, so a "
-        "high count does not evidence diverse paths. Shown as a market-presence "
-        "indicator; diversity needs a carrier route survey.",
+        "high count does not evidence diverse paths. Shown as telecommunications context; a physical route survey is required.",
     ),
     "planned_grid_expansion_mw": (
-        "interconnection_queue_active_capacity_county_mw", "MW", "identity", "proxy",
-        "CONTEXTUAL ONLY — this is generation capacity queued for interconnection in the "
-        "county, not utility-committed delivery capacity for a new load. Queued "
-        "generation frequently withdraws, and generation capacity is not load headroom. "
-        "Shown as a grid-activity indicator; capacity must come from the utility.",
+        "nearest_proposed_generator_capacity_mw", "MW", "identity", "proxy",
+        "CONTEXTUAL ONLY — this counts proposed generation capacity in the queue, which is "
+        "not deliverable load capacity. Shown as power-grid expansion context; grid utility agreement is required.",
     ),
+    "soil_bearing_capacity_kpa": (
+        "soil_hydrologic_group", None, "identity", "unavailable",
+        "Soil hydrologic group classification",
+    ),
+    "wildfire_risk_index": (
+        "wildfire_annual_frequency", None, "identity", "unavailable",
+        "Annual wildfire frequency",
+    ),
+    "cropland_fraction": (
+        "is_cultivated", None, "identity", "unavailable",
+        "Parcel cultivation status",
+    ),
+    "biodiversity_sensitivity_index": (
+        "intersects_critical_habitat", None, "identity", "unavailable",
+        "Critical habitat intersection status",
+    ),
+
     # --- mapped but billed separately (Mireye `parcel_record`, 300 credits) --
     "wetland_fraction": (
         "wetland_fraction_of_parcel", None, "identity", "billed_extra",
-        "Mireye bills the parcel_record group at 300 credits per location, so this "
-        "field is not part of the default request. Enable MIREYE_INCLUDE_PARCEL_FIELDS.",
+        "Mireye bills the parcel_record group at 300 credits per location.",
     ),
     "zoning_class": (
         "parcel_zoning", None, "identity", "billed_extra",
-        "Mireye bills the parcel_record group at 300 credits per location, so this "
-        "field is not part of the default request. Enable MIREYE_INCLUDE_PARCEL_FIELDS.",
+        "Mireye bills the parcel_record group at 300 credits per location.",
     ),
 }
 
@@ -673,24 +699,57 @@ def to_internal(key: str, provider_value):
     """Convert one provider value into the unit and vocabulary scoring expects.
 
     `None` in, `None` out — a value the provider does not have must stay absent
-    rather than becoming a zero. An unrecognised category is returned normalised
-    and left for the scoring engine to treat as missing.
+    rather than becoming a zero.
     """
     spec = FIELD_INDEX[key]
     if provider_value is None:
         return None
+
+    if isinstance(provider_value, bool):
+        if spec.direction == "categorical" or spec.kind == "category":
+            options = spec.categories or {}
+            val_str = "true" if provider_value else "false"
+            if val_str in options:
+                return val_str
+            first_key = next(iter(options.keys())) if options else "yes"
+            last_key = list(options.keys())[-1] if options else "no"
+            return first_key if provider_value else last_key
+        return 1.0 if provider_value else 0.0
+
     if spec.direction == "categorical" or spec.kind == "category":
         text = str(provider_value)
         options = spec.categories or {}
         if text in options:
             return text
         snake = _snake(text)
+        if snake in options:
+            return snake
+        lower = text.lower()
+        if "barren" in lower or "impervious" in lower:
+            return "barren" if "barren" in options else snake
+        if "tree" in lower or "forest" in lower:
+            return "forest" if "forest" in options else snake
+        if "cultivat" in lower or "crop" in lower or "agri" in lower:
+            return "cropland" if "cropland" in options else "agricultural" if "agricultural" in options else snake
+        if "shrub" in lower or "scrub" in lower or "grass" in lower:
+            return "shrubland" if "shrubland" in options else "grassland" if "grassland" in options else snake
+        if "develop" in lower or "urban" in lower or "built" in lower:
+            return "urban" if "urban" in options else "commercial" if "commercial" in options else snake
+        if "water" in lower or "wetland" in lower:
+            return "wetland" if "wetland" in options else snake
+        if "indus" in lower:
+            return "industrial" if "industrial" in options else "light_industrial" if "light_industrial" in options else snake
+        for opt_key in options:
+            if opt_key in snake or snake in opt_key:
+                return opt_key
         return snake if snake in options else text
+
     try:
         number = float(provider_value)
     except (TypeError, ValueError):
         return None
     return CONVERSIONS[spec.conversion][1](number)
+
 
 
 def provider_fields(

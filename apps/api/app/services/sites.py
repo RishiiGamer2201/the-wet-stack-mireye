@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from ..adapters.mireye import MireyeClient, MireyeError
 from ..config import get_settings
@@ -27,6 +27,8 @@ from ..engine import scoring
 from ..fields import DEFAULT_DIMENSION_WEIGHTS, UnknownFieldError, broad_fields, deep_fields
 from ..store import C, Store
 from .evidence import observations_for_site, put_gap, record_fetch
+
+UTC = timezone.utc
 
 log = logging.getLogger("sites")
 

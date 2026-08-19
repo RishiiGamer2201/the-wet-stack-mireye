@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from ..adapters.mireye import FetchResult, MireyeClient
 from ..domain import (
@@ -21,6 +21,8 @@ from ..domain import (
 )
 from ..fields import FIELD_INDEX
 from ..store import C, Store
+
+UTC = timezone.utc
 
 log = logging.getLogger("evidence")
 

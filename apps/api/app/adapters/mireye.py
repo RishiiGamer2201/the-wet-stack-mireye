@@ -55,7 +55,7 @@ import time
 from collections.abc import Iterator
 from dataclasses import dataclass
 from dataclasses import field as dc_field
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Protocol
 
 import httpx
@@ -65,6 +65,8 @@ from ..config import Settings, get_settings
 from ..domain import EvidenceRelation
 from ..fields import CONVERSIONS, FIELD_INDEX, FIELDS, UnknownFieldError, to_internal
 from ..store import Store, get_store
+
+UTC = timezone.utc
 
 log = logging.getLogger("mireye")
 

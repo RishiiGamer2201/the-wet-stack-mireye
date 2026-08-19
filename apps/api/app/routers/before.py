@@ -78,6 +78,8 @@ def run_site_investigation(
         sites = [s for s in sites if s.id in payload.site_ids]
     if not sites:
         raise HTTPException(status_code=422, detail="no candidate sites to investigate")
+    # Real user-added sites come first, so they are always investigated within budget
+    sites.sort(key=lambda s: (s.synthetic, s.created_at or datetime.min))
     weights = payload.weights or project.dimension_weights or None
     return workflow.run_site_investigation(project, sites, weights, store)
 
@@ -88,10 +90,12 @@ def list_investigations(
     project: Project = Depends(get_project),
     store: Store = Depends(store_dep),
 ):
+    from datetime import datetime
     items = store.list(C.INVESTIGATIONS, Investigation, project_id=project.id)
     if workflow_filter:
         items = [i for i in items if i.workflow == Workflow(workflow_filter)]
-    return list(reversed(items))
+    items.sort(key=lambda i: i.created_at or datetime.min, reverse=True)
+    return items
 
 
 @router.get("/investigations/{investigation_id}", response_model=Investigation)

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import httpx
 import pytest
@@ -20,6 +20,8 @@ from app.fields import UnknownFieldError
 from app.services import evidence as evidence_service
 from app.services.sites import fetch_site_fields
 from app.store import C
+
+UTC = timezone.utc
 
 
 def site():

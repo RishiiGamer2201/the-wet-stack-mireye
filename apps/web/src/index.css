@@ -45,9 +45,22 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* Isolate Leaflet's internal stacking context so its z-indexes (up to 650)
+   never bleed out of the map wrapper and punch through modals / drawers. */
+.leaflet-map-wrapper {
+  isolation: isolate;
+  position: relative;
+  z-index: 0;
+}
+
 .leaflet-container {
   background: var(--color-ink-100);
   font: inherit;
+}
+
+/* Modal overlay — must sit above Leaflet's highest pane (tooltip = 650). */
+.modal-overlay {
+  z-index: 1000;
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -14,7 +14,7 @@ import logging
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from ..adapters.graphstore import GraphStore, get_graph_store
@@ -51,6 +51,8 @@ from ..services import changes as change_service
 from ..services import sites as site_service
 from ..store import C, Store, get_store
 from . import planner
+
+UTC = timezone.utc
 
 log = logging.getLogger("agent")
 
@@ -796,6 +798,8 @@ def run_site_investigation(
     store: Store | None = None,
 ) -> Investigation:
     store = store or get_store()
+    # Real user-added sites come first so they are investigated within budget
+    sites = sorted(sites, key=lambda s: (s.synthetic, s.created_at or datetime.min))
     investigation = _new_investigation(
         project,
         Workflow.BEFORE_CONSTRUCTION,

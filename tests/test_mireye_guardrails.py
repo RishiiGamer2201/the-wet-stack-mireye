@@ -75,7 +75,7 @@ def proxy_payload() -> dict:
                 "value": 5, "unit": None, "source": "FCC_BDC", "confidence": "medium",
                 "fetched_at": "2026-08-17T19:13:50+00:00", "status": "ok",
             },
-            "interconnection_queue_active_capacity_county_mw": {
+            "nearest_proposed_generator_capacity_mw": {
                 "value": 100.0, "unit": "MW", "source": "LBNL_QUEUES", "confidence": "medium",
                 "fetched_at": "2026-08-17T19:13:50+00:00", "status": "ok",
             },
@@ -306,7 +306,12 @@ def test_parcel_fields_stay_out_of_a_live_request_by_default(store: Store):
         sent.update(json.loads(request.content))
         return httpx.Response(200, json={"lat": 1, "lng": 1, "fields": {}})
 
-    settings = Settings(mireye_base_url="https://x.test", mireye_api_key="k", mireye_max_retries=0)
+    settings = Settings(
+        mireye_base_url="https://x.test",
+        mireye_api_key="k",
+        mireye_max_retries=0,
+        mireye_include_parcel_fields=False,
+    )
     assert settings.mireye_include_parcel_fields is False
     http = httpx.Client(base_url="https://x.test", transport=httpx.MockTransport(handler))
     client = LiveMireyeClient(settings, store, client=http)

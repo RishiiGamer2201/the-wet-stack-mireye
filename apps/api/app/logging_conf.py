@@ -5,7 +5,9 @@ from __future__ import annotations
 import json
 import logging
 import sys
-from datetime import UTC, datetime
+from datetime import datetime, timezone
+
+UTC = timezone.utc
 
 _RESERVED = set(logging.LogRecord("", 0, "", 0, "", (), None).__dict__) | {
     "asctime",

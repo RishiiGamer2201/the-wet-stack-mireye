@@ -52,9 +52,9 @@ class Settings(BaseSettings):
     # visible InformationGap rather than failing the run or quietly downgrading
     # evidence, so the analysis stays honest about what it did not look at.
     #: Locations a single investigation may fetch live.
-    mireye_max_live_locations: int = 3
+    mireye_max_live_locations: int = 10
     #: Live /v1/fetch calls a single investigation may make, across all locations.
-    mireye_max_live_fetches: int = 8
+    mireye_max_live_fetches: int = 25
     #: POST /v1/feature-requests is documented but its contract is unverified, so
     #: gaps are recorded locally until someone confirms the real payload.
     mireye_enable_feature_requests: bool = False

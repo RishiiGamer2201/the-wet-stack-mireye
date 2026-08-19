@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "wetstack-mireye-api"
 version = "0.1.0"
 description = "The Wet Stack - Mireye: data-center construction & EPC intelligence API"
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 dependencies = [
     "fastapi>=0.110",
     "uvicorn[standard]>=0.29",
@@ -31,7 +31,7 @@ include = ["app*"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py311"
+target-version = "py310"
 exclude = [".venv", "var"]
 
 [tool.ruff.lint]
@@ -39,7 +39,8 @@ select = ["E", "F", "I", "UP", "B"]
 # B008: FastAPI's Depends() default is idiomatic.
 # E501: line length is enforced by the formatter, not the linter.
 # UP042: `str, Enum` is deliberate — it keeps enum values JSON-serialisable for Pydantic.
-ignore = ["B008", "E501", "UP042"]
+# UP017: datetime.UTC alias compatibility for Python 3.10.
+ignore = ["B008", "E501", "UP042", "UP017"]
 
 [tool.pytest.ini_options]
 testpaths = ["../../tests"]
