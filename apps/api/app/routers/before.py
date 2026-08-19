@@ -94,7 +94,7 @@ def list_investigations(
     items = store.list(C.INVESTIGATIONS, Investigation, project_id=project.id)
     if workflow_filter:
         items = [i for i in items if i.workflow == Workflow(workflow_filter)]
-    items.sort(key=lambda i: i.created_at or datetime.min, reverse=True)
+    items.sort(key=lambda i: i.started_at or datetime.min, reverse=True)
     return items
 
 
