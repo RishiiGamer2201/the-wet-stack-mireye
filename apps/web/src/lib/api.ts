@@ -152,6 +152,40 @@ export const api = {
     ),
   advisorChat: (projectId: string, payload: { message: string; site_id?: string | null; site_context?: Record<string, any> | null; history?: Array<{ role: string; content: string }> | null }) =>
     post<import("./types").AdvisorChatResponse>(`/projects/${projectId}/advisor/chat`, payload),
+  advisorChatStream: async (
+    projectId: string,
+    payload: { message: string; site_id?: string | null; site_context?: Record<string, any> | null; history?: Array<{ role: string; content: string }> | null },
+    onChunk: (chunk: string) => void,
+    onDone: (meta: { improvements: string[]; mode: string }) => void,
+  ) => {
+    const res = await fetch(`${BASE}/api/projects/${projectId}/advisor/chat/stream`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) throw new Error(`Advisor stream error: ${res.statusText}`);
+    const reader = res.body?.getReader();
+    const decoder = new TextDecoder();
+    if (!reader) return;
+
+    let buffer = "";
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n\n");
+      buffer = lines.pop() || "";
+      for (const line of lines) {
+        if (line.startsWith("data: ")) {
+          try {
+            const data = JSON.parse(line.slice(6));
+            if (data.chunk) onChunk(data.chunk);
+            if (data.done) onDone({ improvements: data.improvements || [], mode: data.mode || "llm" });
+          } catch {}
+        }
+      }
+    }
+  },
   mireyeFields: () =>
     request<{ mode: string; count: number; fields: { key: string; label: string; unit?: string }[] }>(
       "/mireye/fields",

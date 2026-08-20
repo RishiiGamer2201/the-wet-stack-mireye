@@ -87,7 +87,17 @@ export function EngineeringAdvisorChat({
 
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
-    setBusy(true);
+    const assistantId = `a-${Date.now()}`;
+    // Initialize assistant placeholder message for streaming
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: assistantId,
+        role: "assistant",
+        content: "",
+        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      },
+    ]);
 
     try {
       const siteCtx = activeSite
@@ -106,31 +116,48 @@ export function EngineeringAdvisorChat({
         content: m.content,
       }));
 
-      const res = await api.advisorChat(detail.project.id, {
-        message: text,
-        site_id: selectedSiteId,
-        site_context: siteCtx,
-        history,
-      });
-
-      const assistantMsg: Message = {
-        id: `a-${Date.now()}`,
-        role: "assistant",
-        content: res.reply,
-        improvements: res.suggested_improvements,
-        mode: res.mode,
-        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-      };
-
-      setMessages((prev) => [...prev, assistantMsg]);
+      await api.advisorChatStream(
+        detail.project.id,
+        {
+          message: text,
+          site_id: selectedSiteId,
+          site_context: siteCtx,
+          history,
+        },
+        (chunk) => {
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === assistantId ? { ...msg, content: msg.content + chunk } : msg,
+            ),
+          );
+        },
+        (meta) => {
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === assistantId
+                ? {
+                    ...msg,
+                    improvements: meta.improvements,
+                    mode: meta.mode,
+                  }
+                : msg,
+            ),
+          );
+        },
+      );
     } catch (err: any) {
-      const errorMsg: Message = {
-        id: `err-${Date.now()}`,
-        role: "assistant",
-        content: `⚠️ **Advisory Offline:** Could not communicate with the senior engineering engine (${err?.message || "connection error"}). Please ensure backend API is running.`,
-        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-      };
-      setMessages((prev) => [...prev, errorMsg]);
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === assistantId
+            ? {
+                ...msg,
+                content:
+                  msg.content ||
+                  `⚠️ **Advisory Offline:** Could not communicate with the senior engineering engine (${err?.message || "connection error"}). Please ensure backend API is running.`,
+              }
+            : msg,
+        ),
+      );
     } finally {
       setBusy(false);
     }

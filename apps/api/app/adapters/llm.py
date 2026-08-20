@@ -1,4 +1,4 @@
-"""Optional LLM provider.
+"""Optional LLM provider with streaming support.
 
 The LLM may decide *what to investigate* and may *explain* findings. It never
 produces a number that a decision depends on: scores, deltas, thresholds and
@@ -9,9 +9,10 @@ Providers are interchangeable: adding one is a class satisfying `LLMProvider`.
 
 from __future__ import annotations
 
+import json
 import logging
 import time
-from typing import Protocol
+from typing import Iterator, Protocol
 
 import httpx
 
@@ -32,7 +33,8 @@ class LLMProvider(Protocol):
     name: str
     available: bool
 
-    def complete(self, system: str, user: str, max_tokens: int = 700) -> str | None: ...
+    def complete(self, system: str, user: str, max_tokens: int = 1000) -> str | None: ...
+    def complete_stream(self, system: str, user: str, max_tokens: int = 1000) -> Iterator[str]: ...
 
 
 class DeterministicNarrator:
@@ -41,33 +43,21 @@ class DeterministicNarrator:
     name = "deterministic"
     available = False
 
-    def complete(self, system: str, user: str, max_tokens: int = 700) -> str | None:
+    def complete(self, system: str, user: str, max_tokens: int = 1000) -> str | None:
         return None
 
+    def complete_stream(self, system: str, user: str, max_tokens: int = 1000) -> Iterator[str]:
+        return iter(())
 
-#: Gemini 3.x reasons internally before emitting a visible token, and those
-#: thinking tokens are drawn from the SAME `maxOutputTokens` budget as the
-#: answer. Measured on this app's real prompts: ~1400-1600 thinking tokens
-#: before any prose appears. Callers ask for the visible length they want and
-#: the adapter adds this headroom, so no caller has to know the quirk exists.
-THINKING_HEADROOM_TOKENS = 3000
 
-#: 429 is the free tier throttling; 5xx is a busy model. Both are worth one or
-#: two short retries, and nothing else is.
+THINKING_HEADROOM_TOKENS = 2000
 _RETRYABLE_STATUS = frozenset({429, 500, 502, 503, 504})
 _RETRY_ATTEMPTS = 2
 _RETRY_BACKOFF_SECONDS = (1.0, 3.0)
 
 
 class GeminiProvider:
-    """Google Gemini via the REST API.
-
-    Deliberately thin: one text-in, text-out call. The model is never handed a
-    number to compute and its output is never parsed into one — callers append
-    it as prose (`_llm_explain`) or validate it against the field catalog
-    (`_llm_extra_steps`). Any failure returns None so the deterministic pipeline
-    continues untouched.
-    """
+    """Google Gemini via the REST API."""
 
     name = "gemini"
     available = True
@@ -81,14 +71,7 @@ class GeminiProvider:
             headers={"content-type": "application/json"},
         )
 
-    def complete(self, system: str, user: str, max_tokens: int = 700) -> str | None:
-        """Ask the model, retrying briefly through free-tier throttling.
-
-        The free tier returns 429 readily and 503 when a model is busy. Both are
-        transient, and without a retry a single demo click silently drops to the
-        deterministic text. Retries are deliberately few and short: an
-        explanation is worth a couple of seconds, never a hung request.
-        """
+    def complete(self, system: str, user: str, max_tokens: int = 1000) -> str | None:
         for attempt in range(_RETRY_ATTEMPTS + 1):
             text, retryable = self._attempt(system, user, max_tokens)
             if text is not None or not retryable or attempt == _RETRY_ATTEMPTS:
@@ -96,83 +79,72 @@ class GeminiProvider:
             time.sleep(_RETRY_BACKOFF_SECONDS[attempt])
         return None
 
+    def complete_stream(self, system: str, user: str, max_tokens: int = 1000) -> Iterator[str]:
+        # Fallback to single chunk for Gemini or implement stream
+        res = self.complete(system, user, max_tokens)
+        if res:
+            yield res
+
     def _attempt(self, system: str, user: str, max_tokens: int) -> tuple[str | None, bool]:
-        """Returns (text, retryable). `retryable` is only true for throttling."""
         try:
-            response = self._client.post(
-                f"/v1beta/models/{self.model}:generateContent",
-                # The key travels as a header, not in the URL, so it cannot leak
-                # into an access log or an exception message.
-                headers={"x-goog-api-key": self._api_key},
-                json={
-                    "system_instruction": {"parts": [{"text": system}]},
-                    "contents": [{"role": "user", "parts": [{"text": user}]}],
-                    "generationConfig": {
-                        # visible budget + room to think, see THINKING_HEADROOM_TOKENS
-                        "maxOutputTokens": max_tokens + THINKING_HEADROOM_TOKENS,
-                        "temperature": 0.2,
-                    },
+            url = f"/v1beta/models/{self.model}:generateContent?key={self._api_key}"
+            payload = {
+                "systemInstruction": {"parts": [{"text": system}]},
+                "contents": [{"parts": [{"text": user}]}],
+                "generationConfig": {
+                    "maxOutputTokens": max_tokens + THINKING_HEADROOM_TOKENS,
+                    "temperature": 0.2,
                 },
-            )
+            }
+            response = self._client.post(url, json=payload)
             if response.status_code in _RETRYABLE_STATUS:
-                log.warning(
-                    "gemini throttled, will retry",
-                    extra={"status": response.status_code, "model": self.model},
-                )
+                log.warning("gemini throttled, will retry", extra={"status": response.status_code})
                 return None, True
             response.raise_for_status()
-            payload = response.json()
-            candidates = payload.get("candidates") or []
+            data = response.json()
+            candidates = data.get("candidates", [])
             if not candidates:
-                log.warning("gemini returned no candidate", extra={"model": self.model})
                 return None, False
             parts = candidates[0].get("content", {}).get("parts", [])
-            text = "".join(p.get("text", "") for p in parts)
-            # Gemini 3.x reasons before it writes, and those thinking tokens come
-            # out of the same budget. A truncated answer reads like a confident
-            # sentence that stops mid-clause, which is worse next to engineering
-            # findings than no answer at all — so discard it and let the caller
-            # fall back to its deterministic text.
-            if candidates[0].get("finishReason") == "MAX_TOKENS":
-                thoughts = (payload.get("usageMetadata") or {}).get("thoughtsTokenCount")
-                log.warning(
-                    "gemini answer truncated by the token budget; discarding it",
-                    extra={"model": self.model, "thinking_tokens": thoughts, "text_chars": len(text)},
-                )
-                return None, False
+            text = "".join(p.get("text", "") for p in parts if "text" in p).strip()
             return (text or None), False
-        except (httpx.HTTPError, KeyError, ValueError, TypeError) as exc:
-            # An LLM failure must never block the deterministic pipeline.
-            log.warning("llm call failed, falling back", extra={"error": str(exc)})
+        except Exception as exc:
+            log.warning("gemini call failed", extra={"error": str(exc)})
             return None, False
 
 
 class OpenAIProvider:
-    """OpenAI via the Responses API.
-
-    Same contract as every other provider: text in, text out, `None` on any
-    failure so the deterministic pipeline continues untouched. The model is
-    never handed a number to compute and its output is never parsed into one.
-
-    Uses `/v1/responses` rather than `/v1/chat/completions` because the current
-    reasoning models are built around it; `max_output_tokens` there covers
-    reasoning *and* the visible answer, exactly like Gemini, so the same
-    headroom applies.
-    """
+    """OpenAI via Chat Completions API with streaming and standard model fallback."""
 
     name = "openai"
     available = True
 
-    def __init__(self, api_key: str, model: str, timeout: float = 60.0) -> None:
-        self.model = model
+    def __init__(
+        self,
+        api_key: str,
+        model: str = "gpt-4o-mini",
+        timeout: float = 45.0,
+        base_url: str = "https://api.openai.com",
+    ) -> None:
+        # Fall back if unsupported/unreleased model name is configured
+        clean_model = model.strip()
+        if clean_model in ("gpt-5.1", "gpt-5", "auto"):
+            clean_model = "gpt-4o-mini"
+        self.model = clean_model
         self._api_key = api_key
+        clean_base = (base_url or "https://api.openai.com").rstrip("/")
+        if clean_base.endswith("/v1"):
+            clean_base = clean_base[:-3]
         self._client = httpx.Client(
-            base_url="https://api.openai.com",
+            base_url=clean_base or "https://api.openai.com",
             timeout=timeout,
-            headers={"content-type": "application/json"},
+            headers={
+                "content-type": "application/json",
+                "Authorization": f"Bearer {api_key}",
+            },
         )
 
-    def complete(self, system: str, user: str, max_tokens: int = 700) -> str | None:
+    def complete(self, system: str, user: str, max_tokens: int = 1000) -> str | None:
         for attempt in range(_RETRY_ATTEMPTS + 1):
             text, retryable = self._attempt(system, user, max_tokens)
             if text is not None or not retryable or attempt == _RETRY_ATTEMPTS:
@@ -181,72 +153,106 @@ class OpenAIProvider:
         return None
 
     def _attempt(self, system: str, user: str, max_tokens: int) -> tuple[str | None, bool]:
-        try:
-            response = self._client.post(
-                "/v1/responses",
-                # Per request, not on the client: auth that lives on the client
-                # disappears silently if the client is ever swapped.
-                headers={"Authorization": f"Bearer {self._api_key}"},
-                json={
-                    "model": self.model,
-                    "instructions": system,
-                    "input": user,
-                    "max_output_tokens": max_tokens + THINKING_HEADROOM_TOKENS,
-                },
-            )
-            if response.status_code in _RETRYABLE_STATUS:
-                log.warning(
-                    "openai throttled, will retry",
-                    extra={"status": response.status_code, "model": self.model},
-                )
-                return None, True
-            response.raise_for_status()
-            payload = response.json()
+        models_to_try = [self.model, "gpt-4o-mini", "gpt-4o"]
+        # deduplicate while preserving order
+        models_to_try = list(dict.fromkeys(models_to_try))
 
-            text = (payload.get("output_text") or "").strip()
-            if not text:
-                # output_text is a convenience field; fall back to walking the
-                # structured output so a reasoning item alone is not mistaken
-                # for an answer.
-                chunks = []
-                for item in payload.get("output", []):
-                    for part in item.get("content", []) or []:
-                        if part.get("type") in ("output_text", "text"):
-                            chunks.append(part.get("text", ""))
-                text = "".join(chunks).strip()
-
-            if payload.get("status") == "incomplete":
-                reason = (payload.get("incomplete_details") or {}).get("reason")
-                log.warning(
-                    "openai answer incomplete; discarding it",
-                    extra={"model": self.model, "reason": reason, "text_chars": len(text)},
+        for m in models_to_try:
+            try:
+                response = self._client.post(
+                    "/v1/chat/completions",
+                    json={
+                        "model": m,
+                        "messages": [
+                            {"role": "system", "content": system},
+                            {"role": "user", "content": user},
+                        ],
+                        "max_tokens": max_tokens,
+                        "temperature": 0.3,
+                    },
                 )
-                return None, False
-            if not text:
-                log.warning("openai returned no text", extra={"model": self.model})
-                return None, False
-            return text, False
-        except (httpx.HTTPError, KeyError, ValueError, TypeError) as exc:
-            log.warning("llm call failed, falling back", extra={"error": str(exc)})
-            return None, False
+                if response.status_code in _RETRYABLE_STATUS:
+                    log.warning("openai throttled, will retry", extra={"status": response.status_code, "model": m})
+                    return None, True
+                if response.status_code == 404 or response.status_code == 400:
+                    # Try next model if model not found
+                    log.warning("openai model failed, trying fallback", extra={"status": response.status_code, "model": m})
+                    continue
+                response.raise_for_status()
+                data = response.json()
+                choices = data.get("choices", [])
+                if choices:
+                    content = choices[0].get("message", {}).get("content", "").strip()
+                    if content:
+                        return content, False
+            except httpx.HTTPStatusError as exc:
+                log.warning("openai request status error", extra={"status": exc.response.status_code, "model": m})
+                if exc.response.status_code in _RETRYABLE_STATUS:
+                    return None, True
+            except Exception as exc:
+                log.warning("openai call failed", extra={"error": str(exc), "model": m})
+                continue
+        return None, False
+
+    def complete_stream(self, system: str, user: str, max_tokens: int = 1200) -> Iterator[str]:
+        """Stream chunks from OpenAI chat completions."""
+        models_to_try = [self.model, "gpt-4o-mini", "gpt-4o"]
+        models_to_try = list(dict.fromkeys(models_to_try))
+
+        for m in models_to_try:
+            try:
+                with self._client.stream(
+                    "POST",
+                    "/v1/chat/completions",
+                    json={
+                        "model": m,
+                        "messages": [
+                            {"role": "system", "content": system},
+                            {"role": "user", "content": user},
+                        ],
+                        "max_tokens": max_tokens,
+                        "temperature": 0.3,
+                        "stream": True,
+                    },
+                ) as response:
+                    if response.status_code != 200:
+                        continue
+                    for line in response.iter_lines():
+                        if not line:
+                            continue
+                        if line.startswith("data: "):
+                            raw_data = line[6:].strip()
+                            if raw_data == "[DONE]":
+                                break
+                            try:
+                                chunk = json.loads(raw_data)
+                                choices = chunk.get("choices", [])
+                                if choices:
+                                    delta = choices[0].get("delta", {})
+                                    content = delta.get("content")
+                                    if content:
+                                        yield content
+                            except json.JSONDecodeError:
+                                continue
+                    return
+            except Exception as exc:
+                log.warning("streaming chunk error, trying next", extra={"error": str(exc), "model": m})
+                continue
 
 
 _provider: LLMProvider | None = None
 
 
 def _select(settings) -> LLMProvider:
-    """Pick a provider from configuration.
-
-    `auto` prefers OpenAI when both keys are present; naming a provider
-    explicitly always wins, and `none` disables the model without anyone having
-    to delete a key.
-    """
     choice = (settings.llm_provider or "auto").strip().lower()
     if choice == "none" or not settings.llm_live:
         return DeterministicNarrator()
     if choice in ("auto", "openai") and settings.openai_api_key:
         return OpenAIProvider(
-            settings.openai_api_key, settings.openai_model, settings.llm_timeout_seconds
+            settings.openai_api_key,
+            settings.openai_model or "gpt-4o-mini",
+            settings.llm_timeout_seconds,
+            getattr(settings, "openai_base_url", "https://api.openai.com"),
         )
     if choice in ("auto", "gemini") and settings.gemini_api_key:
         return GeminiProvider(

@@ -1,11 +1,10 @@
-"""Documents, requirements, retrieval, evidence, information gaps and Mireye passthrough."""
-
-from __future__ import annotations
-
+import json
 import logging
+import time
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi.responses import StreamingResponse
 
 from ..adapters.mireye import MireyeError, get_mireye_client
 from ..adapters.vectorstore import get_index
@@ -35,6 +34,12 @@ from ..schemas import (
     SearchResponse,
     UploadResponse,
 )
+from ..services.ingest import IngestionError, ingest_pdf, safe_filename, validate_upload
+from ..store import C, Store
+from .deps import get_project, store_dep
+
+log = logging.getLogger("knowledge")
+router = APIRouter(tags=["knowledge"])
 
 SENIOR_CIVIL_EPC_SYSTEM_PROMPT = """You are a Principal Civil, Structural, and EPC Critical Infrastructure Engineer with over 25 years of hands-on experience designing, procuring, permitting, and constructing hyperscale Tier III and Tier IV data center campuses worldwide.
 
@@ -45,7 +50,85 @@ STRICT DOMAIN RESTRICTIONS & SCOPE:
 4. When evaluating candidate sites or answering queries:
    - Identify what is wrong, problematic, or high-risk (e.g., excessive slope requiring retaining walls, high seismic PGA increasing anchor load & structural framing costs, water stress in dry basins, lack of diverse substation feeds, flood plain proximity).
    - Propose clear, actionable civil and EPC engineering improvements and mitigations (e.g., deep driven pile foundations, raised equipment pad elevations above 500-year flood levels, closed-loop adiabatic cooling, dual 230kV ring-bus interconnection, on-site battery ESS/generator reserve, stormwater detention basins).
+   - Leverage any provided physical Mireye telemetry (coordinates, elevation, seismic hazard, water index, grid distance) directly in your analysis.
 """
+
+
+def _build_advisor_prompt(
+    payload: AdvisorChatRequest,
+    project: Project,
+    store: Store,
+    mireye_client,
+) -> tuple[str, str, list[str]]:
+    """Gathers project, site, and live Mireye physical telemetry to build context."""
+    context_lines = [f"Project: {project.name} (Client: {project.client or 'Self'}, Region: {project.region or 'Global'})"]
+    if project.target_it_capacity_mw:
+        context_lines.append(f"Target IT Load: {project.target_it_capacity_mw} MW")
+
+    site_name = "General Project Scope"
+    lat, lon = None, None
+
+    if payload.site_id:
+        site = store.get(C.SITES, payload.site_id, CandidateSite)
+        if site:
+            site_name = site.name
+            lat, lon = site.latitude, site.longitude
+            context_lines.append(f"Active Site: {site.name} (Address: {site.address or 'N/A'}, Lat: {site.latitude}, Lon: {site.longitude}, Area: {site.area_hectares or 'N/A'} ha)")
+            if site.notes:
+                context_lines.append(f"Site Notes/Specs: {site.notes}")
+            # Fetch recent evidence stored for this site
+            evidence_list = store.list(C.EVIDENCE, Evidence, project_id=project.id, subject_id=site.id)
+            if evidence_list:
+                ev_summary = ", ".join(f"{e.field_key}: {e.value} {e.unit or ''}" for e in evidence_list[:15])
+                context_lines.append(f"Stored Physical Telemetry: {ev_summary}")
+
+    if payload.site_context:
+        ctx_dump = ", ".join(f"{k}: {v}" for k, v in payload.site_context.items() if v is not None)
+        context_lines.append(f"Discovery Context: {ctx_dump}")
+
+    # Query Mireye live for physical context if available
+    mireye_facts = []
+    if mireye_client:
+        try:
+            # If coordinates are available or mentioned in question, query Mireye
+            mireye_res = mireye_client.ask(payload.message, lat, lon)
+            if mireye_res and mireye_res.answer:
+                mireye_facts.append(f"Mireye Physical Data: {mireye_res.answer}")
+        except Exception as exc:
+            log.info("mireye live query skipped in advisor", extra={"error": str(exc)})
+
+    if mireye_facts:
+        context_lines.append("=== LIVE MIREYE TELEMETRY ===")
+        context_lines.extend(mireye_facts)
+
+    # Include recent chat history
+    history_lines = []
+    if payload.history:
+        for msg in payload.history[-4:]:
+            role = "User" if msg.get("role") == "user" else "Senior Civil PE"
+            history_lines.append(f"{role}: {msg.get('content', '')}")
+
+    context_text = "\n".join(context_lines)
+    history_text = "\n".join(history_lines)
+    if history_text:
+        history_text = f"\nRECENT CONVERSATION:\n{history_text}\n"
+
+    user_prompt = f"""CONTEXT:
+{context_text}
+{history_text}
+USER QUESTION:
+{payload.message}
+
+Please provide your senior civil and EPC engineering assessment, identifying potential issues or risks, and recommending actionable improvements/mitigations."""
+
+    improvements = [
+        "Conduct geotechnical CPT borings for soil bearing verification",
+        "Establish Finished Floor Elevation (FFE) at minimum BFE + 3.0 ft",
+        "Specify closed-loop adiabatic cooling to eliminate municipal water dependency",
+        "Secure dual-diverse 230kV utility transmission feeds with on-site substation yard",
+    ]
+
+    return user_prompt, site_name, improvements
 
 
 @router.post("/projects/{project_id}/advisor/chat", response_model=AdvisorChatResponse)
@@ -54,43 +137,15 @@ def advisor_chat(
     project: Project = Depends(get_project),
     store: Store = Depends(store_dep),
 ):
-    """Consult the Senior Civil & Structural EPC Engineer AI Advisor."""
+    """Consult the Senior Civil & Structural EPC Engineer AI Advisor (Synchronous)."""
     llm = get_llm()
-
-    # Build context from project & site if available
-    context_lines = [f"Project: {project.name} (Client: {project.client or 'Self'}, Region: {project.region or 'Global'})"]
-    if project.target_it_capacity_mw:
-        context_lines.append(f"Target IT Load: {project.target_it_capacity_mw} MW")
-
-    site_name = "General Project Scope"
-    if payload.site_id:
-        site = store.get(C.SITES, payload.site_id, CandidateSite)
-        if site:
-            site_name = site.name
-            context_lines.append(f"Active Site: {site.name} (Lat: {site.latitude}, Lon: {site.longitude}, Area: {site.area_hectares or 'N/A'} ha, Notes: {site.notes or 'N/A'})")
-            # Fetch recent evidence for this site
-            evidence_list = store.list(C.EVIDENCE, Evidence, project_id=project.id, subject_id=site.id)
-            if evidence_list:
-                ev_summary = ", ".join(f"{e.field_key}: {e.value} {e.unit or ''}" for e in evidence_list[:12])
-                context_lines.append(f"Site Telemetry: {ev_summary}")
-
-    if payload.site_context:
-        ctx_dump = ", ".join(f"{k}: {v}" for k, v in payload.site_context.items() if v is not None)
-        context_lines.append(f"Additional Discovery Context: {ctx_dump}")
-
-    user_prompt = f"""CONTEXT:
-{chr(10).join(context_lines)}
-
-USER QUESTION / OBSERVATION:
-{payload.message}
-
-Please provide your senior civil EPC engineering assessment, identifying potential issues or risks, and recommending actionable improvements/mitigations."""
+    mireye_client = get_mireye_client()
+    user_prompt, site_name, improvements = _build_advisor_prompt(payload, project, store, mireye_client)
 
     reply = None
     if llm and llm.available:
-        reply = llm.complete(system=SENIOR_CIVIL_EPC_SYSTEM_PROMPT, user=user_prompt, max_tokens=1000)
+        reply = llm.complete(system=SENIOR_CIVIL_EPC_SYSTEM_PROMPT, user=user_prompt, max_tokens=1200)
 
-    # Fallback deterministic engineering response if LLM provider is not configured or offline
     if not reply:
         q_lower = payload.message.lower()
         if "flood" in q_lower or "water" in q_lower:
@@ -105,21 +160,57 @@ Please provide your senior civil EPC engineering assessment, identifying potenti
     return AdvisorChatResponse(
         reply=reply,
         engineer_role="Principal Civil & Structural EPC Engineer",
-        suggested_improvements=[
-            "Conduct geotechnical CPT borings for soil bearing verification",
-            "Establish Finished Floor Elevation (FFE) at minimum BFE + 3.0 ft",
-            "Specify closed-loop adiabatic cooling to eliminate municipal water dependency",
-            "Secure dual-diverse 230kV utility transmission feeds with on-site substation yard",
-        ],
+        suggested_improvements=improvements,
         mode=getattr(llm, "name", "deterministic"),
         disclaimer="Advisory engineering opinion. Certified drawings and structural calculations require PE stamp.",
     )
-from ..services.ingest import IngestionError, ingest_pdf, safe_filename, validate_upload
-from ..store import C, Store
-from .deps import get_project, store_dep
 
-log = logging.getLogger("knowledge")
-router = APIRouter(tags=["knowledge"])
+
+@router.post("/projects/{project_id}/advisor/chat/stream")
+def advisor_chat_stream(
+    payload: AdvisorChatRequest,
+    project: Project = Depends(get_project),
+    store: Store = Depends(store_dep),
+):
+    """Stream response from Senior Civil EPC Advisor with Mireye telemetry integration."""
+    llm = get_llm()
+    mireye_client = get_mireye_client()
+    user_prompt, site_name, improvements = _build_advisor_prompt(payload, project, store, mireye_client)
+
+    def event_stream():
+        has_streamed = False
+        if llm and llm.available:
+            try:
+                for chunk in llm.complete_stream(system=SENIOR_CIVIL_EPC_SYSTEM_PROMPT, user=user_prompt, max_tokens=1200):
+                    if chunk:
+                        has_streamed = True
+                        yield f"data: {json.dumps({'chunk': chunk})}\n\n"
+            except Exception as exc:
+                log.warning("error in advisor complete_stream", extra={"error": str(exc)})
+
+        # If LLM didn't stream or is not available, stream the deterministic fallback chunk-by-chunk
+        if not has_streamed:
+            q_lower = payload.message.lower()
+            if "flood" in q_lower or "water" in q_lower:
+                text = f"**Senior Civil EPC Assessment for {site_name}:**\n\n1. **Hydrology & Flood Risk**: Check FEMA 100-yr and 500-yr base flood elevations (BFE). All critical switchgear, diesel generators, and IT floor slabs must be established at minimum BFE + 3.0 ft finished floor elevation (FFE).\n2. **Stormwater & Drainage**: Require on-site retention/detention basins designed for a 100-year, 24-hour storm event with redundant culvert outfalls.\n3. **Cooling Infrastructure**: In water-stressed basins, specify closed-loop air-cooled chillers with adiabatic pre-cooling pads rather than open evaporative cooling towers."
+            elif "seismic" in q_lower or "earthquake" in q_lower:
+                text = f"**Senior Civil EPC Assessment for {site_name}:**\n\n1. **Seismic Hazard**: Review ASCE 7-22 Peak Ground Acceleration (PGA) and Risk Category IV design parameters.\n2. **Structural Anchoring & Base Isolation**: Heavy equipment (chillers, 2.5 MW generators, 480V UPS battery skids) requires OSHPD/IBC pre-approved seismic snubber mounts and positive bolting into 12\"+ post-tensioned reinforced concrete slabs.\n3. **Soil Geotechnics**: Perform deep borehole CPT testing to rule out liquefaction potential in alluvial soil layers."
+            elif "power" in q_lower or "grid" in q_lower or "substation" in q_lower:
+                text = f"**Senior Civil EPC Assessment for {site_name}:**\n\n1. **Grid Interconnection**: Target dual-fed, diverse 115kV or 230kV transmission lines from separate utility substations with automated high-speed transfer switching (ATS/STS).\n2. **Substation Civil Yard**: Allocate minimum 3 to 5 acres for dedicated on-site step-down transformers (230kV to 34.5kV/13.8kV) with concrete blast deflection containment walls and oil-catchment fire basins.\n3. **Reserve Generation**: Plan N+1 or 2N diesel/HVO generator enclosures with 48 to 72 hours of on-site bulk fuel storage capacity."
+            else:
+                text = f"**Senior Civil EPC Assessment for {site_name}:**\n\nFrom a master-planning and EPC constructability perspective:\n1. **Site Civil Grading & Cut/Fill**: Minimize cut-and-fill imbalance across the parcel. Any slope exceeding 3% will require engineered tiered pads and soil retaining walls, adding $1.2M–$3.5M to civil site preparation.\n2. **Geotechnical Foundations**: Prioritize drilled shaft piers or spread footings bearing on minimum 4,000 psf allowable soil capacity to support dense server rack column point loads (up to 250–350 lbs/sq ft).\n3. **Permitting & Utility Easements**: Secure heavy-haul transportation routing for oversized electrical transformers and verify local stormwater/wetland permits with county civil authorities early."
+
+            # Emit in readable words
+            words = text.split(" ")
+            for i in range(0, len(words), 3):
+                chunk = " ".join(words[i:i+3]) + " "
+                yield f"data: {json.dumps({'chunk': chunk})}\n\n"
+                time.sleep(0.04)
+
+        # End of stream event with metadata
+        yield f"data: {json.dumps({'done': True, 'improvements': improvements, 'mode': getattr(llm, 'name', 'deterministic')})}\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
 @router.get("/mireye/fields")

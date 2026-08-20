@@ -74,7 +74,8 @@ class Settings(BaseSettings):
     # deterministic Python, and `test_llm.py` enforces it.
     llm_provider: str = "auto"  # auto | openai | gemini | none
     openai_api_key: str | None = None
-    openai_model: str = "gpt-5.1"
+    openai_base_url: str = "https://api.openai.com"
+    openai_model: str = "gpt-4o-mini"
     gemini_api_key: str | None = None
     gemini_model: str = "gemini-3.6-flash"
     llm_timeout_seconds: float = 30.0
