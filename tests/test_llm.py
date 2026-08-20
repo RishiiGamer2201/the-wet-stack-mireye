@@ -73,10 +73,11 @@ def test_get_llm_returns_the_narrator_when_unconfigured(monkeypatch):
 
 
 def test_the_dead_provider_settings_are_gone():
-    """openai_api_key and embedding_* were read nowhere; leaving them invited
-    someone to configure a model that would never be called."""
+    """Anthropic was removed, and embedding_* were read nowhere. openai_api_key
+    is deliberately NOT in this list any more — it is wired to a real provider."""
     settings = Settings(_env_file=None)
-    for dead in ("anthropic_api_key", "anthropic_model", "openai_api_key",
+    assert hasattr(settings, "openai_api_key")
+    for dead in ("anthropic_api_key", "anthropic_model",
                  "embedding_provider", "embedding_model"):
         assert not hasattr(settings, dead), dead
 
@@ -371,3 +372,135 @@ def test_a_truncated_answer_is_discarded_rather_than_shown():
         })
 
     assert gemini(handler).complete("s", "u") is None
+
+
+# ---------------------------------------------------------------------------
+# OpenAI
+# ---------------------------------------------------------------------------
+
+
+def openai_provider(handler, model: str = "gpt-5.1"):
+    from app.adapters.llm import OpenAIProvider
+
+    provider = OpenAIProvider("sk-test", model)
+    provider._client = httpx.Client(
+        base_url="https://api.openai.com", transport=httpx.MockTransport(handler)
+    )
+    return provider
+
+
+def openai_reply(text: str, status: str = "completed"):
+    return lambda r: httpx.Response(
+        200,
+        json={
+            "status": status,
+            "output_text": text,
+            "output": [{"content": [{"type": "output_text", "text": text}]}],
+        },
+    )
+
+
+def test_openai_uses_the_responses_api_with_a_bearer_key():
+    seen: dict = {}
+
+    def handler(request):
+        import json as _json
+
+        seen["path"] = request.url.path
+        seen["auth"] = request.headers.get("authorization")
+        seen["body"] = _json.loads(request.read())
+        return openai_reply("ok")(request)
+
+    assert openai_provider(handler).complete("SYSTEM", "USER", max_tokens=600) == "ok"
+    assert seen["path"] == "/v1/responses"
+    assert seen["auth"] == "Bearer sk-test"
+    assert seen["body"]["instructions"] == "SYSTEM"
+    assert seen["body"]["input"] == "USER"
+    # Reasoning models spend the same budget thinking, so headroom applies here too.
+    from app.adapters.llm import THINKING_HEADROOM_TOKENS
+
+    assert seen["body"]["max_output_tokens"] == 600 + THINKING_HEADROOM_TOKENS
+
+
+def test_openai_reads_text_from_the_structured_output_when_output_text_is_empty():
+    def handler(request):
+        return httpx.Response(200, json={
+            "status": "completed",
+            "output_text": "",
+            "output": [
+                {"type": "reasoning", "content": []},
+                {"content": [{"type": "output_text", "text": "from the structured field"}]},
+            ],
+        })
+
+    assert openai_provider(handler).complete("s", "u") == "from the structured field"
+
+
+def test_openai_discards_an_incomplete_answer():
+    """A response cut off by the token cap is half a sentence; discard it."""
+    def handler(request):
+        return httpx.Response(200, json={
+            "status": "incomplete",
+            "incomplete_details": {"reason": "max_output_tokens"},
+            "output_text": "The decision state is",
+        })
+
+    assert openai_provider(handler).complete("s", "u") is None
+
+
+@pytest.mark.parametrize(
+    "handler",
+    [
+        pytest.param(lambda r: httpx.Response(500, json={"error": {}}), id="server_error"),
+        pytest.param(lambda r: httpx.Response(401, json={"error": {}}), id="bad_key"),
+        pytest.param(lambda r: httpx.Response(200, content=b"not json"), id="malformed"),
+        pytest.param(lambda r: httpx.Response(200, json={"status": "completed"}), id="no_text"),
+    ],
+)
+def test_openai_failures_return_none(handler):
+    import app.adapters.llm as llm_mod
+
+    original = llm_mod.time.sleep
+    llm_mod.time.sleep = lambda _s: None
+    try:
+        assert openai_provider(handler).complete("s", "u") is None
+    finally:
+        llm_mod.time.sleep = original
+
+
+def test_openai_retries_throttling():
+    calls = {"n": 0}
+
+    def handler(request):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return httpx.Response(429, json={"error": {}})
+        return openai_reply("recovered")(request)
+
+    import app.adapters.llm as llm_mod
+
+    original = llm_mod.time.sleep
+    llm_mod.time.sleep = lambda _s: None
+    try:
+        assert openai_provider(handler).complete("s", "u") == "recovered"
+    finally:
+        llm_mod.time.sleep = original
+    assert calls["n"] == 2
+
+
+def test_openai_is_preferred_when_both_keys_are_present():
+    settings = Settings(_env_file=None, openai_api_key="o", gemini_api_key="g")
+    assert settings.llm_name == "openai"
+    assert settings.service_modes()["llm"] == "openai"
+
+
+def test_naming_a_provider_explicitly_overrides_the_preference():
+    settings = Settings(_env_file=None, openai_api_key="o", gemini_api_key="g", llm_provider="gemini")
+    assert settings.llm_name == "gemini"
+
+
+def test_a_provider_named_without_its_key_falls_back_rather_than_crashing():
+    settings = Settings(_env_file=None, gemini_api_key="g", llm_provider="openai")
+    from app.adapters.llm import _select
+
+    assert _select(settings).name == "deterministic"

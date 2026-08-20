@@ -189,7 +189,7 @@ FORBIDDEN = [
     (r"https?://localhost", "localhost URL"),
     (r"https?://127\.0\.0\.1", "loopback URL"),
     (r"[A-Za-z]:\\\\[A-Za-z]", "Windows filesystem path"),
-    (r"sk-[A-Za-z0-9]{16,}", "OpenAI-style secret"),
+    (r"sk-(?:proj-)?[A-Za-z0-9_\-]{20,}", "OpenAI secret"),
     (r"AIza[0-9A-Za-z_\-]{30,}", "Google/Gemini API key"),
     (r"lsv2_[a-z]{2}_[0-9a-f]{16,}", "LangSmith key"),
     (r"postgres(?:ql)?://[^\s\"']*:[^\s\"'@]+@", "database URL with credentials"),

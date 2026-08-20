@@ -72,7 +72,9 @@ class Settings(BaseSettings):
     # The model may plan an investigation and explain findings. It can never
     # produce a score, delta, threshold or decision state — those are
     # deterministic Python, and `test_llm.py` enforces it.
-    llm_provider: str = "auto"  # auto | gemini | none
+    llm_provider: str = "auto"  # auto | openai | gemini | none
+    openai_api_key: str | None = None
+    openai_model: str = "gpt-5.1"
     gemini_api_key: str | None = None
     gemini_model: str = "gemini-3.6-flash"
     llm_timeout_seconds: float = 30.0
@@ -159,7 +161,19 @@ class Settings(BaseSettings):
     def llm_live(self) -> bool:
         if self.llm_provider == "none":
             return False
-        return bool(self.gemini_api_key)
+        return bool(self.openai_api_key or self.gemini_api_key)
+
+    @property
+    def llm_name(self) -> str:
+        """Which provider will actually be used, not which was configured."""
+        if not self.llm_live:
+            return "deterministic"
+        choice = (self.llm_provider or "auto").strip().lower()
+        if choice in ("auto", "openai") and self.openai_api_key:
+            return "openai"
+        if choice in ("auto", "gemini") and self.gemini_api_key:
+            return "gemini"
+        return "deterministic"
 
     @property
     def tracing_live(self) -> bool:
@@ -181,7 +195,7 @@ class Settings(BaseSettings):
             "graph": "neo4j" if self.neo4j_live else "in_memory",
             "vector": "pgvector" if self.pgvector_live else "lexical_sqlite",
             "store": "postgres" if self.database_url else "sqlite",
-            "llm": "gemini" if self.llm_live else "deterministic",
+            "llm": self.llm_name,
             "tracing": "langsmith" if self.tracing_live else "off",
         }
 

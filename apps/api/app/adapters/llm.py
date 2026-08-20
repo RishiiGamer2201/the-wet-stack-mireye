@@ -147,19 +147,120 @@ class GeminiProvider:
             return None, False
 
 
+class OpenAIProvider:
+    """OpenAI via the Responses API.
+
+    Same contract as every other provider: text in, text out, `None` on any
+    failure so the deterministic pipeline continues untouched. The model is
+    never handed a number to compute and its output is never parsed into one.
+
+    Uses `/v1/responses` rather than `/v1/chat/completions` because the current
+    reasoning models are built around it; `max_output_tokens` there covers
+    reasoning *and* the visible answer, exactly like Gemini, so the same
+    headroom applies.
+    """
+
+    name = "openai"
+    available = True
+
+    def __init__(self, api_key: str, model: str, timeout: float = 60.0) -> None:
+        self.model = model
+        self._api_key = api_key
+        self._client = httpx.Client(
+            base_url="https://api.openai.com",
+            timeout=timeout,
+            headers={"content-type": "application/json"},
+        )
+
+    def complete(self, system: str, user: str, max_tokens: int = 700) -> str | None:
+        for attempt in range(_RETRY_ATTEMPTS + 1):
+            text, retryable = self._attempt(system, user, max_tokens)
+            if text is not None or not retryable or attempt == _RETRY_ATTEMPTS:
+                return text
+            time.sleep(_RETRY_BACKOFF_SECONDS[attempt])
+        return None
+
+    def _attempt(self, system: str, user: str, max_tokens: int) -> tuple[str | None, bool]:
+        try:
+            response = self._client.post(
+                "/v1/responses",
+                # Per request, not on the client: auth that lives on the client
+                # disappears silently if the client is ever swapped.
+                headers={"Authorization": f"Bearer {self._api_key}"},
+                json={
+                    "model": self.model,
+                    "instructions": system,
+                    "input": user,
+                    "max_output_tokens": max_tokens + THINKING_HEADROOM_TOKENS,
+                },
+            )
+            if response.status_code in _RETRYABLE_STATUS:
+                log.warning(
+                    "openai throttled, will retry",
+                    extra={"status": response.status_code, "model": self.model},
+                )
+                return None, True
+            response.raise_for_status()
+            payload = response.json()
+
+            text = (payload.get("output_text") or "").strip()
+            if not text:
+                # output_text is a convenience field; fall back to walking the
+                # structured output so a reasoning item alone is not mistaken
+                # for an answer.
+                chunks = []
+                for item in payload.get("output", []):
+                    for part in item.get("content", []) or []:
+                        if part.get("type") in ("output_text", "text"):
+                            chunks.append(part.get("text", ""))
+                text = "".join(chunks).strip()
+
+            if payload.get("status") == "incomplete":
+                reason = (payload.get("incomplete_details") or {}).get("reason")
+                log.warning(
+                    "openai answer incomplete; discarding it",
+                    extra={"model": self.model, "reason": reason, "text_chars": len(text)},
+                )
+                return None, False
+            if not text:
+                log.warning("openai returned no text", extra={"model": self.model})
+                return None, False
+            return text, False
+        except (httpx.HTTPError, KeyError, ValueError, TypeError) as exc:
+            log.warning("llm call failed, falling back", extra={"error": str(exc)})
+            return None, False
+
+
 _provider: LLMProvider | None = None
+
+
+def _select(settings) -> LLMProvider:
+    """Pick a provider from configuration.
+
+    `auto` prefers OpenAI when both keys are present; naming a provider
+    explicitly always wins, and `none` disables the model without anyone having
+    to delete a key.
+    """
+    choice = (settings.llm_provider or "auto").strip().lower()
+    if choice == "none" or not settings.llm_live:
+        return DeterministicNarrator()
+    if choice in ("auto", "openai") and settings.openai_api_key:
+        return OpenAIProvider(
+            settings.openai_api_key, settings.openai_model, settings.llm_timeout_seconds
+        )
+    if choice in ("auto", "gemini") and settings.gemini_api_key:
+        return GeminiProvider(
+            settings.gemini_api_key, settings.gemini_model, settings.llm_timeout_seconds
+        )
+    log.warning("llm_provider=%s but no matching key is configured", choice)
+    return DeterministicNarrator()
 
 
 def get_llm() -> LLMProvider:
     global _provider
     if _provider is None:
         settings = get_settings()
-        if settings.llm_live:
-            _provider = GeminiProvider(
-                settings.gemini_api_key, settings.gemini_model, settings.llm_timeout_seconds
-            )
-        else:
-            _provider = DeterministicNarrator()
+        _provider = _select(settings)
     return _provider
 
 
