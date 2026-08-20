@@ -62,7 +62,7 @@ def test_llm_provider_none_overrides_a_present_key():
 
 
 def test_get_llm_returns_the_narrator_when_unconfigured(monkeypatch):
-    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.setenv("GEMINI_API_KEY", "")
     get_settings.cache_clear()
     set_llm(None)
     try:
@@ -286,3 +286,88 @@ def test_a_model_that_returns_junk_leaves_the_plan_untouched():
         ),
         EquipmentConfiguration(), EquipmentConfiguration(), _Junk(), offset=0,
     ) == []
+
+
+def test_throttling_is_retried_then_gives_up_gracefully():
+    """The free tier returns 429 readily. One click should survive a blip, but a
+    sustained outage must fall back rather than hang."""
+    calls = {"n": 0}
+
+    def handler(request):
+        calls["n"] += 1
+        return httpx.Response(429, json={"error": {"message": "quota"}})
+
+    provider = gemini(handler)
+    provider_sleep = []
+    import app.adapters.llm as llm_mod
+
+    original = llm_mod.time.sleep
+    llm_mod.time.sleep = provider_sleep.append
+    try:
+        assert provider.complete("s", "u") is None
+    finally:
+        llm_mod.time.sleep = original
+    assert calls["n"] == 3, "initial attempt plus two retries"
+    assert provider_sleep == [1.0, 3.0], "short, bounded backoff"
+
+
+def test_a_retry_recovers_when_the_second_attempt_succeeds():
+    calls = {"n": 0}
+
+    def handler(request):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return httpx.Response(503, json={"error": {"message": "busy"}})
+        return reply("recovered")(request)
+
+    import app.adapters.llm as llm_mod
+
+    original = llm_mod.time.sleep
+    llm_mod.time.sleep = lambda _s: None
+    try:
+        assert gemini(handler).complete("s", "u") == "recovered"
+    finally:
+        llm_mod.time.sleep = original
+    assert calls["n"] == 2
+
+
+def test_a_non_throttling_error_is_not_retried():
+    """A bad key is not going to fix itself; retrying only wastes the demo's time."""
+    calls = {"n": 0}
+
+    def handler(request):
+        calls["n"] += 1
+        return httpx.Response(403, json={"error": {"message": "bad key"}})
+
+    assert gemini(handler).complete("s", "u") is None
+    assert calls["n"] == 1
+
+
+def test_the_visible_budget_gets_thinking_headroom():
+    """Gemini 3.x spends ~1400+ tokens reasoning before writing. Callers ask for
+    the length they want to read; the adapter adds room to think."""
+    seen: dict = {}
+
+    def handler(request):
+        import json as _json
+
+        seen.update(_json.loads(request.read())["generationConfig"])
+        return reply("ok")(request)
+
+    from app.adapters.llm import THINKING_HEADROOM_TOKENS
+
+    gemini(handler).complete("s", "u", max_tokens=600)
+    assert seen["maxOutputTokens"] == 600 + THINKING_HEADROOM_TOKENS
+    assert THINKING_HEADROOM_TOKENS >= 2000
+
+
+def test_a_truncated_answer_is_discarded_rather_than_shown():
+    """A half sentence next to engineering findings is worse than no sentence."""
+    def handler(request):
+        return httpx.Response(200, json={
+            "candidates": [{"finishReason": "MAX_TOKENS",
+                            "content": {"parts": [{"text": "The design has been placed in"}]}}],
+            "usageMetadata": {"thoughtsTokenCount": 1439},
+        })
+
+    assert gemini(handler).complete("s", "u") is None

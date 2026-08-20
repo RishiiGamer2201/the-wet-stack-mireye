@@ -686,7 +686,7 @@ def _llm_explain(ctx: Context, recommendation: Recommendation | None) -> Recomme
         "fact that is not listed.\n\n"
         f"Decision state: {recommendation.decision_state.value if recommendation.decision_state else 'n/a'}\n"
         f"Findings:\n{facts}",
-        max_tokens=400,
+        max_tokens=600,
     )
     if text:
         recommendation.rationale.append(f"(agent explanation) {text.strip()}")

@@ -74,7 +74,7 @@ class Settings(BaseSettings):
     # deterministic Python, and `test_llm.py` enforces it.
     llm_provider: str = "auto"  # auto | gemini | none
     gemini_api_key: str | None = None
-    gemini_model: str = "gemini-2.0-flash"
+    gemini_model: str = "gemini-3.6-flash"
     llm_timeout_seconds: float = 30.0
 
     # --- tracing (LangSmith) -----------------------------------------------

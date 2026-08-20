@@ -37,6 +37,13 @@ def _no_outbound_provider_calls(request, monkeypatch):
     if "live" in request.node.nodeid and "RUN_MIREYE_LIVE_TESTS" in os.environ:
         return
 
+    # Blank every real provider credential for the duration of the test. A
+    # developer's .env must never decide what a test does — before this, adding a
+    # GEMINI_API_KEY locally flipped an unrelated test from pass to fail.
+    for var in ("GEMINI_API_KEY", "LANGSMITH_API_KEY", "MIREYE_API_KEY", "MIREYE_BASE_URL"):
+        monkeypatch.setenv(var, "")
+    get_settings.cache_clear()
+
     real_send = httpx.HTTPTransport.handle_request
 
     def guarded(self, http_request):

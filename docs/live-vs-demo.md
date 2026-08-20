@@ -69,7 +69,7 @@ unreachable, the API logs a warning and continues on the local implementation.
 ### LLM
 ```dotenv
 GEMINI_API_KEY=...
-GEMINI_MODEL=gemini-2.0-flash
+GEMINI_MODEL=gemini-3.6-flash
 LANGSMITH_API_KEY=...     # optional: agent tracing
 ```
 The LLM may add up to three investigation steps (validated against the field catalog) and write the

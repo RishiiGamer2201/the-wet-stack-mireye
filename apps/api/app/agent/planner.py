@@ -210,7 +210,7 @@ def _llm_extra_steps(
         'Reply with JSON only: [{"title": "...", "rationale": "...", '
         '"fields": ["optional_mireye_field_key"]}]'
     )
-    raw = llm.complete(INVESTIGATION_SYSTEM, prompt, max_tokens=600)
+    raw = llm.complete(INVESTIGATION_SYSTEM, prompt, max_tokens=800)
     if not raw:
         return []
     try:
