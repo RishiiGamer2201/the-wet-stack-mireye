@@ -165,6 +165,7 @@ docs/                architecture, domain model, API, Mireye contract, scoring, 
 | [`docs/demo-walkthrough.md`](docs/demo-walkthrough.md) | A 6-minute scripted demo of both workflows |
 | [`docs/limitations.md`](docs/limitations.md) | Assumptions, safety limits and production hardening |
 | [`docs/verification-report.md`](docs/verification-report.md) | Requirement coverage, commands run, defects found and fixed |
+| [`docs/research-basis.md`](docs/research-basis.md) | Prior work, verified citations, the Procore patent finding, and the minimum agent set |
 | [`docs/deployment.md`](docs/deployment.md) | Vercel + Render setup, environment variables, ephemeral-storage behaviour, smoke tests |
 | [`IMPLEMENTATION_CHECKLIST.md`](IMPLEMENTATION_CHECKLIST.md) | Build checklist |
 
