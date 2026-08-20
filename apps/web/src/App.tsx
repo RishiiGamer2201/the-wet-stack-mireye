@@ -119,12 +119,18 @@ export default function App() {
       {/* ─── PAGE 2: PROJECT CREATION & LOGIN PAGE ─── */}
       {view === "setup" && (
         <ProjectCreatePage
+          projects={projects}
           onBack={() => setView("hero")}
           onProjectCreated={async (newProject, creatorName) => {
             setPersonName(creatorName);
             await bootstrap();
             setProjectId(newProject.id);
             await loadProject(newProject.id);
+            setView("portal");
+          }}
+          onSelectProject={async (selectedId) => {
+            setProjectId(selectedId);
+            await loadProject(selectedId);
             setView("portal");
           }}
           onSeedDemo={seedDemoData}
@@ -204,10 +210,6 @@ export default function App() {
                     </select>
                   </div>
                 )}
-
-                <Button size="sm" variant="primary" onClick={() => setView("setup")}>
-                  <Plus aria-hidden className="h-3.5 w-3.5" /> New Project
-                </Button>
 
                 {projects.length > 0 && (
                   <Button size="sm" onClick={resetAllData} loading={busy} title="Clear all data">
