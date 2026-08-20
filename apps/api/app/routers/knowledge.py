@@ -24,7 +24,10 @@ from ..domain import (
 )
 from ..engine.decisions import SAFETY_CAVEAT
 from ..fields import FIELDS
+from ..adapters.llm import get_llm
 from ..schemas import (
+    AdvisorChatRequest,
+    AdvisorChatResponse,
     AskRequest,
     AskResponse,
     GapUpdate,
@@ -32,6 +35,85 @@ from ..schemas import (
     SearchResponse,
     UploadResponse,
 )
+
+SENIOR_CIVIL_EPC_SYSTEM_PROMPT = """You are a Principal Civil, Structural, and EPC Critical Infrastructure Engineer with over 25 years of hands-on experience designing, procuring, permitting, and constructing hyperscale Tier III and Tier IV data center campuses worldwide.
+
+STRICT DOMAIN RESTRICTIONS & SCOPE:
+1. You STRICTLY answer questions relating to data center engineering, civil & structural design, power/substation sizing, cooling/HVAC systems (air-cooled, closed-loop, evaporative chillers), geotechnical soil bearing capacity, seismic PGA & liquefaction, FEMA flood plains & stormwater hydrology, wetland environmental permitting, parcel grading (cut & fill), and EPC construction execution.
+2. If a user asks about anything unrelated to data centers, civil/structural engineering, or critical facilities (e.g., general programming, cooking, personal advice, non-construction topics), you MUST decline firmly and politely redirect back to data center civil and EPC engineering.
+3. Tone: Direct, authoritative, highly technical, analytical, professional, and practical. Reference relevant engineering standards where appropriate (ASHRAE TC 9.9, ASCE 7-22, IBC, AHRI 550/590, NFPA 75/76, IEEE 1584, Uptime Institute Tier Standards).
+4. When evaluating candidate sites or answering queries:
+   - Identify what is wrong, problematic, or high-risk (e.g., excessive slope requiring retaining walls, high seismic PGA increasing anchor load & structural framing costs, water stress in dry basins, lack of diverse substation feeds, flood plain proximity).
+   - Propose clear, actionable civil and EPC engineering improvements and mitigations (e.g., deep driven pile foundations, raised equipment pad elevations above 500-year flood levels, closed-loop adiabatic cooling, dual 230kV ring-bus interconnection, on-site battery ESS/generator reserve, stormwater detention basins).
+"""
+
+
+@router.post("/projects/{project_id}/advisor/chat", response_model=AdvisorChatResponse)
+def advisor_chat(
+    payload: AdvisorChatRequest,
+    project: Project = Depends(get_project),
+    store: Store = Depends(store_dep),
+):
+    """Consult the Senior Civil & Structural EPC Engineer AI Advisor."""
+    llm = get_llm()
+
+    # Build context from project & site if available
+    context_lines = [f"Project: {project.name} (Client: {project.client or 'Self'}, Region: {project.region or 'Global'})"]
+    if project.target_it_capacity_mw:
+        context_lines.append(f"Target IT Load: {project.target_it_capacity_mw} MW")
+
+    site_name = "General Project Scope"
+    if payload.site_id:
+        site = store.get(C.SITES, payload.site_id, CandidateSite)
+        if site:
+            site_name = site.name
+            context_lines.append(f"Active Site: {site.name} (Lat: {site.latitude}, Lon: {site.longitude}, Area: {site.area_hectares or 'N/A'} ha, Notes: {site.notes or 'N/A'})")
+            # Fetch recent evidence for this site
+            evidence_list = store.list(C.EVIDENCE, Evidence, project_id=project.id, subject_id=site.id)
+            if evidence_list:
+                ev_summary = ", ".join(f"{e.field_key}: {e.value} {e.unit or ''}" for e in evidence_list[:12])
+                context_lines.append(f"Site Telemetry: {ev_summary}")
+
+    if payload.site_context:
+        ctx_dump = ", ".join(f"{k}: {v}" for k, v in payload.site_context.items() if v is not None)
+        context_lines.append(f"Additional Discovery Context: {ctx_dump}")
+
+    user_prompt = f"""CONTEXT:
+{chr(10).join(context_lines)}
+
+USER QUESTION / OBSERVATION:
+{payload.message}
+
+Please provide your senior civil EPC engineering assessment, identifying potential issues or risks, and recommending actionable improvements/mitigations."""
+
+    reply = None
+    if llm and llm.available:
+        reply = llm.complete(system=SENIOR_CIVIL_EPC_SYSTEM_PROMPT, user=user_prompt, max_tokens=1000)
+
+    # Fallback deterministic engineering response if LLM provider is not configured or offline
+    if not reply:
+        q_lower = payload.message.lower()
+        if "flood" in q_lower or "water" in q_lower:
+            reply = f"**Senior Civil EPC Assessment for {site_name}:**\n\n1. **Hydrology & Flood Risk**: Check FEMA 100-yr and 500-yr base flood elevations (BFE). All critical switchgear, diesel generators, and IT floor slabs must be established at minimum BFE + 3.0 ft finished floor elevation (FFE).\n2. **Stormwater & Drainage**: Require on-site retention/detention basins designed for a 100-year, 24-hour storm event with redundant culvert outfalls.\n3. **Cooling Infrastructure**: In water-stressed basins, specify closed-loop air-cooled chillers with adiabatic pre-cooling pads rather than open evaporative cooling towers."
+        elif "seismic" in q_lower or "earthquake" in q_lower:
+            reply = f"**Senior Civil EPC Assessment for {site_name}:**\n\n1. **Seismic Hazard**: Review ASCE 7-22 Peak Ground Acceleration (PGA) and Risk Category IV design parameters.\n2. **Structural Anchoring & Base Isolation**: Heavy equipment (chillers, 2.5 MW generators, 480V UPS battery skids) requires OSHPD/IBC pre-approved seismic snubber mounts and positive bolting into 12\"+ post-tensioned reinforced concrete slabs.\n3. **Soil Geotechnics**: Perform deep borehole CPT testing to rule out liquefaction potential in alluvial soil layers."
+        elif "power" in q_lower or "grid" in q_lower or "substation" in q_lower:
+            reply = f"**Senior Civil EPC Assessment for {site_name}:**\n\n1. **Grid Interconnection**: Target dual-fed, diverse 115kV or 230kV transmission lines from separate utility substations with automated high-speed transfer switching (ATS/STS).\n2. **Substation Civil Yard**: Allocate minimum 3 to 5 acres for dedicated on-site step-down transformers (230kV to 34.5kV/13.8kV) with concrete blast deflection containment walls and oil-catchment fire basins.\n3. **Reserve Generation**: Plan N+1 or 2N diesel/HVO generator enclosures with 48 to 72 hours of on-site bulk fuel storage capacity."
+        else:
+            reply = f"**Senior Civil EPC Assessment for {site_name}:**\n\nFrom a master-planning and EPC constructability perspective:\n1. **Site Civil Grading & Cut/Fill**: Minimize cut-and-fill imbalance across the parcel. Any slope exceeding 3% will require engineered tiered pads and soil retaining walls, adding $1.2M–$3.5M to civil site preparation.\n2. **Geotechnical Foundations**: Prioritize drilled shaft piers or spread footings bearing on minimum 4,000 psf allowable soil capacity to support dense server rack column point loads (up to 250–350 lbs/sq ft).\n3. **Permitting & Utility Easements**: Secure heavy-haul transportation routing for oversized electrical transformers and verify local stormwater/wetland permits with county civil authorities early."
+
+    return AdvisorChatResponse(
+        reply=reply,
+        engineer_role="Principal Civil & Structural EPC Engineer",
+        suggested_improvements=[
+            "Conduct geotechnical CPT borings for soil bearing verification",
+            "Establish Finished Floor Elevation (FFE) at minimum BFE + 3.0 ft",
+            "Specify closed-loop adiabatic cooling to eliminate municipal water dependency",
+            "Secure dual-diverse 230kV utility transmission feeds with on-site substation yard",
+        ],
+        mode=getattr(llm, "name", "deterministic"),
+        disclaimer="Advisory engineering opinion. Certified drawings and structural calculations require PE stamp.",
+    )
 from ..services.ingest import IngestionError, ingest_pdf, safe_filename, validate_upload
 from ..store import C, Store
 from .deps import get_project, store_dep

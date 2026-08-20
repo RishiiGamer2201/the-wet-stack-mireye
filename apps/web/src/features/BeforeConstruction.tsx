@@ -1,4 +1,4 @@
-import { AlertTriangle, MapPin, Play, Plus, RotateCcw, Sparkles, Trash2, X } from "lucide-react";
+import { AlertTriangle, HardHat, MapPin, Play, Plus, RotateCcw, Sparkles, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Bar,
@@ -15,10 +15,12 @@ import {
   YAxis,
 } from "recharts";
 
+import { EngineeringAdvisorChat } from "../components/EngineeringAdvisorChat";
 import { EvidenceDrawer } from "../components/EvidencePanel";
 import { GapPanel } from "../components/GapPanel";
 import { DecisionCard, InvestigationTimeline, NextActionPreview } from "../components/Investigation";
 import { SiteMap } from "../components/SiteMap";
+import { SiteScoutModal } from "../components/SiteScoutModal";
 import {
   Badge,
   Button,
@@ -274,6 +276,9 @@ export function BeforeConstruction({
   const [evidenceFor, setEvidenceFor] = useState<{ id: string; name: string } | null>(null);
   const [busyOverride, setBusyOverride] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showScoutModal, setShowScoutModal] = useState(false);
+  const [showAdvisor, setShowAdvisor] = useState(false);
+  const [advisorSiteId, setAdvisorSiteId] = useState<string | null>(null);
   const [savingSite, setSavingSite] = useState(false);
   const [saveError, setSaveError] = useState<unknown>(null);
   const weightSeq = useRef(0);
@@ -424,7 +429,15 @@ export function BeforeConstruction({
         title="Candidate sites"
         subtitle={`${realSites.length} real · ${syntheticSites.length} demo (fallback) · broad sweep → shortlist → deep pass`}
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button
+              variant="secondary"
+              onClick={() => setShowScoutModal(true)}
+              className="border-signal-300 bg-signal-50 text-signal-800 hover:bg-signal-100 font-semibold"
+            >
+              <Sparkles aria-hidden className="h-3.5 w-3.5 text-signal-600 mr-1" />
+              AI Find Sites
+            </Button>
             <Button variant="secondary" onClick={() => { setSaveError(null); setShowAddModal(true); }}>
               <Plus aria-hidden className="h-3.5 w-3.5" />
               Add Site
@@ -776,8 +789,50 @@ export function BeforeConstruction({
         onClose={() => setEvidenceFor(null)}
         projectId={projectId}
         subjectId={evidenceFor?.id}
-        title={`Evidence \u2014 ${evidenceFor?.name ?? ""}`}
+        title={`Evidence — ${evidenceFor?.name ?? ""}`}
       />
+
+      {/* AI Site Scout Modal */}
+      {showScoutModal && (
+        <SiteScoutModal
+          detail={detail}
+          onClose={() => setShowScoutModal(false)}
+          onSiteAdded={async () => {
+            await refresh();
+            onProjectChanged();
+          }}
+          onOpenAdvisor={(siteId) => {
+            setAdvisorSiteId(siteId ?? selectedSite ?? null);
+            setShowAdvisor(true);
+          }}
+        />
+      )}
+
+      {/* Senior Civil EPC Engineer AI Advisor Drawer */}
+      <EngineeringAdvisorChat
+        detail={detail}
+        activeSiteId={advisorSiteId ?? selectedSite}
+        isOpen={showAdvisor}
+        onClose={() => setShowAdvisor(false)}
+      />
+
+      {/* Floating Senior Civil EPC Advisor Trigger */}
+      <button
+        onClick={() => {
+          setAdvisorSiteId(selectedSite ?? null);
+          setShowAdvisor(true);
+        }}
+        className="fixed bottom-6 right-6 z-40 flex items-center gap-2 bg-ink-900 hover:bg-signal-600 text-white px-4 py-2.5 rounded-full shadow-xl border border-ink-700 transition-all scale-100 hover:scale-105 font-bold text-xs group"
+        title="Consult Senior Civil & Structural EPC Engineer AI Advisor"
+      >
+        <div className="flex h-5 w-5 items-center justify-center rounded-full bg-amber-500/30 text-amber-400">
+          <HardHat className="h-3.5 w-3.5" />
+        </div>
+        <span>Senior Civil EPC Advisor</span>
+        <span className="bg-amber-500/20 text-amber-300 text-[10px] px-1.5 py-0.5 rounded font-mono">
+          AI
+        </span>
+      </button>
     </div>
   );
 }

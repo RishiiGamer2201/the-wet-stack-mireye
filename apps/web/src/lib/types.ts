@@ -460,3 +460,19 @@ export interface SearchResponse {
   backend: string;
   results: RetrievedChunk[];
 }
+
+export interface AdvisorChatRequest {
+  message: string;
+  site_id?: string | null;
+  site_context?: Record<string, any> | null;
+  history?: Array<{ role: string; content: string }> | null;
+}
+
+export interface AdvisorChatResponse {
+  reply: string;
+  engineer_role: string;
+  suggested_improvements: string[];
+  mode: string;
+  disclaimer: string;
+}
+

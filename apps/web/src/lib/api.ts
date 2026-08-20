@@ -150,6 +150,8 @@ export const api = {
       `/projects/${projectId}/ask`,
       { question, site_id: siteId },
     ),
+  advisorChat: (projectId: string, payload: { message: string; site_id?: string | null; site_context?: Record<string, any> | null; history?: Array<{ role: string; content: string }> | null }) =>
+    post<import("./types").AdvisorChatResponse>(`/projects/${projectId}/advisor/chat`, payload),
   mireyeFields: () =>
     request<{ mode: string; count: number; fields: { key: string; label: string; unit?: string }[] }>(
       "/mireye/fields",

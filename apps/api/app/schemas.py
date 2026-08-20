@@ -184,6 +184,21 @@ class AskResponse(BaseModel):
     disclaimer: str
 
 
+class AdvisorChatRequest(BaseModel):
+    message: str = Field(min_length=2, max_length=2000)
+    site_id: str | None = None
+    site_context: dict[str, Any] | None = None
+    history: list[dict[str, str]] | None = None
+
+
+class AdvisorChatResponse(BaseModel):
+    reply: str
+    engineer_role: str = "Principal Civil & Structural EPC Engineer"
+    suggested_improvements: list[str] = []
+    mode: str = "llm"
+    disclaimer: str = "Advisory engineering opinion. Certified drawings and structural calculations require PE stamp."
+
+
 class SeedResponse(BaseModel):
     project_id: str
     project_name: str
