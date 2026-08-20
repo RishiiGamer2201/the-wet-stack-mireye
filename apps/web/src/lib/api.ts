@@ -11,6 +11,7 @@ import type {
   Project,
   ProjectDetail,
   Requirement,
+  RequirementTargets,
   SearchResponse,
   WhatIfResponse,
 } from "./types";
@@ -78,8 +79,14 @@ export const api = {
   ready: () => request<{ ready: boolean; checks: Record<string, string> }>("/ready"),
   projects: () => request<Project[]>("/projects"),
   project: (id: string) => request<ProjectDetail>(`/projects/${id}`),
-  createProject: (body: { name: string; client?: string; description?: string; region?: string }) =>
-    post<Project>("/projects", body),
+  createProject: (body: {
+    name: string;
+    client?: string;
+    description?: string;
+    region?: string;
+    targets?: RequirementTargets;
+    dimension_weights?: Record<string, number>;
+  }) => post<Project>("/projects", body),
   updateProject: (id: string, body: unknown) => patch<Project>(`/projects/${id}`, body),
   seed: () => post<{ project_id: string; project_name: string; message: string }>("/admin/seed"),
   reset: () => post<{ project_id: string; project_name: string; message: string }>("/admin/reset"),
