@@ -62,7 +62,8 @@ def test_llm_provider_none_overrides_a_present_key():
 
 
 def test_get_llm_returns_the_narrator_when_unconfigured(monkeypatch):
-    monkeypatch.setenv("GEMINI_API_KEY", "")
+    for var in ("GEMINI_API_KEY", "OPENAI_API_KEY"):
+        monkeypatch.setenv(var, "")
     get_settings.cache_clear()
     set_llm(None)
     try:

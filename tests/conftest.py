@@ -40,7 +40,17 @@ def _no_outbound_provider_calls(request, monkeypatch):
     # Blank every real provider credential for the duration of the test. A
     # developer's .env must never decide what a test does — before this, adding a
     # GEMINI_API_KEY locally flipped an unrelated test from pass to fail.
-    for var in ("GEMINI_API_KEY", "LANGSMITH_API_KEY", "MIREYE_API_KEY", "MIREYE_BASE_URL"):
+    # Derived from the settings model rather than a hand-kept list: adding a
+    # provider must not quietly leave its credential live in the test run. This
+    # list was hand-written once and OPENAI_API_KEY was forgotten the same day.
+    from app.config import Settings
+
+    credentials = [
+        name.upper()
+        for name in Settings.model_fields
+        if name.endswith(("_api_key", "_password", "_service_key"))
+    ]
+    for var in [*credentials, "MIREYE_BASE_URL", "DATABASE_URL", "NEO4J_URI"]:
         monkeypatch.setenv(var, "")
     get_settings.cache_clear()
 
