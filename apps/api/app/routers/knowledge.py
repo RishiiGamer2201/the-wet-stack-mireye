@@ -6,6 +6,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 
+from ..adapters.llm import get_llm
 from ..adapters.mireye import MireyeError, get_mireye_client
 from ..adapters.vectorstore import get_index
 from ..config import get_settings
@@ -23,7 +24,6 @@ from ..domain import (
 )
 from ..engine.decisions import SAFETY_CAVEAT
 from ..fields import FIELDS
-from ..adapters.llm import get_llm
 from ..schemas import (
     AdvisorChatRequest,
     AdvisorChatResponse,
@@ -62,8 +62,8 @@ def _build_advisor_prompt(
 ) -> tuple[str, str, list[str]]:
     """Gathers project, site, and live Mireye physical telemetry to build context."""
     context_lines = [f"Project: {project.name} (Client: {project.client or 'Self'}, Region: {project.region or 'Global'})"]
-    if project.target_it_capacity_mw:
-        context_lines.append(f"Target IT Load: {project.target_it_capacity_mw} MW")
+    if project.targets and project.targets.it_load_mw:
+        context_lines.append(f"Target IT Load: {project.targets.it_load_mw} MW")
 
     site_name = "General Project Scope"
     lat, lon = None, None
@@ -77,7 +77,9 @@ def _build_advisor_prompt(
             if site.notes:
                 context_lines.append(f"Site Notes/Specs: {site.notes}")
             # Fetch recent evidence stored for this site
-            evidence_list = store.list(C.EVIDENCE, Evidence, project_id=project.id, subject_id=site.id)
+            evidence_list = store.list(
+                C.EVIDENCE, Evidence, project_id=project.id, parent_id=site.id
+            )
             if evidence_list:
                 ev_summary = ", ".join(f"{e.field_key}: {e.value} {e.unit or ''}" for e in evidence_list[:15])
                 context_lines.append(f"Stored Physical Telemetry: {ev_summary}")
@@ -159,6 +161,7 @@ def advisor_chat(
 
     return AdvisorChatResponse(
         reply=reply,
+        site_name=site_name,
         engineer_role="Principal Civil & Structural EPC Engineer",
         suggested_improvements=improvements,
         mode=getattr(llm, "name", "deterministic"),

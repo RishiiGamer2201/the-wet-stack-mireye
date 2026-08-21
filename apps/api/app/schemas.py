@@ -193,6 +193,9 @@ class AdvisorChatRequest(BaseModel):
 
 class AdvisorChatResponse(BaseModel):
     reply: str
+    #: Which site the advice is scoped to. Engineering advice without a subject
+    #: is advice about nothing in particular.
+    site_name: str | None = None
     engineer_role: str = "Principal Civil & Structural EPC Engineer"
     suggested_improvements: list[str] = []
     mode: str = "llm"

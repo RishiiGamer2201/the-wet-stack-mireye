@@ -390,18 +390,13 @@ def openai_provider(handler, model: str = "gpt-5.1"):
     return provider
 
 
-def openai_reply(text: str, status: str = "completed"):
+def openai_reply(text: str):
     return lambda r: httpx.Response(
-        200,
-        json={
-            "status": status,
-            "output_text": text,
-            "output": [{"content": [{"type": "output_text", "text": text}]}],
-        },
+        200, json={"choices": [{"message": {"role": "assistant", "content": text}}]}
     )
 
 
-def test_openai_uses_the_responses_api_with_a_bearer_key():
+def test_openai_sends_a_bearer_key_and_the_reasoning_safe_token_parameter():
     seen: dict = {}
 
     def handler(request):
@@ -413,40 +408,45 @@ def test_openai_uses_the_responses_api_with_a_bearer_key():
         return openai_reply("ok")(request)
 
     assert openai_provider(handler).complete("SYSTEM", "USER", max_tokens=600) == "ok"
-    assert seen["path"] == "/v1/responses"
+    assert seen["path"] == "/v1/chat/completions"
     assert seen["auth"] == "Bearer sk-test"
-    assert seen["body"]["instructions"] == "SYSTEM"
-    assert seen["body"]["input"] == "USER"
-    # Reasoning models spend the same budget thinking, so headroom applies here too.
+    roles = {m["role"]: m["content"] for m in seen["body"]["messages"]}
+    assert roles["system"] == "SYSTEM" and roles["user"] == "USER"
+    # gpt-5.x rejects `max_tokens` with a 400 and the handler treats 400 as
+    # "try the next model", so the wrong name silently downgrades the model.
     from app.adapters.llm import THINKING_HEADROOM_TOKENS
 
-    assert seen["body"]["max_output_tokens"] == 600 + THINKING_HEADROOM_TOKENS
+    assert "max_tokens" not in seen["body"], "reasoning models reject max_tokens"
+    assert seen["body"]["max_completion_tokens"] == 600 + THINKING_HEADROOM_TOKENS
 
 
-def test_openai_reads_text_from_the_structured_output_when_output_text_is_empty():
+def test_openai_returns_none_for_an_empty_choice():
     def handler(request):
-        return httpx.Response(200, json={
-            "status": "completed",
-            "output_text": "",
-            "output": [
-                {"type": "reasoning", "content": []},
-                {"content": [{"type": "output_text", "text": "from the structured field"}]},
-            ],
-        })
-
-    assert openai_provider(handler).complete("s", "u") == "from the structured field"
-
-
-def test_openai_discards_an_incomplete_answer():
-    """A response cut off by the token cap is half a sentence; discard it."""
-    def handler(request):
-        return httpx.Response(200, json={
-            "status": "incomplete",
-            "incomplete_details": {"reason": "max_output_tokens"},
-            "output_text": "The decision state is",
-        })
+        return httpx.Response(200, json={"choices": [{"message": {"content": "   "}}]})
 
     assert openai_provider(handler).complete("s", "u") is None
+
+
+def test_a_rejected_model_falls_back_but_says_so(caplog):
+    """A 400 makes the provider try another model. /api/meta still names the
+    configured one, so the substitution must be loud in the log."""
+    import logging
+
+    seen: list[str] = []
+
+    def handler(request):
+        import json as _json
+
+        model = _json.loads(request.read())["model"]
+        seen.append(model)
+        if model == "gpt-5.1":
+            return httpx.Response(400, json={"error": {"message": "unsupported parameter"}})
+        return openai_reply("from the fallback")(request)
+
+    with caplog.at_level(logging.ERROR, logger="llm"):
+        assert openai_provider(handler).complete("s", "u") == "from the fallback"
+    assert seen[0] == "gpt-5.1" and len(seen) > 1
+    assert any("FALLING BACK" in r.message for r in caplog.records)
 
 
 @pytest.mark.parametrize(
@@ -455,7 +455,7 @@ def test_openai_discards_an_incomplete_answer():
         pytest.param(lambda r: httpx.Response(500, json={"error": {}}), id="server_error"),
         pytest.param(lambda r: httpx.Response(401, json={"error": {}}), id="bad_key"),
         pytest.param(lambda r: httpx.Response(200, content=b"not json"), id="malformed"),
-        pytest.param(lambda r: httpx.Response(200, json={"status": "completed"}), id="no_text"),
+        pytest.param(lambda r: httpx.Response(200, json={"choices": []}), id="no_choice"),
     ],
 )
 def test_openai_failures_return_none(handler):

@@ -12,7 +12,8 @@ from __future__ import annotations
 import json
 import logging
 import time
-from typing import Iterator, Protocol
+from collections.abc import Iterator
+from typing import Protocol
 
 import httpx
 
@@ -87,7 +88,9 @@ class GeminiProvider:
 
     def _attempt(self, system: str, user: str, max_tokens: int) -> tuple[str | None, bool]:
         try:
-            url = f"/v1beta/models/{self.model}:generateContent?key={self._api_key}"
+            # Header, not query string: a key in a URL leaks into access logs,
+            # proxy logs and any error that echoes the URL.
+            url = f"/v1beta/models/{self.model}:generateContent"
             payload = {
                 "systemInstruction": {"parts": [{"text": system}]},
                 "contents": [{"parts": [{"text": user}]}],
@@ -96,7 +99,9 @@ class GeminiProvider:
                     "temperature": 0.2,
                 },
             }
-            response = self._client.post(url, json=payload)
+            response = self._client.post(
+                url, json=payload, headers={"x-goog-api-key": self._api_key}
+            )
             if response.status_code in _RETRYABLE_STATUS:
                 log.warning("gemini throttled, will retry", extra={"status": response.status_code})
                 return None, True
@@ -107,6 +112,18 @@ class GeminiProvider:
                 return None, False
             parts = candidates[0].get("content", {}).get("parts", [])
             text = "".join(p.get("text", "") for p in parts if "text" in p).strip()
+            if candidates[0].get("finishReason") == "MAX_TOKENS":
+                # Thinking tokens ate the budget. A sentence that stops mid-clause
+                # beside engineering findings is worse than no sentence.
+                log.warning(
+                    "gemini answer truncated by the token budget; discarding it",
+                    extra={
+                        "model": self.model,
+                        "thinking_tokens": (data.get("usageMetadata") or {}).get("thoughtsTokenCount"),
+                        "text_chars": len(text),
+                    },
+                )
+                return None, False
             return (text or None), False
         except Exception as exc:
             log.warning("gemini call failed", extra={"error": str(exc)})
@@ -126,11 +143,12 @@ class OpenAIProvider:
         timeout: float = 45.0,
         base_url: str = "https://api.openai.com",
     ) -> None:
-        # Fall back if unsupported/unreleased model name is configured
-        clean_model = model.strip()
-        if clean_model in ("gpt-5.1", "gpt-5", "auto"):
-            clean_model = "gpt-4o-mini"
-        self.model = clean_model
+        # The configured model is used as configured. This previously rewrote
+        # gpt-5.1 to gpt-4o-mini, which papered over a 400 caused by sending
+        # `max_tokens` to a reasoning model - and left /api/meta reporting a
+        # model the app was not actually using. The parameter is fixed; a model
+        # that genuinely will not serve still falls back, loudly, in _attempt.
+        self.model = model.strip()
         self._api_key = api_key
         clean_base = (base_url or "https://api.openai.com").rstrip("/")
         if clean_base.endswith("/v1"):
@@ -140,7 +158,6 @@ class OpenAIProvider:
             timeout=timeout,
             headers={
                 "content-type": "application/json",
-                "Authorization": f"Bearer {api_key}",
             },
         )
 
@@ -161,14 +178,18 @@ class OpenAIProvider:
             try:
                 response = self._client.post(
                     "/v1/chat/completions",
+                    headers={"Authorization": f"Bearer {self._api_key}"},
                     json={
                         "model": m,
                         "messages": [
                             {"role": "system", "content": system},
                             {"role": "user", "content": user},
                         ],
-                        "max_tokens": max_tokens,
-                        "temperature": 0.3,
+                        # Reasoning models reject `max_tokens` outright with a 400.
+                        # `max_completion_tokens` is the current name and is what
+                        # gpt-5.x requires; it covers reasoning plus the answer,
+                        # hence the headroom.
+                        "max_completion_tokens": max_tokens + THINKING_HEADROOM_TOKENS,
                     },
                 )
                 if response.status_code in _RETRYABLE_STATUS:
@@ -176,7 +197,16 @@ class OpenAIProvider:
                     return None, True
                 if response.status_code == 404 or response.status_code == 400:
                     # Try next model if model not found
-                    log.warning("openai model failed, trying fallback", extra={"status": response.status_code, "model": m})
+                    log.error(
+                        "openai model rejected the request; FALLING BACK to a different "
+                        "model - the answer will NOT come from the configured model",
+                        extra={
+                            "status": response.status_code,
+                            "configured_model": self.model,
+                            "rejected_model": m,
+                            "detail": response.text[:200],
+                        },
+                    )
                     continue
                 response.raise_for_status()
                 data = response.json()
@@ -204,18 +234,24 @@ class OpenAIProvider:
                 with self._client.stream(
                     "POST",
                     "/v1/chat/completions",
+                    headers={"Authorization": f"Bearer {self._api_key}"},
                     json={
                         "model": m,
                         "messages": [
                             {"role": "system", "content": system},
                             {"role": "user", "content": user},
                         ],
-                        "max_tokens": max_tokens,
-                        "temperature": 0.3,
+                        # See _attempt: reasoning models reject `max_tokens`.
+                        "max_completion_tokens": max_tokens + THINKING_HEADROOM_TOKENS,
                         "stream": True,
                     },
                 ) as response:
                     if response.status_code != 200:
+                        log.error(
+                            "openai stream rejected; falling back to another model",
+                            extra={"status": response.status_code, "configured_model": self.model,
+                                   "rejected_model": m},
+                        )
                         continue
                     for line in response.iter_lines():
                         if not line:
