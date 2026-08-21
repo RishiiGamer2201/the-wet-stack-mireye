@@ -279,6 +279,32 @@ FIELDS: list[FieldSpec] = [
         description="Distance to the nearest long-haul fiber route.",
     ),
     _f(
+        key="distance_to_ix_km",
+        label="Distance to internet exchange",
+        dimension=SiteDimension.CONNECTIVITY,
+        unit="km",
+        direction="lower_better",
+        good=15.0,
+        bad=250.0,
+        weight=1.2,
+        description="Great-circle distance to the nearest PeeringDB facility that hosts an "
+        "internet exchange. A measured distance, not a latency estimate.",
+        provider="peeringdb",
+    ),
+    _f(
+        key="ix_facility_carrier_count",
+        label="Carriers at nearest exchange",
+        dimension=SiteDimension.CONNECTIVITY,
+        direction="higher_better",
+        good=20,
+        bad=1,
+        weight=0.9,
+        description="Carriers present at the nearest interconnection facility, from "
+        "PeeringDB. Evidence of competitive transit, not of physical route diversity.",
+        provider="peeringdb",
+        depth="deep",
+    ),
+    _f(
         key="latency_to_ix_ms",
         label="Latency to internet exchange",
         dimension=SiteDimension.CONNECTIVITY,
@@ -615,7 +641,9 @@ PROVIDER_MAP: dict[str, tuple[str, str | None, str, ProviderAvailability, str | 
 NO_PROVIDER_EQUIVALENT: dict[str, str] = {
     "grid_capacity_mw": "The catalog exposes interconnection-queue capacity, which is generation "
     "seeking connection — not deliverable load capacity at the point of interconnection.",
-    "latency_to_ix_ms": "No network-latency or internet-exchange field exists in the catalog.",
+    "latency_to_ix_ms": "No network-latency field exists in the Mireye catalog, and latency "
+    "cannot be derived from distance - it depends on the route and the carrier. "
+    "`distance_to_ix_km` is served from PeeringDB and measures distance only.",
     "permit_lead_time_months": "The catalog exposes county building-permit counts, not approval "
     "duration for comparable projects.",
     "incentive_score": "The catalog exposes opportunity-zone membership only, not a composite "
@@ -809,11 +837,6 @@ def provider_fields(
         for spec in (specs or FIELD_INDEX).values()
         if spec.provider_field and spec.provider_availability in allowed
     ]
-
-
-def unmapped_fields() -> list[str]:
-    """Concepts the provider has no equivalent for. These become gaps."""
-    return [k for k, s in FIELD_INDEX.items() if s.provider_availability == "unavailable"]
 
 
 class UnknownFieldError(KeyError):

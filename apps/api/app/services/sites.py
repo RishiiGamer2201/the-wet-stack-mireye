@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 
+from ..adapters.datasets import dataset_fields, get_dataset_providers
 from ..adapters.mireye import MireyeClient, MireyeError
 from ..config import get_settings
 from ..domain import (
@@ -12,6 +13,7 @@ from ..domain import (
     Evidence,
     EvidenceSource,
     EvidenceStatus,
+    GapStatus,
     InformationGap,
     NextActionType,
     Project,
@@ -24,7 +26,13 @@ from ..domain import (
     gap_id,
 )
 from ..engine import scoring
-from ..fields import DEFAULT_DIMENSION_WEIGHTS, UnknownFieldError, broad_fields, deep_fields
+from ..fields import (
+    DEFAULT_DIMENSION_WEIGHTS,
+    FIELD_INDEX,
+    UnknownFieldError,
+    broad_fields,
+    deep_fields,
+)
 from ..store import C, Store
 from .evidence import observations_for_site, put_gap, record_fetch
 
@@ -129,6 +137,113 @@ def fetch_site_fields(
     }
 
 
+
+def fetch_dataset_fields(
+    store: Store,
+    project: Project,
+    site: CandidateSite,
+    field_keys: list[str],
+) -> dict:
+    """Fill concepts Mireye does not serve from public datasets.
+
+    Runs after the Mireye pass. A provider with no data for this location
+    returns nothing and the field stays a gap: serve the measurement or serve
+    nothing.
+
+    The proxy rule from `record_fetch` applies here too. A CONTEXTUAL_PROXY
+    value is stored as evidence because it is real and worth reading, but it
+    gets no `SiteObservation` and resolves no gap, so a nearby-but-different
+    measurement can never populate the concept, close its gap or move a score.
+    """
+    wanted = {k for k in field_keys if k in dataset_fields()}
+    empty = {"ok": True, "summary": "", "detail": {}, "evidence_ids": [], "gap_ids": []}
+    if not wanted or site.latitude is None or site.longitude is None:
+        return empty
+
+    evidence_ids: list[str] = []
+    served: list[str] = []
+    for provider in get_dataset_providers():
+        if not wanted.intersection(provider.fields):
+            continue
+        try:
+            values = provider.values_for(site.latitude, site.longitude)
+        except Exception as exc:  # noqa: BLE001 - a dataset must never break the run
+            log.warning("dataset lookup failed", extra={"provider": provider.name, "error": str(exc)})
+            continue
+
+        for key, dv in values.items():
+            if key not in wanted:
+                continue
+            spec = FIELD_INDEX[key]
+            ev = Evidence(
+                project_id=project.id,
+                subject_id=site.id,
+                claim=f"{spec.label} at {site.name}",
+                field_key=key,
+                value=dv.value,
+                unit=dv.unit,
+                source=EvidenceSource(
+                    source_type=SourceType.EXTERNAL_DATASET,
+                    source_id=dv.source,
+                    source_name=f"{provider.name}: {dv.source}",
+                    field_key=key,
+                    url=dv.source_url,
+                    synthetic=False,
+                    notes=f"{dv.detail or ''} Licence: {dv.licence}."
+                    + (f" Dataset downloaded {dv.downloaded_at}." if dv.downloaded_at else ""),
+                ),
+                status=EvidenceStatus.CACHED,
+                relation=dv.relation,
+                relation_note=dv.relation_note,
+                verification=VerificationStatus.UNVERIFIED,
+                confidence=dv.confidence,
+                latitude=site.latitude,
+                longitude=site.longitude,
+                location_resolution=site.geocode_resolution,
+            )
+            store.put(C.EVIDENCE, ev, project_id=project.id, parent_id=site.id)
+            evidence_ids.append(ev.id)
+            if not ev.is_canonical:
+                # Cited context only. The concept is still missing its own value.
+                continue
+
+            obs = SiteObservation(
+                site_id=site.id,
+                project_id=project.id,
+                field_key=key,
+                dimension=spec.dimension,
+                value=dv.value,
+                unit=dv.unit,
+                evidence_id=ev.id,
+                status=EvidenceStatus.CACHED,
+                confidence=dv.confidence,
+                retrieved_at=datetime.now(UTC),
+            )
+            store.put(C.OBSERVATIONS, obs, project_id=project.id, parent_id=site.id)
+            served.append(key)
+
+    if not evidence_ids:
+        return empty
+
+    # A concept now genuinely answered is no longer an open gap.
+    for key in served:
+        gid = gap_id(project.id, site.id, key)
+        existing = store.get(C.GAPS, gid, InformationGap)
+        if existing and existing.status != GapStatus.RESOLVED:
+            existing.status = GapStatus.RESOLVED
+            store.put(C.GAPS, existing, project_id=project.id, parent_id=site.id)
+
+    context_only = len(evidence_ids) - len(served)
+    return {
+        "ok": True,
+        "summary": f"{site.name}: {len(served)} field(s) from public datasets"
+        + (f", {context_only} as context only (proxy)." if context_only else "."),
+        "detail": {"fields": sorted(served), "context_only": context_only},
+        "evidence_ids": evidence_ids,
+        "gap_ids": [],
+    }
+
+
 class LiveBudget:
     """Caps live provider spend for one investigation.
 
@@ -200,6 +315,10 @@ def _skipped_for_budget(
 
 def _pass(store, client, project, sites, field_keys, budget: LiveBudget | None):
     budget = budget or LiveBudget(client)
+    # A concept a public dataset answers is never asked of Mireye: the live
+    # catalog has no such field, and the mock would otherwise invent one.
+    served_by_dataset = dataset_fields()
+    mireye_keys = [k for k in field_keys if k not in served_by_dataset]
     results = []
     for site in sites:
         reason = budget.check(site)
@@ -207,7 +326,10 @@ def _pass(store, client, project, sites, field_keys, budget: LiveBudget | None):
             results.append(_skipped_for_budget(store, project, site, field_keys, reason))
             continue
         budget.spend(site)
-        results.append(fetch_site_fields(store, client, project, site, field_keys))
+        results.append(fetch_site_fields(store, client, project, site, mireye_keys))
+        dataset_result = fetch_dataset_fields(store, project, site, field_keys)
+        if dataset_result["evidence_ids"]:
+            results.append(dataset_result)
     return results
 
 

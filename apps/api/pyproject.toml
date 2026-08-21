@@ -30,6 +30,11 @@ dev = ["pytest>=8.1", "pytest-asyncio>=0.23", "ruff>=0.4"]
 [tool.setuptools.packages.find]
 include = ["app*"]
 
+# The bundled public datasets ship inside the wheel, so a fresh deploy on an
+# empty disk still has them without a build-time download.
+[tool.setuptools.package-data]
+app = ["data/datasets/*.json"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py310"

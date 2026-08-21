@@ -135,6 +135,8 @@ and (on `free`) every wake from idle gives the service a brand-new empty disk.
 | Generated synthetic sample PDFs | `sample_data/` | **No** — regenerated at seed |
 | Impact graph | process memory | **No** — rebuilt from the stored analysis on request |
 | Mireye response cache | SQLite `cache` table | **No** |
+| Public datasets (PeeringDB, cached water-quality answers) | shipped in the wheel | **Yes** |
+| Water-quality answers queried since deploy | `$DATA_DIR/datasets/` | **No** |
 | Everything in `render.yaml` / the dashboard | Render config | Yes |
 
 **The demo self-heals.** On startup with an empty store the API seeds the
@@ -143,6 +145,21 @@ idempotent by construction: only an empty store is seeded, and the seed runs wit
 `reset=False`, so a restart can neither wipe nor duplicate existing data.
 Verified by deleting `DATA_DIR` and restarting — a fresh project id appears and
 `/api/ready` reports `seeded: yes`.
+
+**Public datasets survive.** The PeeringDB facility list and a cache of
+water-quality answers for the demo's sites ship inside the wheel at
+`app/data/datasets/`, so interconnection distance and measured TDS work on a
+brand-new disk with no download. A site queried for the first time hits the
+Water Quality Portal live (30 s timeout; a failure is recorded as a gap, never as
+a value) and caches the answer under `$DATA_DIR`, which does not survive. To
+pre-warm every site in the store after a deploy:
+
+```bash
+python -m app.datasets_cli warm     # per-location sources
+python -m app.datasets_cli list     # what is present
+```
+
+See [`datasets.md`](datasets.md) for what each source serves and how to add more.
 
 **In practice this means:** anything a viewer does — uploading a PDF, confirming a
 requirement, overriding a site value, resolving a gap — is gone after the next

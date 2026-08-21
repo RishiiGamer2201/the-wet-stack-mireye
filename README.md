@@ -159,6 +159,7 @@ docs/                architecture, domain model, API, Mireye contract, scoring, 
 | [`docs/domain-model.md`](docs/domain-model.md) | Every schema and the evidence lifecycle |
 | [`docs/api.md`](docs/api.md) | Endpoint reference and frontend contract |
 | [`docs/mireye-contract.md`](docs/mireye-contract.md) | The assumed Mireye request/response contract and how to correct it |
+| [`docs/datasets.md`](docs/datasets.md) | Public datasets in use, and step-by-step procedures for the data that still has to be sourced by hand |
 | [`docs/scoring.md`](docs/scoring.md) | Site scoring formulas, weights and worked examples |
 | [`docs/engineering-rules.md`](docs/engineering-rules.md) | Verification gates, delta thresholds, impact rules, decision precedence |
 | [`docs/live-vs-demo.md`](docs/live-vs-demo.md) | What changes when credentials are supplied |
