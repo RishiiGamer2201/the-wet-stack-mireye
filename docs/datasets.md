@@ -4,8 +4,8 @@ This document exists to answer one question: **which numbers in this system came
 from the physical world, and what does it take to make the rest of them real?**
 
 It is written so that someone with no prior context can do the work. Every
-source below was probed from this machine on 2026-08-21; where a source was
-unreachable from here, that is stated rather than glossed over.
+source below was probed from this machine, most recently on 2026-08-22; where a
+source was unreachable from here, that is stated rather than glossed over.
 
 ---
 
@@ -26,6 +26,8 @@ Plus, as of this change, two public datasets shipped with the code:
 |---|---|---:|---|
 | PeeringDB `/api/fac` | `distance_to_ix_km`, `ix_facility_carrier_count` | 1,353 US facilities | CC-BY 4.0 |
 | EPA/USGS Water Quality Portal | `water_quality_tds_mg_l` (as context) | per-location query | Public domain |
+| USGS PAD-US 4.1 | `protected_area_distance_km` | 298,244 areas | Public domain |
+| EIA Form EIA-861 (2023) | `grid_reliability_saidi_min` (as context) | 734 utilities, 2,840 counties | Public domain |
 
 So the **before-construction** side is now almost entirely real. The
 **after-construction** side — the 84 synthetic document records — is not, and
@@ -93,6 +95,95 @@ Notes:
   says so in its own note.
 - Pre-warm the cache after a deploy: `python -m app.datasets_cli warm`.
 
+### 2.4 USGS PAD-US — distance to protected land
+
+`apps/api/app/adapters/datasets.py` → `PADUSProtectedAreas`
+
+PAD-US is the national inventory of protected land: every federal, state, local
+and private conservation holding, 298,244 of them. This **replaces a proxy with
+the real measurement**. The field used to borrow Mireye's distance to the nearest
+Clean Air Act Class I area — national parks and large wilderness only, a strict
+subset. Because the concept scores higher-is-better, that subset always made a
+site look more remote from protected land than it is, which is why it was never
+allowed to be the value. Now the field is `EXACT` and asks Mireye for nothing.
+
+| Site | Nearest protected area | Distance |
+|---|---|---:|
+| Cascade Flats, WA | WA State Parks Eastern (SP) | 1.8 km |
+| Rio Verde Mesa, AZ | **Tonto National Forest** (NF) | **0.0 km — inside it** |
+| Delta Fields, MS | Walter Chandler Park (LCA) | 2.41 km |
+| Harbour Point, VA | Fort Wool (SOTH) | 11.12 km |
+| Prairie Junction, NE | Pioneer State Recreation Area (SREC) | 3.84 km |
+
+Rio Verde Mesa sitting **inside** Tonto National Forest is the kind of finding
+that ends a siting conversation, and the old proxy could not see it.
+
+Three decisions worth knowing about, because each one is a judgement rather than
+a lookup:
+
+* **Expanding-ring search.** The ArcGIS service caps a response at a fixed number
+  of features, so querying a 50 km buffer returns *some* 60 of the hundreds in
+  range — not the nearest. The adapter searches 2 km, then 5, 15 and 50, pages
+  every result in the first ring that contains anything, and computes true
+  point-to-polygon distance locally. The first version of this did query the
+  50 km buffer directly and reported Rio Verde Mesa as 4.02 km from a shooting
+  range, because the national forest it sits inside was not in the returned page.
+* **GAP status 1–3 only.** Status 4 is open space with *no known protection
+  mandate*.
+* **Municipal recreation is excluded from the value, never hidden.** A ball field
+  300 m away is a land-use neighbour, not an ecological constraint, and this
+  concept means conservation. Local Park / Local Recreation designations are
+  filtered out of the number and named in the evidence detail instead, so the
+  exclusion is visible. Local *Conservation* Areas stay in.
+
+Boundary geometry is simplified server-side (~200 m) to keep a response near
+20 kB, and the evidence says so: a gate within that margin needs the
+full-resolution polygon.
+
+### 2.5 EIA Form EIA-861 — grid reliability
+
+`apps/api/app/adapters/datasets.py` → `EIAReliability`, built by
+`scripts/build_eia861.py`
+
+Every distribution utility in the US reports SAIDI — the average minutes a
+customer spent without power in a year — to the EIA. That is real, audited,
+nationwide data, and it is the best public answer to "how reliable is the grid
+here". 734 utilities reported for 2023, covering 2,840 counties.
+
+| Site | County | Worst utility | SAIDI |
+|---|---|---|---:|
+| Ashburn, VA | Loudoun | Northern Virginia Elec Coop | 40.3 min/yr |
+| Prairie Junction, NE | Saunders | Omaha Public Power District | 57.9 min/yr |
+| Rio Verde Mesa, AZ | Maricopa | 4 utilities, 10.6–160.3 | 160.3 min/yr |
+| Delta Fields, MS | Shelby (TN) | City of Memphis | 408.6 min/yr |
+| Cascade Flats, WA | Chelan | — | not reported; stays a gap |
+
+**This is `CONTEXTUAL_PROXY`, and the Maricopa row is why.** SAIDI is a
+utility-wide average over an entire service territory: a substation-adjacent site
+and a rural end-of-line site on the same utility share one number that describes
+neither. Worse, a county is often served by several utilities and nothing public
+says which will serve a given parcel — Maricopa spans 10.6 to 160.3 minutes, a
+15× range. The adapter reports the **worst** utility in the county, because a
+siting decision that turns on reliability should not rest on the most flattering
+of several possible suppliers, and it names every utility it found. The gap stays
+open until the serving utility provides circuit-level history.
+
+Two details that matter:
+
+* **SAIDI without Major Event Days** is the figure used. "With MED" is dominated
+  by individual storms and is not comparable between utilities.
+* EIA writes `.` for "not reported". Four small municipal systems genuinely
+  reported **0.0** minutes. Those are different values and the loader keeps them
+  different — a reported zero is a measurement, a `.` is a gap.
+
+Site → county comes from the Census geocoder (free, no key), cached to disk.
+County names are normalised on both sides, because Census says "St. Louis city"
+and "Doña Ana" where EIA says "St Louis City" and "Dona Ana", and an unnormalised
+join silently misses.
+
+Rebuild for a newer year: `pip install openpyxl && python scripts/build_eia861.py`
+(openpyxl is a download-time dependency only; the runtime reads the JSON).
+
 ### 2.3 Where the datasets live
 
 ```
@@ -100,7 +191,25 @@ apps/api/app/data/datasets/     # bundled with the wheel, committed
 apps/api/var/datasets/          # downloaded at runtime, wins when present
 ```
 
-`python -m app.datasets_cli list` shows what is present.
+| File | What it is |
+|---|---|
+| `peeringdb_facilities.json` | 1,353 US interconnection facilities |
+| `eia861_reliability.json` | SAIDI per utility + county → utility map |
+| `wqp_tds_cache.json` | water-quality answers for the demo's sites |
+| `padus_cache.json` | nearest protected area for the demo's sites |
+| `county_cache.json` | coordinates → county, from the Census geocoder |
+
+```bash
+python -m app.datasets_cli list                  # what is present
+python -m app.datasets_cli download peeringdb    # refresh a national table
+python -m app.datasets_cli warm                  # pre-query per-location sources
+```
+
+`warm` matters after a deploy: PAD-US, the Water Quality Portal and the county
+lookup answer per coordinate rather than shipping a national table, so a site
+nobody has asked about yet queries them live on its first investigation. Warming
+moves that cost to deploy time. A failure at either point is a gap, never a
+value.
 
 ---
 
@@ -169,9 +278,19 @@ this is a network-path problem here, not a dead source.
 
 ---
 
-### 3.3 `grid_reliability_saidi_min` — EIA Form 861 ⭐⭐
+### 3.3 `grid_reliability_saidi_min` — EIA Form 861 ✅ DONE
 
-**Status: eia.gov reachable (200); the API returns 403 without a key.**
+**Implemented — see §2.5.** What follows is how it was done, and what a better
+version would need.
+
+The county-level join below is what shipped. The *territory-polygon* join is
+still the better answer and is still open: HIFLD's Electric Retail Service
+Territories layer would give the utility serving a parcel rather than every
+utility in the county. The authoritative copy has moved — `gii.dhs.gov/hifld`
+redirects to an ArcGIS hub, the DC-republished feature service returns
+`Invalid URL`, and the remaining ArcGIS Online copies are mirrors of unverifiable
+provenance. Left as county-level, and labelled as such, rather than joined
+against a mirror nobody can vouch for.
 
 SAIDI is reported per utility, not per location, so this needs two datasets and a
 spatial join.
@@ -317,21 +436,17 @@ is not a fraction, and treating it as one would be a fabrication.
 
 ---
 
-### 3.9 `protected_area_distance_km` and `biodiversity_sensitivity_index` ⭐⭐
+### 3.9 `protected_area_distance_km` ✅ DONE / `biodiversity_sensitivity_index` ⭐⭐⭐
 
-Currently `protected_area_distance_km` is a labelled proxy from Mireye's
-`nearest_class_i_area_distance_m` (Clean Air Act Class I areas — a subset of
-protected land, not all of it).
+`protected_area_distance_km` is **implemented — see §2.4**. It is queried live
+per site against the PAD-US ArcGIS service and cached, rather than downloading
+the national geodatabase, because one query is 20 kB and the geodatabase is many
+gigabytes. To work fully offline instead, download the national geodatabase from
+<https://www.usgs.gov/programs/gap-analysis-project/science/pad-us-data-download>
+and point a local spatial index at it; the distance maths in
+`distance_to_rings_km` does not change.
 
-1. Download **PAD-US** (Protected Areas Database of the United States) from
-   <https://www.usgs.gov/programs/gap-analysis-project/science/pad-us-data-download>.
-   Choose the state or national geodatabase.
-2. Compute the distance from the site to the nearest polygon, and record the unit
-   name and its GAP status code (1–4) alongside.
-3. Relation: **EXACT** — this is the distance the field asks for, and it replaces
-   the proxy.
-
-`biodiversity_sensitivity_index` has no dataset: there is no national composite
+`biodiversity_sensitivity_index` still has no dataset: there is no national composite
 habitat-sensitivity index. USFWS critical habitat (which Mireye already serves)
 and NatureServe element occurrences (licensed, per-state, usually paid) are the
 building blocks. Either leave the gap open or define a *named, documented*
@@ -408,8 +523,8 @@ because a station 40 km away at a different elevation is a proxy, not the site.
 | `water_stress_index` | WRI Aqueduct 4.0 | ⭐⭐ | No (manual, ~1 GB) | EXACT |
 | `terrain_ruggedness_index` | USGS 3DEP | ⭐⭐ | No (large files) | EXACT |
 | `cropland_fraction` | USDA CDL | ⭐⭐ | Yes (service down) | EXACT |
-| `protected_area_distance_km` | USGS PAD-US | ⭐⭐ | No | EXACT (replaces proxy) |
-| `grid_reliability_saidi_min` | EIA-861 + HIFLD | ⭐⭐ | No | CONTEXTUAL_PROXY |
+| `protected_area_distance_km` | USGS PAD-US | ✅ done | — | EXACT (replaced the proxy) |
+| `grid_reliability_saidi_min` | EIA-861 + Census county | ✅ done | — | CONTEXTUAL_PROXY |
 | `distance_to_water_source_km` | USGS NHD | ⭐⭐ | No | CONTEXTUAL_PROXY |
 | `ambient_design_db_c` | ASHRAE / NOAA ISD | ⭐⭐ | ASHRAE is paid | EXACT or PROXY |
 | `grid_capacity_mw` | Utility RFI | ⭐⭐⭐ | No dataset exists | USER_INPUT |
@@ -548,14 +663,33 @@ finding — and by the time anyone notices, it is in a decision.
 
 ---
 
-## 7. Suggested order of work
+## 7. What is left, and in what order
 
-1. **AHRI + manufacturer cut sheets** (section 5.1, 5.2) — biggest reduction in
-   synthetic data per hour spent, and no spatial code required.
-2. **FEMA NRI** (3.1) — one CSV, one join, closes a real gap.
-3. **PAD-US** (3.9) — replaces a labelled proxy with an exact measurement.
-4. **WRI Aqueduct** (3.2) — water stress is central to this product's thesis.
-5. **EIA-861 + HIFLD** (3.3) — most complex of the spatial joins; do it last.
+Done: PeeringDB, Water Quality Portal, PAD-US, EIA-861. Four concepts served,
+one proxy retired.
 
-Items in section 3.11 and 5.3 are research tasks for a person, not engineering
-tasks. Schedule them separately.
+1. **AHRI + manufacturer cut sheets** (§5.1, §5.2) — biggest reduction in
+   synthetic data per hour spent, no spatial code, and scanned documents now work
+   because OCR runs on upload. This is the highest-value item left.
+2. **FEMA NRI** (§3.1) — one CSV, one join. Blocked from this machine only;
+   download it from a browser and the rest is straightforward.
+3. **WRI Aqueduct** (§3.2) — water stress is central to this product's thesis.
+   The Figshare id in §3.2 no longer resolves; take the current download link
+   from the WRI landing page, which is live.
+4. **USGS 3DEP** (§3.7) — terrain ruggedness. Heavy files, simple maths.
+5. **USDA CropScape** (§3.8) — the service returned 500 and 503 on every attempt
+   across two days. Use the annual national GeoTIFF instead.
+
+Items in §3.11 and §5.3 are research tasks for a person, not engineering tasks.
+Schedule them separately.
+
+### Sources that resisted, and what actually happened
+
+| Source | Result | Why it is not done |
+|---|---|---|
+| FEMA NRI | `ConnectError` — TCP reset, every attempt, both days | This network cannot reach `hazards.fema.gov`. Nothing in the code can fix that; download it from a browser. |
+| USDA CropScape | HTTP 500 and 503 | Their service is intermittently down. |
+| WRI Aqueduct | Landing page 200, Figshare id 404 | The dataset moved; the direct link has to be re-read from the landing page. |
+| DSIRE incentives API | HTTP 403 | Programmatic access needs a licence agreement. |
+| HIFLD service territories | `Invalid URL` from the DHS-republished service | Authoritative copy moved; remaining mirrors are of unverifiable provenance. |
+| NREL utility rates | DNS failure | Not needed for any current field. |

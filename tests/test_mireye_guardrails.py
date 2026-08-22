@@ -33,7 +33,7 @@ from app.domain import (
 )
 from app.domain import EquipmentConfiguration as Config
 from app.engine import gates, scoring
-from app.fields import FIELD_INDEX
+from app.fields import FIELD_INDEX, provider_fields
 from app.services import sites as site_service
 from app.services.evidence import record_fetch
 from app.store import C, Store
@@ -45,10 +45,6 @@ PROXY_CONCEPTS = [
     "ambient_design_db_c",
     "fiber_routes_count",
     "planned_grid_expansion_mw",
-    # Class I federal areas are a strict subset of protected areas, so the
-    # distance is overstated — and this concept is higher-is-better, so using it
-    # as the value would flatter the site.
-    "protected_area_distance_km",
 ]
 
 
@@ -367,16 +363,18 @@ def test_site_scoring_never_calls_ask(store: Store, seeded):
     site_service.deep_pass(store, NoAsk(), seeded, sites[:1])
 
 
-def test_a_narrower_measurement_cannot_flatter_a_higher_is_better_concept():
-    """Distance to the nearest EPA Class I area is >= distance to the nearest
-    protected area, and this concept scores higher-is-better. Treating the
-    subset as the value would raise the score on a site that is actually closer
-    to protected land."""
+def test_a_narrower_measurement_no_longer_stands_in_for_protected_area_distance():
+    """This concept used to borrow Mireye's distance to the nearest EPA Class I
+    area — a strict subset of protected land. Since the concept is
+    higher-is-better, the subset always flattered the site, which is why it was
+    never allowed to be the value. PAD-US is the full inventory, so the borrowing
+    stops: the field is served by its own measurement and asks Mireye for
+    nothing."""
     spec = FIELD_INDEX["protected_area_distance_km"]
-    assert spec.provider_field == "nearest_class_i_area_distance_m"
-    assert spec.relation == EvidenceRelation.CONTEXTUAL_PROXY
     assert spec.direction == "higher_better"
-    assert "SUBSET" in spec.provider_note
+    assert spec.provider == "padus"
+    assert spec.provider_field is None, "it must not be requested from Mireye at all"
+    assert spec.provider_field not in provider_fields()
 
 
 def test_untranslatable_provider_categories_score_as_missing_not_as_a_guess():

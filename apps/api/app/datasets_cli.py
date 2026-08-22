@@ -16,7 +16,12 @@ from __future__ import annotations
 import argparse
 import sys
 
-from .adapters.datasets import PeeringDBFacilities, WaterQualityPortal, get_dataset_providers
+from .adapters.datasets import (
+    PADUSProtectedAreas,
+    PeeringDBFacilities,
+    WaterQualityPortal,
+    get_dataset_providers,
+)
 from .logging_conf import configure_logging
 
 DOWNLOADERS = {"peeringdb": PeeringDBFacilities}
@@ -48,7 +53,13 @@ def main() -> None:
 
 
 def _warm() -> None:
-    """Pre-query the per-location sources for every site already in the store."""
+    """Pre-query the per-location sources for every site already in the store.
+
+    Two of the sources answer per coordinate rather than shipping a national
+    table, so a site nobody has asked about yet queries them live on its first
+    investigation. Warming moves that cost to deploy time.
+    """
+    from .adapters.datasets import EIAReliability
     from .config import get_settings
     from .domain import CandidateSite
     from .store import C, Store
@@ -64,13 +75,33 @@ def _warm() -> None:
         return
 
     portal = WaterQualityPortal()
+    padus = PADUSProtectedAreas()
+    reliability = EIAReliability()
     for site in sites:
+        print(f"  {site.name}")
         try:
             best = portal.download(site.latitude, site.longitude)
-        except Exception as exc:  # noqa: BLE001 - report and carry on to the next site
-            print(f"  {site.name}: FAILED ({exc})")
-            continue
-        print(f"  {site.name}: " + (f"{best['value']} mg/L ({best['date']})" if best else "no reading in range"))
+            print(
+                "     water quality: "
+                + (f"{best['value']} mg/L ({best['date']})" if best else "no reading in range")
+            )
+        except Exception as exc:  # noqa: BLE001 - report and carry on
+            print(f"     water quality: FAILED ({exc})")
+        try:
+            area = padus.download(site.latitude, site.longitude)
+            print(
+                "     protected area: "
+                + (f"{area['distance_km']} km to {area['unit_name']}" if area else "none within range")
+            )
+        except Exception as exc:  # noqa: BLE001
+            print(f"     protected area: FAILED ({exc})")
+        # Reliability needs only the county lookup, which caches on first use.
+        found = reliability.values_for(site.latitude, site.longitude)
+        value = found.get("grid_reliability_saidi_min")
+        print(
+            "     grid reliability: "
+            + (f"{value.value} min/yr (worst utility in county)" if value else "not reported here")
+        )
 
 
 if __name__ == "__main__":

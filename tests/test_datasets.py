@@ -13,9 +13,14 @@ from pathlib import Path
 
 import pytest
 from app.adapters.datasets import (
+    CountyLookup,
+    EIAReliability,
+    PADUSProtectedAreas,
     PeeringDBFacilities,
     WaterQualityPortal,
+    distance_to_rings_km,
     haversine_km,
+    normalise_county,
     set_dataset_providers,
 )
 from app.domain import (
@@ -225,3 +230,211 @@ def test_an_old_reading_is_carried_at_lower_confidence(wqp):
     value = wqp.values_for(*CASCADE)["water_quality_tds_mg_l"]
     assert value.confidence == 0.5
     assert "years old" in value.detail
+
+
+# --- EIA-861 grid reliability ----------------------------------------------
+
+# A square kilometre-ish box around a point, as PAD-US would return it.
+def box(lat, lon, half_deg):
+    return [
+        [
+            [lon - half_deg, lat - half_deg],
+            [lon + half_deg, lat - half_deg],
+            [lon + half_deg, lat + half_deg],
+            [lon - half_deg, lat + half_deg],
+            [lon - half_deg, lat - half_deg],
+        ]
+    ]
+
+
+@pytest.fixture
+def counties(tmp_path) -> CountyLookup:
+    """Answers from a seeded cache; fetching is off so no test touches Census."""
+    lookup = CountyLookup(path=tmp_path / "counties.json", allow_fetch=False)
+    lookup._cache = {
+        "39.016,-77.459": {"state": "VA", "county": "Loudoun", "fips": "51107"},
+        "33.531,-111.632": {"state": "AZ", "county": "Maricopa", "fips": "04013"},
+        "47.424,-120.310": {"state": "WA", "county": "Chelan", "fips": "53007"},
+        "0.000,-160.000": None,
+    }
+    return lookup
+
+
+@pytest.fixture
+def eia(counties) -> EIAReliability:
+    return EIAReliability(counties=counties)
+
+
+def test_county_names_join_across_both_spellings():
+    """Census says 'St. Louis city' and 'Doña Ana'; EIA says 'St Louis City' and
+    'Dona Ana'. Without normalisation the join misses and real data looks absent."""
+    assert normalise_county("St. Louis city") == normalise_county("St Louis City")
+    assert normalise_county("Doña Ana") == normalise_county("Dona Ana")
+    assert normalise_county("Loudoun County") == "LOUDOUN"
+    assert normalise_county("East Baton Rouge Parish") == "EAST BATON ROUGE"
+
+
+def test_the_bundled_reliability_table_is_real_eia_data(eia):
+    payload = eia._load()
+    assert "eia.gov" in payload["_url"]
+    assert payload["utilities"] and payload["counties"]
+    values = [u["saidi_without_med"] for u in payload["utilities"].values()]
+    assert any(v is None for v in values), "'.' in the workbook means not reported"
+    assert any(v and v > 100 for v in values), "and real outage minutes came through"
+    # A handful of small municipal systems genuinely reported zero outage minutes.
+    # That is a reported measurement, not a missing one — the two are different
+    # values here and the loader must never collapse one into the other.
+    assert all(v is None or v >= 0 for v in values)
+
+
+def test_not_reported_is_none_and_never_zero(eia):
+    """The whole rule in one assertion: '.' does not become 0.0."""
+    from app.adapters.datasets import EIAReliability
+
+    assert EIAReliability  # imported for clarity about what is under test
+    payload = eia._load()
+    reported_zero = [u for u in payload["utilities"].values() if u["saidi_without_med"] == 0.0]
+    not_reported = [u for u in payload["utilities"].values() if u["saidi_without_med"] is None]
+    assert reported_zero and not_reported, "both states must exist and be distinguishable"
+
+
+def test_reliability_reports_the_worst_utility_in_the_county(eia):
+    """Maricopa is served by several utilities whose SAIDI differs several-fold.
+    A siting decision should not rest on the most flattering of them."""
+    value = eia.values_for(33.5312, -111.6321)["grid_reliability_saidi_min"]
+    payload = eia._load()
+    served = [
+        payload["utilities"][e]["saidi_without_med"]
+        for e in payload["counties"]["AZ|MARICOPA"]
+        if payload["utilities"][e]["saidi_without_med"] is not None
+    ]
+    assert value.value == max(served)
+    assert value.unit == "minute"
+    assert "utility(ies) reporting" in value.detail
+
+
+def test_reliability_is_context_because_it_describes_a_territory_not_a_feeder(eia):
+    value = eia.values_for(39.0164, -77.4590)["grid_reliability_saidi_min"]
+    assert value.relation is EvidenceRelation.CONTEXTUAL_PROXY
+    assert "feeder" in (value.relation_note or "")
+    assert "Loudoun" in value.detail
+
+
+def test_a_county_where_nobody_reported_stays_a_gap(eia):
+    """Chelan County's utility filed the form without reliability figures. An
+    absent number is not a good one."""
+    assert eia.values_for(47.4235, -120.3103) == {}
+
+
+def test_a_location_outside_the_us_returns_nothing(eia):
+    assert eia.values_for(0.0, -160.0) == {}
+
+
+# --- PAD-US protected areas -------------------------------------------------
+
+
+def test_distance_to_a_polygon_is_zero_inside_it():
+    rings = box(39.0, -77.0, 0.05)
+    assert distance_to_rings_km(39.0, -77.0, rings) == 0.0
+
+
+def test_distance_to_a_polygon_matches_the_haversine_to_its_edge():
+    # A point 0.1 degrees west of a box that spans -77.05 to -76.95.
+    rings = box(39.0, -77.0, 0.05)
+    computed = distance_to_rings_km(39.0, -77.15, rings)
+    expected = haversine_km(39.0, -77.15, 39.0, -77.05)
+    assert computed == pytest.approx(expected, rel=0.02)
+
+
+@pytest.fixture
+def padus(tmp_path) -> PADUSProtectedAreas:
+    return PADUSProtectedAreas(path=tmp_path / "padus.json", allow_fetch=False)
+
+
+def test_a_cached_protected_area_is_reported_as_the_measurement(padus):
+    padus._cache = {
+        padus._key(*CASCADE): {
+            "result": {
+                "distance_km": 1.8,
+                "unit_name": "WA State Parks Eastern",
+                "designation": "SP",
+                "manager": "SPR",
+                "manager_type": "STAT",
+                "gap_status": "3",
+                "nearest_local": None,
+            },
+            "queried_at": "2026-08-22T00:00:00+00:00",
+        }
+    }
+    value = padus.values_for(*CASCADE)["protected_area_distance_km"]
+    # This is the measurement the concept asks for, unlike the Class I proxy it
+    # replaces, so it is canonical.
+    assert value.relation is EvidenceRelation.EXACT
+    assert value.value == 1.8 and value.unit == "km"
+    assert "WA State Parks Eastern" in value.detail
+    assert "0.2 km" in value.detail, "the simplification error must be stated"
+
+
+def test_being_inside_a_park_says_so_rather_than_reporting_a_small_number(padus):
+    padus._cache = {
+        padus._key(*CASCADE): {
+            "result": {
+                "distance_km": 0.0,
+                "unit_name": "Yosemite National Park",
+                "designation": "NP",
+                "manager": "NPS",
+                "manager_type": "FED",
+                "gap_status": "1",
+                "nearest_local": None,
+            },
+            "queried_at": "2026-08-22T00:00:00+00:00",
+        }
+    }
+    value = padus.values_for(*CASCADE)["protected_area_distance_km"]
+    assert value.value == 0.0
+    assert "inside this protected area" in value.detail
+
+
+def test_a_nearer_ball_field_is_excluded_but_never_hidden(padus):
+    """A municipal diamond is a land-use neighbour, not an ecological
+    constraint — but dropping it silently would be editing the evidence."""
+    padus._cache = {
+        padus._key(*CASCADE): {
+            "result": {
+                "distance_km": 5.65,
+                "unit_name": "Broad Run Farms Open Space",
+                "designation": "PCON",
+                "manager": "UNK",
+                "manager_type": "UNK",
+                "gap_status": "3",
+                "nearest_local": {"unit_name": "Chick Ford Field", "distance_km": 0.84},
+            },
+            "queried_at": "2026-08-22T00:00:00+00:00",
+        }
+    }
+    value = padus.values_for(*CASCADE)["protected_area_distance_km"]
+    assert value.value == 5.65
+    assert "Chick Ford Field" in value.detail and "0.84" in value.detail
+    assert "excluded as municipal recreation" in value.detail
+
+
+def test_nothing_within_the_search_rings_reports_nothing(padus):
+    padus._cache = {padus._key(*CASCADE): {"result": None, "queried_at": "2026-08-22T00:00:00+00:00"}}
+    assert padus.values_for(*CASCADE) == {}
+
+
+def test_recreation_designations_are_separated_from_conservation_land():
+    """LCA is a Local Conservation Area and must stay in; LP is a Local Park."""
+    assert "LP" in PADUSProtectedAreas.RECREATION_DESIGNATIONS
+    assert "LCA" not in PADUSProtectedAreas.RECREATION_DESIGNATIONS
+    assert "4" not in PADUSProtectedAreas.MEANINGFUL_GAP_STATUS
+
+
+def test_all_providers_are_registered():
+    from app.adapters.datasets import dataset_fields, get_dataset_providers
+
+    set_dataset_providers(None)
+    names = {p.name for p in get_dataset_providers()}
+    assert names == {"peeringdb", "water_quality_portal", "eia_reliability", "padus"}
+    assert "protected_area_distance_km" in dataset_fields()
+    assert "grid_reliability_saidi_min" in dataset_fields()

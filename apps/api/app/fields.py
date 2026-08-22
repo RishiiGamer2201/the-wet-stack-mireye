@@ -446,7 +446,10 @@ FIELDS: list[FieldSpec] = [
         good=15,
         bad=0.5,
         weight=1.2,
-        description="Distance to the nearest designated protected area.",
+        description="Distance to the nearest designated protected area, from the USGS "
+        "PAD-US national inventory. Conservation land only: municipal parks and ball "
+        "fields are reported alongside but are not treated as an ecological constraint.",
+        provider="padus",
     ),
     _f(
         key="cropland_fraction",
@@ -558,16 +561,6 @@ PROVIDER_MAP: dict[str, tuple[str, str | None, str, ProviderAvailability, str | 
         "It is shown as evaporative-cooling context; the dry-bulb must come from "
         "project climate data.",
     ),
-    "protected_area_distance_km": (
-        "nearest_class_i_area_distance_m", "meters", "m_to_km", "proxy",
-        "CONTEXTUAL ONLY — this is the distance to the nearest EPA mandatory Class I "
-        "federal area (national park or wilderness over 6000 acres), which is a strict "
-        "SUBSET of protected areas. The nearest Class I area is always at least as far as "
-        "the nearest protected area, and this concept scores higher-is-better, so using it "
-        "as the value would make a site look more remote from protected land than it is. "
-        "Shown as a Clean Air Act context indicator; the real distance needs the full "
-        "protected-area inventory.",
-    ),
     "land_cover_class": (
         "lcms_class", None, "identity", "mapped",
         "USFS LCMS life-form taxonomy, translated to our vocabulary. LCMS has no crop "
@@ -666,8 +659,6 @@ NO_PROVIDER_EQUIVALENT: dict[str, str] = {
     "observation the provider offers.",
     "wildfire_risk_index": "The catalog exposes an annual wildfire frequency and hazard-zone "
     "classes, neither of which is a 0–100 composite hazard index.",
-    "protected_area_distance_km": "The catalog reports protected-area intersection and designation, "
-    "not distance to the nearest one.",
     "cropland_fraction": "The catalog exposes a dominant CDL class and farmland classification, not "
     "the cropland share of the parcel.",
     "biodiversity_sensitivity_index": "The catalog exposes critical-habitat status, not a composite "
