@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
+import { MarkdownRenderer } from "../components/MarkdownRenderer";
 import { Badge, Button, Card, Spinner, cx, inputClass } from "../components/ui";
 import { api } from "../lib/api";
 import type {
@@ -764,9 +765,13 @@ export function ProjectKnowledgeAgent({
                   )}
 
                   {/* Message Body Content */}
-                  <div className="whitespace-pre-wrap leading-relaxed space-y-2">
-                    {msg.content}
-                  </div>
+                  {msg.role === "agent" ? (
+                    <MarkdownRenderer content={msg.content} />
+                  ) : (
+                    <div className="whitespace-pre-wrap leading-relaxed space-y-2">
+                      {msg.content}
+                    </div>
+                  )}
 
                   {/* Dedicated "Tell Me / Deep Insights" Card */}
                   {msg.tellMe && (
@@ -916,9 +921,7 @@ export function ProjectKnowledgeAgent({
 
                   {/* Live Token Streaming Output */}
                   {liveTokenText ? (
-                    <div className="whitespace-pre-wrap leading-relaxed text-ink-900">
-                      {liveTokenText}
-                    </div>
+                    <MarkdownRenderer content={liveTokenText} />
                   ) : (
                     <div className="flex items-center gap-2 text-xs text-ink-600 py-1">
                       <Spinner label="Executing tools across ChromaDB, Web Standards, and Mireye MCP..." />

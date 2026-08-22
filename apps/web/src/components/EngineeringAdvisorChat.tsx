@@ -11,6 +11,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { api } from "../lib/api";
 import type { ProjectDetail } from "../lib/types";
+import { MarkdownRenderer } from "./MarkdownRenderer";
 import { Badge, Button, inputClass } from "./ui";
 
 interface Message {
@@ -290,9 +291,13 @@ export function EngineeringAdvisorChat({
                   : "bg-white text-ink-800 border border-ink-200 rounded-tl-xs"
               }`}
             >
-              <div className="prose prose-xs max-w-none text-xs leading-relaxed whitespace-pre-wrap">
-                {msg.content}
-              </div>
+              {msg.role === "assistant" ? (
+                <MarkdownRenderer content={msg.content} />
+              ) : (
+                <div className="text-xs leading-relaxed whitespace-pre-wrap">
+                  {msg.content}
+                </div>
+              )}
 
               {/* Improvements chips */}
               {msg.improvements && msg.improvements.length > 0 && (

@@ -156,13 +156,18 @@ TASK:
 Synthesize all collected tool evidence (Ingested Documents, Mireye Telemetry, Web Standards, and Project DB) to provide a deeply technical, authoritative answer.
 Never give generic or repetitive boilerplate. Anchor your explanations in the actual retrieved figures, equipment specifications, and physical telemetry data.
 
-OUTPUT FORMAT:
-Provide a comprehensive EPC engineering assessment with clear markdown headings:
-1. **Executive Summary & Direct Answer**
-2. **Technical Analysis & Specification Verification** (cite exact pages, parameters, calculations)
-3. **Site Environmental & Physical Constraints** (Mireye telemetry data)
-4. **Standards & Code Compliance** (ASHRAE, ASCE, IEEE, FEMA)
-5. **Engineering Risks & Recommended Mitigations**
+OUTPUT FORMAT & STYLING:
+- Use clean primary section headings prefixed with `# ` or `## `.
+- Format equipment parameters, specifications, metrics, and standard names with bold text (**like this**).
+- Organize detailed points using crisp numbered lists (1., 2., 3.) or bullet points (-).
+- Make sure each major section is well-spaced with concise, punchy engineering commentary.
+
+Structure your analysis under these sections:
+# Executive Summary & Direct Answer
+# Technical Analysis & Specification Verification (cite exact submittal pages, equipment ratings, calculations)
+# Site Environmental & Physical Constraints (Mireye telemetry data)
+# Standards & Code Compliance (ASHRAE, ASCE, IEEE, FEMA)
+# Engineering Risks & Recommended Mitigations
 
 At the very end of your response, output a strict JSON block delimited by ```json_tell_me ... ``` containing custom insights specifically derived from this inquiry:
 ```json_tell_me
@@ -178,12 +183,20 @@ At the very end of your response, output a strict JSON block delimited by ```jso
 
 def _is_conversational_greeting(message: str) -> bool:
     cleaned = re.sub(r"[^\w\s]", "", message.strip().lower())
-    greetings = {
-        "hi", "hello", "hey", "hola", "greetings", "good morning", "good afternoon",
-        "good evening", "howdy", "sup", "yo", "help", "who are you", "what can you do",
-        "start", "test", "hi there", "hello there", "hi agent", "hello agent", "hey agent"
-    }
-    return cleaned in greetings or len(cleaned) <= 2
+    if len(cleaned) <= 3:
+        return True
+    conversational_patterns = [
+        "hi", "hello", "hlo", "helo", "hey", "hola", "greetings", "good morning",
+        "good afternoon", "good evening", "howdy", "sup", "yo", "help", "help me",
+        "who are you", "what can you do", "start", "test", "hi there", "hello there",
+        "how can you help", "how can you help me", "what is this", "how to use",
+        "how do you work", "what are your capabilities", "introduce yourself"
+    ]
+    if cleaned in conversational_patterns:
+        return True
+    return any(cleaned.startswith(p) for p in ["hlo ", "hello ", "hi ", "hey "]) and any(
+        w in cleaned for w in ["help", "do", "you", "who", "what", "assist", "can"]
+    )
 
 
 class KnowledgeAgent:
