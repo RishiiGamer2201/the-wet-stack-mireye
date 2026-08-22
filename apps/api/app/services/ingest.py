@@ -3,13 +3,23 @@
 Extraction is regex + keyword based and deliberately conservative: it proposes
 requirements with a confidence and a source span, and a human confirms or
 corrects them before they are used in any check (`confirmed = True`).
+
+A page with no text layer is a scan. When Tesseract is available those pages are
+OCR'd, which widens what the system can read to drawings, faxed RFIs and archived
+specs. OCR output is a *transcription*, not the document: a misread "1,040 kW" as
+"1.040 kW" is a fabricated number wearing a citation. So anything read by OCR is
+marked at the page, the requirement and the evidence, carries roughly half the
+confidence of a text-layer reading, and is never treated as verified.
 """
 
 from __future__ import annotations
 
 import hashlib
 import logging
+import os
 import re
+import shutil
+from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath, PureWindowsPath
 
 from ..adapters.vectorstore import LocalVectorIndex, PgVectorIndex, get_index
@@ -25,6 +35,7 @@ from ..domain import (
     RequirementKind,
     SourceType,
     TextSpan,
+    VerificationStatus,
 )
 from ..store import C, Store
 
@@ -115,26 +126,153 @@ def validate_upload(filename: str, content_type: str, size: int) -> None:
         raise IngestionError("only .pdf files are accepted")
 
 
-def extract_pages(path: Path) -> list[str]:
-    """Page-aware text extraction. Raises IngestionError on an unreadable file."""
+
+@dataclass
+class ExtractedText:
+    """Page text plus which pages had to be read by OCR."""
+
+    pages: list[str] = field(default_factory=list)
+    ocr_pages: list[int] = field(default_factory=list)
+    #: Pages that were scans but were left unread — over the page cap, or OCR
+    #: unavailable. Named so the UI can say what is missing rather than imply
+    #: the document was fully read.
+    unread_pages: list[int] = field(default_factory=list)
+    ocr_note: str | None = None
+
+
+def _tesseract_dir() -> str | None:
+    """Directory containing `eng.traineddata`, or None if Tesseract is absent.
+
+    PyMuPDF shells out to the `tesseract` binary and wants the tessdata path, not
+    the executable. Both can be pinned by configuration for hosts where the
+    binary is installed somewhere unusual.
+    """
+    settings = get_settings()
+    if not settings.ocr_enabled:
+        return None
+    if settings.ocr_tessdata_dir and Path(settings.ocr_tessdata_dir).is_dir():
+        return settings.ocr_tessdata_dir
+
+    binary = settings.ocr_tesseract_path or shutil.which("tesseract")
+    if binary and Path(binary).exists():
+        # A standard install keeps tessdata beside or one level above the binary.
+        for candidate in (
+            Path(binary).parent / "tessdata",
+            Path(binary).parent.parent / "share" / "tessdata",
+            Path(binary).parent.parent / "share" / "tesseract-ocr" / "5" / "tessdata",
+        ):
+            if candidate.is_dir():
+                return str(candidate)
+
+    env = os.environ.get("TESSDATA_PREFIX")
+    if env and Path(env).is_dir():
+        return env
+
+    # Default install locations. Tesseract's Windows installer does not add
+    # itself to PATH, so "installed but invisible" is the common case.
+    for candidate in (
+        "C:/Program Files/Tesseract-OCR/tessdata",
+        "C:/Program Files (x86)/Tesseract-OCR/tessdata",
+        "/usr/share/tesseract-ocr/5/tessdata",
+        "/usr/share/tesseract-ocr/4.00/tessdata",
+        "/usr/share/tessdata",
+        "/opt/homebrew/share/tessdata",
+    ):
+        if Path(candidate).is_dir():
+            return candidate
+    return None
+
+
+def ocr_available() -> bool:
+    return _tesseract_dir() is not None
+
+
+def _ocr_page(page, tessdata: str, dpi: int) -> str:
+    """Transcribe one rendered page. Returns "" when Tesseract reads nothing."""
+    textpage = page.get_textpage_ocr(flags=0, dpi=dpi, full=True, tessdata=tessdata)
+    return textpage.extractText() or ""
+
+
+def extract_pages(path: Path) -> ExtractedText:
+    """Page-aware text extraction, falling back to OCR page by page.
+
+    Raises IngestionError on an unreadable file. A page that is a scan and cannot
+    be OCR'd comes back empty and is listed in `unread_pages` — the document is
+    still ingested, because half a readable specification is worth having, but
+    what was not read is recorded rather than passed over.
+    """
     try:
         import pymupdf
     except ImportError as exc:  # pragma: no cover - dependency is declared
         raise IngestionError("PyMuPDF is not installed") from exc
+
+    settings = get_settings()
+    tessdata = _tesseract_dir()
+    result = ExtractedText()
     try:
         # Opened from a byte stream, not the path: PyMuPDF keeps a file handle on a
         # failed open (so the rejected upload could not be deleted on Windows), and
         # the resulting error message would carry the server's absolute path.
         with pymupdf.open(stream=path.read_bytes(), filetype="pdf") as doc:
-            return [page.get_text() or "" for page in doc]
+            for number, page in enumerate(doc, start=1):
+                text = page.get_text() or ""
+                if text.strip():
+                    result.pages.append(text)
+                    continue
+
+                # No text layer. Either a scan, or a genuinely blank page.
+                if tessdata is None:
+                    result.unread_pages.append(number)
+                    result.pages.append("")
+                    continue
+                if len(result.ocr_pages) >= settings.ocr_max_pages:
+                    result.unread_pages.append(number)
+                    result.pages.append("")
+                    continue
+                try:
+                    text = _ocr_page(page, tessdata, settings.ocr_dpi)
+                except Exception as exc:  # noqa: BLE001 - one bad page is not a bad document
+                    log.warning("ocr failed on page", extra={"page": number, "error": str(exc)})
+                    result.unread_pages.append(number)
+                    result.pages.append("")
+                    continue
+                if text.strip():
+                    result.ocr_pages.append(number)
+                result.pages.append(text)
+    except IngestionError:
+        raise
     except Exception as exc:  # noqa: BLE001 - corrupt/encrypted PDFs land here
         detail = str(exc).replace(str(path), path.name)
         raise IngestionError(f"could not read PDF: {detail}") from exc
 
+    notes = []
+    if result.ocr_pages:
+        notes.append(
+            f"{len(result.ocr_pages)} page(s) had no text layer and were read by OCR "
+            f"(page {', '.join(str(n) for n in result.ocr_pages)}). OCR output is a "
+            "transcription and must be confirmed before use."
+        )
+    if result.unread_pages:
+        if tessdata is None:
+            why = "OCR is not enabled on this host"
+        elif len(result.ocr_pages) >= settings.ocr_max_pages:
+            why = f"the {settings.ocr_max_pages}-page OCR limit was reached"
+        else:
+            why = "OCR could not read them"
+        notes.append(
+            f"{len(result.unread_pages)} page(s) could not be read because {why} "
+            f"(page {', '.join(str(n) for n in result.unread_pages)})."
+        )
+    result.ocr_note = " ".join(notes) or None
+    return result
 
-def chunk_pages(document: ProjectDocument, pages: list[str]) -> list[DocumentChunk]:
+
+def chunk_pages(
+    document: ProjectDocument, pages: list[str], ocr_pages: set[int] | None = None
+) -> list[DocumentChunk]:
     """Split each page into overlapping chunks, keeping page-relative offsets."""
     chunks: list[DocumentChunk] = []
+    transcribed = ocr_pages or set()
     ordinal = 0
     for page_number, text in enumerate(pages, start=1):
         cleaned = re.sub(r"[ \t]+", " ", text).strip()
@@ -158,6 +296,7 @@ def chunk_pages(document: ProjectDocument, pages: list[str]) -> list[DocumentChu
                         text=body,
                         char_start=start,
                         char_end=end,
+                        ocr=page_number in transcribed,
                     )
                 )
                 ordinal += 1
@@ -227,7 +366,10 @@ def extract_requirements(
                                 text=sentence.strip(),
                             ),
                             raw_text=sentence.strip(),
-                            confidence=0.55 if unit else 0.4,
+                            # A transcribed digit is less trustworthy than a read
+                            # one, and the number is exactly what matters here.
+                            confidence=(0.55 if unit else 0.4) * (0.5 if chunk.ocr else 1.0),
+                            from_ocr=chunk.ocr,
                         )
                     )
     return requirements
@@ -253,8 +395,19 @@ def evidence_for_requirement(requirement: Requirement, document: ProjectDocument
             span=requirement.span,
             field_key=requirement.field_key,
             synthetic=document.synthetic,
+            notes=(
+                "Read by OCR from a page with no text layer. The value is a "
+                "transcription and has not been verified against the page."
+                if requirement.from_ocr
+                else None
+            ),
         ),
         status=EvidenceStatus.SYNTHETIC if document.synthetic else EvidenceStatus.LIVE,
+        verification=(
+            VerificationStatus.NEEDS_REVIEW
+            if requirement.from_ocr
+            else VerificationStatus.UNVERIFIED
+        ),
         confidence=requirement.confidence,
     )
 
@@ -280,19 +433,25 @@ def ingest_pdf(
         synthetic=synthetic,
     )
     try:
-        pages = extract_pages(path)
+        extracted = extract_pages(path)
     except IngestionError as exc:
         document.extraction_status = "failed"
         document.extraction_error = str(exc)
         store.put(C.DOCUMENTS, document, project_id=project_id)
         raise
 
-    document.page_count = len(pages)
-    chunks = chunk_pages(document, pages)
+    document.page_count = len(extracted.pages)
+    document.ocr_pages = extracted.ocr_pages
+    document.unread_pages = extracted.unread_pages
+    chunks = chunk_pages(document, extracted.pages, set(extracted.ocr_pages))
     if not chunks:
         document.extraction_status = "failed"
-        document.extraction_error = (
-            "No extractable text found. The PDF is probably a scan; OCR is not enabled."
+        document.extraction_error = extracted.ocr_note or (
+            "No extractable text found. OCR read every page and returned nothing, "
+            "so the pages are blank or the scan is unreadable."
+            if ocr_available()
+            else "No extractable text found. The PDF is probably a scan and OCR is "
+            "not enabled on this host."
         )
         store.put(C.DOCUMENTS, document, project_id=project_id)
         return document, [], []
@@ -317,12 +476,17 @@ def ingest_pdf(
         store.put(C.REQUIREMENTS, requirement, project_id=project_id, parent_id=document.id)
 
     document.extraction_status = "extracted"
+    # A partly-OCR'd or partly-unread document still extracts; the note travels
+    # with it as a warning so the UI never presents it as fully read.
+    document.extraction_error = extracted.ocr_note
     store.put(C.DOCUMENTS, document, project_id=project_id)
     log.info(
         "document ingested",
         extra={
             "document_id": document.id,
             "pages": document.page_count,
+            "ocr_pages": len(document.ocr_pages),
+            "unread_pages": len(document.unread_pages),
             "chunks": len(chunks),
             "requirements": len(requirements),
         },

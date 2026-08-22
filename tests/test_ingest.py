@@ -142,11 +142,21 @@ def test_unreadable_pdf_is_recorded_as_failed(store, tmp_path):
 
 
 def test_pdf_without_text_is_flagged_not_silently_empty(store, tmp_path):
+    """An empty document must fail loudly and say why, whether or not this host
+    can OCR. A zero-chunk document that reports success is indistinguishable
+    from a document that genuinely says nothing."""
+    from app.services.ingest import ocr_available
+
     blank = write_sample_pdf(tmp_path / "blank.pdf", "blank", [" "])
     document, chunks, requirements = ingest_pdf(store, "p1", blank, "blank.pdf")
     assert chunks == [] and requirements == []
     assert document.extraction_status == "failed"
+    assert "No extractable text found" in document.extraction_error
     assert "OCR" in document.extraction_error
+    if ocr_available():
+        assert "returned nothing" in document.extraction_error
+    else:
+        assert "not enabled on this host" in document.extraction_error
 
 
 def test_full_ingest_creates_chunks_requirements_and_evidence(store, tmp_path):

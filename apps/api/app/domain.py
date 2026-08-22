@@ -475,6 +475,18 @@ class ProjectDocument(Base):
     uploaded_at: datetime = Field(default_factory=now)
     extraction_status: Literal["pending", "extracted", "failed"] = "pending"
     extraction_error: str | None = None
+    #: Pages that had no text layer and were transcribed by OCR. Everything read
+    #: from them is a transcription, so it is carried at lower confidence and
+    #: must be confirmed before any check uses it.
+    ocr_pages: list[int] = Field(default_factory=list)
+    #: Pages that are scans and were not read at all — OCR unavailable, over the
+    #: page cap, or unreadable. Listed so nobody reads silence as "not in the
+    #: document".
+    unread_pages: list[int] = Field(default_factory=list)
+
+    @property
+    def has_ocr(self) -> bool:
+        return bool(self.ocr_pages)
 
 
 class DocumentChunk(Base):
@@ -484,6 +496,9 @@ class DocumentChunk(Base):
     page: int
     ordinal: int
     text: str
+    #: True when this chunk's page was transcribed by OCR rather than read from
+    #: a text layer. Surfaced on every citation drawn from it.
+    ocr: bool = False
     char_start: int
     char_end: int
     section: str | None = None
@@ -517,6 +532,10 @@ class Requirement(Base):
     span: TextSpan | None = None
     raw_text: str | None = None
     confidence: float = 0.5
+    #: True when the sentence this came from was transcribed by OCR. A misread
+    #: digit is a fabricated number with a citation attached, so these can never
+    #: be auto-confirmed and are shown as needing a human read of the page.
+    from_ocr: bool = False
     confirmed: bool = False
     confirmed_by: str | None = None
     corrected_from: str | None = None
@@ -532,6 +551,8 @@ class RetrievedChunk(Base):
     text: str
     score: float
     method: Literal["lexical", "vector"] = "lexical"
+    #: The quoted page was transcribed by OCR, not read from a text layer.
+    ocr: bool = False
 
 
 # ---------------------------------------------------------------------------

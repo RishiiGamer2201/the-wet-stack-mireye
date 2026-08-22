@@ -44,7 +44,9 @@ from .store import C, Store, get_store
 
 log = logging.getLogger("seed")
 
-SAMPLE_DIR = Path(__file__).resolve().parents[3] / "sample_data"
+def _sample_dir() -> Path:
+    """Resolved per call, not at import: DATA_DIR is configuration."""
+    return get_settings().sample_dir
 
 SYNTHETIC_BANNER = (
     "SYNTHETIC DEMONSTRATION DOCUMENT - values are invented for the Wet Stack / Mireye "
@@ -190,17 +192,17 @@ def write_sample_pdf(path: Path, title: str, pages: list[str]) -> Path:
 def ensure_sample_documents() -> dict[str, Path]:
     files = {
         "spec": (
-            SAMPLE_DIR / "Aurora-DC1-Mechanical-Specification-SYNTHETIC.pdf",
+            _sample_dir() / "Aurora-DC1-Mechanical-Specification-SYNTHETIC.pdf",
             "Aurora DC-1 Mechanical Specification (synthetic)",
             SPEC_PAGES,
         ),
         "datasheet": (
-            SAMPLE_DIR / "Northwind-NT-1100-Datasheet-SYNTHETIC.pdf",
+            _sample_dir() / "Northwind-NT-1100-Datasheet-SYNTHETIC.pdf",
             "Northwind Thermal NT-1100 datasheet (synthetic)",
             DATASHEET_PAGES,
         ),
         "submittal": (
-            SAMPLE_DIR / "Vertex-VX-1150-Submittal-SYNTHETIC.pdf",
+            _sample_dir() / "Vertex-VX-1150-Submittal-SYNTHETIC.pdf",
             "Vertex Climate VX-1150 submittal (synthetic)",
             SUBMITTAL_PAGES,
         ),

@@ -182,6 +182,43 @@ Attaching a Render **persistent disk** is a middle ground: it survives restarts
 but not a service delete, and it forces single-instance deployment — which this
 build already requires anyway.
 
+## 5a. OCR for scanned PDFs
+
+Text extraction reads a PDF's text layer. A scan has none, so before OCR a
+scanned drawing, a faxed RFI or an archived specification ingested as zero
+chunks and was reported as unreadable.
+
+The backend now OCRs **only the pages that have no text layer**, so a
+born-digital PDF costs nothing and is not marked. This is why the service runs
+on Docker rather than Render's native Python runtime: OCR needs the `tesseract`
+binary, which apt installs and pip cannot. `apps/api/Dockerfile` installs
+`tesseract-ocr` and `tesseract-ocr-eng` and pins `TESSDATA_PREFIX`.
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| `OCR_ENABLED` | `true` | Off means a scan is reported unreadable, as before. |
+| `OCR_MAX_PAGES` | `30` | ~1-3 s per page. Pages past the cap are reported as unread. |
+| `OCR_DPI` | `200` | Reads 8pt type reliably; 300 is slower and rarely better. |
+| `OCR_TESSERACT_PATH` | unset | Only when the binary is installed off the probe's path. |
+| `OCR_TESSDATA_DIR` | unset | Only when `eng.traineddata` is somewhere unusual. |
+
+**A transcription is not the document.** A misread "1,040 kW" as "1.040 kW" is a
+fabricated number wearing a citation, which is worse than a missing one. So
+anything OCR reads is marked the whole way through:
+
+* the document lists its `ocr_pages` and any `unread_pages`, and carries a
+  warning even when extraction succeeded;
+* every chunk drawn from a transcribed page has `ocr = true`, and so does every
+  search hit that quotes it;
+* candidate requirements are flagged `from_ocr`, carried at **half** the
+  confidence of a text-layer reading, and shown as *"OCR — read the page"*;
+* their evidence is `NEEDS_REVIEW` with a note saying it has not been checked
+  against the page.
+
+Nothing here bypasses the existing rule that a requirement must be confirmed by
+a human before any check uses it. OCR widens what the system can read; it does
+not widen what it is allowed to believe.
+
 ## 6. Uploads
 
 Uploaded files are constrained twice, on purpose:

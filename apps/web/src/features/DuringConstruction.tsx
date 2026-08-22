@@ -606,6 +606,14 @@ function RequirementsPanel({
                         extracted ({(requirement.confidence * 100).toFixed(0)}%)
                       </Badge>
                     )}
+                    {requirement.from_ocr && (
+                      <Badge
+                        className="ml-1 border-rose-300 bg-rose-100 text-rose-900"
+                        title="Transcribed by OCR from a scanned page. Read the page before confirming — a misread digit is a wrong number with a citation on it."
+                      >
+                        OCR — read the page
+                      </Badge>
+                    )}
                     {requirement.corrected_from && (
                       <span className="mt-0.5 block text-[11px] text-ink-500">
                         was {requirement.corrected_from}

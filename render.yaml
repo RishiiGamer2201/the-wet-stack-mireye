@@ -16,24 +16,22 @@
 services:
   - type: web
     name: wetstack-mireye-api
-    runtime: python
+    # Docker, not the native Python runtime: OCR needs the `tesseract` binary,
+    # which apt installs and pip cannot. See apps/api/Dockerfile.
+    runtime: docker
+    dockerfilePath: ./apps/api/Dockerfile
+    dockerContext: ./apps/api
     # `starter` keeps the service warm. `free` also works and costs nothing, but
     # it spins down after ~15 minutes idle: the next request takes ~50 s and the
     # ephemeral disk is wiped, so the demo re-seeds. Reliability vs cost.
     plan: starter
     region: oregon
-    rootDir: apps/api
     autoDeploy: false
-    buildCommand: pip install --upgrade pip && pip install .
-    # Single worker, deliberately. The impact-graph store is in-process memory and
-    # the SQLite store holds one guarded connection, so a second worker would
-    # serve a different graph depending on which process answered.
-    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1 --proxy-headers --no-access-log
+    # Build and start commands live in the Dockerfile, including the single-worker
+    # constraint the in-process impact graph depends on.
     healthCheckPath: /api/health
     envVars:
-      # Python version is also pinned by apps/api/.python-version.
-      - key: PYTHON_VERSION
-        value: 3.13.4
+      # Python version is pinned by the Dockerfile's base image.
       - key: ENVIRONMENT
         value: production
       - key: LOG_LEVEL
@@ -45,6 +43,14 @@ services:
       # Writable path on the ephemeral disk for SQLite + uploads.
       - key: DATA_DIR
         value: /tmp/wetstack
+      # OCR for scanned PDFs. The image ships tesseract, so this is on by
+      # default; set to false to make uploads faster and refuse scans instead.
+      - key: OCR_ENABLED
+        value: "true"
+      # ~1-3 s per page. Past this the remaining scanned pages are reported as
+      # unread rather than holding the upload request open for minutes.
+      - key: OCR_MAX_PAGES
+        value: "30"
       # Demo data is seeded only when the store is empty. Set to false for any
       # deployment with a real DATABASE_URL.
       - key: SEED_ON_STARTUP
@@ -69,4 +75,6 @@ services:
       - key: LANGSMITH_API_KEY
         sync: false
       - key: GEMINI_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
         sync: false

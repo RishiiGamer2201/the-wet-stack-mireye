@@ -401,6 +401,8 @@ export interface Requirement {
   page?: number | null;
   raw_text?: string | null;
   confidence: number;
+  /** Transcribed by OCR rather than read from a text layer — confirm the page. */
+  from_ocr?: boolean;
   confirmed: boolean;
   confirmed_by?: string | null;
   corrected_from?: string | null;
@@ -417,6 +419,10 @@ export interface ProjectDocument {
   uploaded_at: string;
   extraction_status: "pending" | "extracted" | "failed";
   extraction_error?: string | null;
+  /** Pages with no text layer that were transcribed by OCR. */
+  ocr_pages?: number[];
+  /** Pages that are scans and were not read at all. */
+  unread_pages?: number[];
 }
 
 export interface ProjectDetail {
@@ -453,6 +459,8 @@ export interface RetrievedChunk {
   text: string;
   score: number;
   method: "lexical" | "vector";
+  /** The quoted page was transcribed by OCR. */
+  ocr?: boolean;
 }
 
 export interface SearchResponse {

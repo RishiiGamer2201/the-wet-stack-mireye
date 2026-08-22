@@ -92,6 +92,7 @@ class LexicalIndex:
                 text=c.text,
                 score=round(s, 4),
                 method="lexical",
+                ocr=c.ocr,
             )
             for s, c in scored[:k]
         ]
@@ -152,6 +153,7 @@ class LocalVectorIndex:
                 text=c.text,
                 score=round(s, 4),
                 method="vector",
+                ocr=c.ocr,
             )
             for s, c in scored[:k]
             if s > 0.01
@@ -173,7 +175,8 @@ class PgVectorIndex:
             conn.execute(
                 "CREATE TABLE IF NOT EXISTS document_chunks ("
                 "id text PRIMARY KEY, project_id text, document_id text, document_name text,"
-                f"page int, text text, embedding vector({self.embedder.dimensions}))"
+                f"page int, text text, embedding vector({self.embedder.dimensions}),"
+                "ocr boolean DEFAULT false)"
             )
             conn.commit()
 
@@ -181,11 +184,12 @@ class PgVectorIndex:
         vector = chunk.embedding or self.embedder.embed(chunk.text)
         with self._connect() as conn:
             conn.execute(
-                "INSERT INTO document_chunks VALUES (%s,%s,%s,%s,%s,%s,%s) "
-                "ON CONFLICT (id) DO UPDATE SET text=EXCLUDED.text, embedding=EXCLUDED.embedding",
+                "INSERT INTO document_chunks VALUES (%s,%s,%s,%s,%s,%s,%s,%s) "
+                "ON CONFLICT (id) DO UPDATE SET text=EXCLUDED.text, "
+                "embedding=EXCLUDED.embedding, ocr=EXCLUDED.ocr",
                 (
                     chunk.id, chunk.project_id, chunk.document_id, document_name,
-                    chunk.page, chunk.text, str(vector),
+                    chunk.page, chunk.text, str(vector), chunk.ocr,
                 ),
             )
             conn.commit()
@@ -195,7 +199,7 @@ class PgVectorIndex:
         with self._connect() as conn:
             rows = conn.execute(
                 "SELECT id, document_id, document_name, page, text, "
-                "1 - (embedding <=> %s::vector) AS score FROM document_chunks "
+                "1 - (embedding <=> %s::vector) AS score, ocr FROM document_chunks "
                 "WHERE project_id = %s ORDER BY embedding <=> %s::vector LIMIT %s",
                 (vector, project_id, vector, k),
             ).fetchall()
@@ -203,6 +207,7 @@ class PgVectorIndex:
             RetrievedChunk(
                 chunk_id=r[0], document_id=r[1], document_name=r[2], page=r[3],
                 text=r[4], score=round(float(r[5]), 4), method="vector",
+                ocr=bool(r[6]),
             )
             for r in rows
         ]

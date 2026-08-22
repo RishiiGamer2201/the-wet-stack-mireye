@@ -462,6 +462,9 @@ performance, and it is free.
    access. Read them before writing a scraper. Manual export of the twenty models
    that actually appear in a bid package takes about an hour and carries no legal
    ambiguity.
+6. Scanned documents are fine now: pages with no text layer are OCR'd on upload.
+   The values come in flagged as transcriptions at half confidence and must be
+   confirmed against the page — see `deployment.md` §5a.
 
 ### 5.2 Manufacturer cut sheets ⭐
 

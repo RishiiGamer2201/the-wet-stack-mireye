@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
+import { EngineeringAdvisorChat } from "./components/EngineeringAdvisorChat";
 import { HeroPage } from "./components/HeroPage";
 import { ProjectCreatePage } from "./components/ProjectCreatePage";
 import { Badge, Button, Card, ErrorState, Spinner, Tabs, cx, inputClass } from "./components/ui";
@@ -39,6 +40,10 @@ export default function App() {
     }
   });
   const [view, setView] = useState<ViewMode>("hero");
+  // The advisor lives here rather than inside one workflow: the same engineer is
+  // worth asking from the site table, the change log and the document library.
+  const [advisorOpen, setAdvisorOpen] = useState(false);
+  const [advisorSiteId, setAdvisorSiteId] = useState<string | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
 
@@ -471,6 +476,11 @@ export default function App() {
                       detail={detail}
                       meta={meta}
                       onProjectChanged={() => loadProject(detail.project.id)}
+                      onOpenAdvisor={(siteId) => {
+                        setAdvisorSiteId(siteId);
+                        setAdvisorOpen(true);
+                      }}
+                      onAdvisorSiteChange={setAdvisorSiteId}
                     />
                   )}
                   {view === "during" && (
@@ -503,6 +513,34 @@ export default function App() {
               </div>
             )}
           </main>
+
+          {/* Senior Civil EPC Advisor — available on every workflow */}
+          {detail && (
+            <>
+              <EngineeringAdvisorChat
+                detail={detail}
+                activeSiteId={advisorSiteId}
+                isOpen={advisorOpen}
+                onClose={() => setAdvisorOpen(false)}
+                onProjectChanged={() => loadProject(detail.project.id)}
+              />
+              {!advisorOpen && (
+                <button
+                  onClick={() => setAdvisorOpen(true)}
+                  className="fixed bottom-6 right-6 z-40 flex items-center gap-2 bg-ink-900 hover:bg-signal-600 text-white px-4 py-2.5 rounded-full shadow-xl border border-ink-700 transition-all scale-100 hover:scale-105 font-bold text-xs"
+                  title="Consult Senior Civil & Structural EPC Engineer AI Advisor"
+                >
+                  <div className="flex h-5 w-5 items-center justify-center rounded-full bg-amber-500/30 text-amber-400">
+                    <HardHat className="h-3.5 w-3.5" />
+                  </div>
+                  <span>Senior Civil EPC Advisor</span>
+                  <span className="bg-amber-500/20 text-amber-300 text-[10px] px-1.5 py-0.5 rounded font-mono">
+                    AI
+                  </span>
+                </button>
+              )}
+            </>
+          )}
 
           {/* Footer */}
           {meta && (
@@ -654,7 +692,8 @@ function KnowledgePanel({
           </div>
           <p className="mt-1.5 text-[11px] text-ink-500">
             Text is extracted, chunked and indexed on upload, so a document is searchable here and
-            citable by the advisor straight away. Real documents are never labelled synthetic.
+            citable by the advisor straight away. Pages with no text layer are transcribed by OCR
+            and marked as such — a transcription is never treated as a confirmed value.
           </p>
           {uploadNote && (
             <p
@@ -695,13 +734,25 @@ function KnowledgePanel({
                     >
                       {document.extraction_status}
                     </Badge>
+                    {document.ocr_pages && document.ocr_pages.length > 0 && (
+                      <Badge className="border-violet-300 bg-violet-100 text-violet-900">
+                        OCR ×{document.ocr_pages.length}
+                      </Badge>
+                    )}
                   </div>
                 </div>
                 <p className="mt-1 text-ink-500">
                   {document.page_count} page(s) · {(document.size_bytes / 1024).toFixed(0)} kB
                 </p>
                 {document.extraction_error && (
-                  <p className="mt-1 text-rose-700">{document.extraction_error}</p>
+                  <p
+                    className={cx(
+                      "mt-1",
+                      document.extraction_status === "failed" ? "text-rose-700" : "text-violet-800",
+                    )}
+                  >
+                    {document.extraction_error}
+                  </p>
                 )}
               </li>
             ))}
@@ -766,6 +817,14 @@ function KnowledgePanel({
                   <p className="text-[11px] font-medium text-ink-600">
                     {chunk.document_name} · page {chunk.page} · {chunk.method} · score{" "}
                     {chunk.score.toFixed(3)}
+                    {chunk.ocr && (
+                      <span
+                        className="ml-1 rounded bg-violet-100 px-1 text-violet-900"
+                        title="This page had no text layer; the text was transcribed by OCR and is unverified."
+                      >
+                        OCR
+                      </span>
+                    )}
                   </p>
                   <p className="mt-1 line-clamp-4 text-ink-700">{chunk.text}</p>
                 </li>

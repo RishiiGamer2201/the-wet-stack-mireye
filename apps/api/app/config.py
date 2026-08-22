@@ -9,8 +9,11 @@ from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
 API_ROOT = Path(__file__).resolve().parents[1]
+#: The checkout root, when the package is running from one. Installed into a
+#: container it is not, so this is None rather than an IndexError at import.
+_parents = Path(__file__).resolve().parents
+REPO_ROOT = _parents[3] if len(_parents) > 3 else None
 
 
 class Settings(BaseSettings):
@@ -92,6 +95,22 @@ class Settings(BaseSettings):
     max_upload_bytes: int = 25 * 1024 * 1024
     allowed_upload_types: tuple[str, ...] = ("application/pdf",)
 
+    # --- OCR -----------------------------------------------------------------
+    # Only pages with no text layer are ever OCR'd, so a born-digital PDF costs
+    # nothing. Needs the `tesseract` binary on the host: without it, a scan is
+    # reported as unreadable rather than silently producing no text.
+    ocr_enabled: bool = True
+    #: Explicit path to the binary when it is installed but not on PATH.
+    ocr_tesseract_path: str | None = None
+    #: Directory holding `eng.traineddata`. Usually set by the Tesseract install.
+    ocr_tessdata_dir: str | None = None
+    #: ~1-3 s per page. A 200-page scan would hold the upload request open for
+    #: several minutes, so the rest of the document is reported, not attempted.
+    ocr_max_pages: int = 30
+    #: Rendering resolution. 200 dpi reads 8pt type reliably; 300 is slower and
+    #: rarely better on engineering documents.
+    ocr_dpi: int = 200
+
     # --- demo data ---------------------------------------------------------
     # When enabled, an empty store seeds the synthetic demo project on start.
     # Set to False to start with a clean database.
@@ -145,6 +164,18 @@ class Settings(BaseSettings):
     @property
     def upload_dir(self) -> Path:
         return self.data_dir / "uploads"
+
+    @property
+    def sample_dir(self) -> Path:
+        """Where the synthetic demonstration PDFs live.
+
+        The repository's own `sample_data/` when running from a checkout, so the
+        committed files are used as-is; otherwise a writable path under DATA_DIR,
+        because a container has no checkout and the seed regenerates them.
+        """
+        if REPO_ROOT is not None and (REPO_ROOT / "sample_data").exists():
+            return REPO_ROOT / "sample_data"
+        return self.data_dir / "sample_data"
 
     @property
     def redis_path(self) -> Path:

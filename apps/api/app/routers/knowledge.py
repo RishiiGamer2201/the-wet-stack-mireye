@@ -1,7 +1,6 @@
 import json
 import logging
 import time
-from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
@@ -564,7 +563,7 @@ def list_assumptions(project: Project = Depends(get_project), store: Store = Dep
 @router.get("/sample-documents")
 def sample_documents():
     """The synthetic PDFs shipped with the demo, for the upload walkthrough."""
-    sample_dir = Path(__file__).resolve().parents[4] / "sample_data"
+    sample_dir = get_settings().sample_dir
     return {
         "directory": str(sample_dir),
         "files": sorted(p.name for p in sample_dir.glob("*.pdf")) if sample_dir.exists() else [],

@@ -1,4 +1,4 @@
-import { AlertTriangle, HardHat, MapPin, Play, Plus, RotateCcw, Sparkles, Trash2, X } from "lucide-react";
+import { AlertTriangle, MapPin, Play, Plus, RotateCcw, Sparkles, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Bar,
@@ -15,7 +15,6 @@ import {
   YAxis,
 } from "recharts";
 
-import { EngineeringAdvisorChat } from "../components/EngineeringAdvisorChat";
 import { EvidenceDrawer } from "../components/EvidencePanel";
 import { GapPanel } from "../components/GapPanel";
 import { DecisionCard, InvestigationTimeline, NextActionPreview } from "../components/Investigation";
@@ -255,10 +254,16 @@ export function BeforeConstruction({
   detail,
   meta,
   onProjectChanged,
+  onOpenAdvisor,
+  onAdvisorSiteChange,
 }: {
   detail: ProjectDetail;
   meta: Meta;
   onProjectChanged: () => void;
+  /** Open the app-level advisor, optionally on a specific site. */
+  onOpenAdvisor: (siteId: string | null) => void;
+  /** Tell the app which candidate is selected, so the advisor follows. */
+  onAdvisorSiteChange?: (siteId: string | null) => void;
 }) {
   const projectId = detail.project.id;
   const [sites, setSites] = useState<CandidateSite[]>(detail.sites);
@@ -272,13 +277,17 @@ export function BeforeConstruction({
   const [error, setError] = useState<unknown>(null);
   const [investigationFailed, setInvestigationFailed] = useState(false);
   const [selectedSite, setSelectedSite] = useState<string | null>(null);
+
+  // Keep the app-level advisor pointed at whichever candidate is selected here,
+  // so opening it from another tab still knows which site is under discussion.
+  useEffect(() => {
+    onAdvisorSiteChange?.(selectedSite);
+  }, [selectedSite, onAdvisorSiteChange]);
   const [whatIf, setWhatIf] = useState<string[]>([]);
   const [evidenceFor, setEvidenceFor] = useState<{ id: string; name: string } | null>(null);
   const [busyOverride, setBusyOverride] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showScoutModal, setShowScoutModal] = useState(false);
-  const [showAdvisor, setShowAdvisor] = useState(false);
-  const [advisorSiteId, setAdvisorSiteId] = useState<string | null>(null);
   const [savingSite, setSavingSite] = useState(false);
   const [saveError, setSaveError] = useState<unknown>(null);
   const weightSeq = useRef(0);
@@ -801,39 +810,10 @@ export function BeforeConstruction({
             await refresh();
             onProjectChanged();
           }}
-          onOpenAdvisor={(siteId) => {
-            setAdvisorSiteId(siteId ?? selectedSite ?? null);
-            setShowAdvisor(true);
-          }}
+          onOpenAdvisor={(siteId) => onOpenAdvisor(siteId ?? selectedSite ?? null)}
         />
       )}
 
-      {/* Senior Civil EPC Engineer AI Advisor Drawer */}
-      <EngineeringAdvisorChat
-        detail={detail}
-        activeSiteId={advisorSiteId ?? selectedSite}
-        isOpen={showAdvisor}
-        onClose={() => setShowAdvisor(false)}
-        onProjectChanged={onProjectChanged}
-      />
-
-      {/* Floating Senior Civil EPC Advisor Trigger */}
-      <button
-        onClick={() => {
-          setAdvisorSiteId(selectedSite ?? null);
-          setShowAdvisor(true);
-        }}
-        className="fixed bottom-6 right-6 z-40 flex items-center gap-2 bg-ink-900 hover:bg-signal-600 text-white px-4 py-2.5 rounded-full shadow-xl border border-ink-700 transition-all scale-100 hover:scale-105 font-bold text-xs group"
-        title="Consult Senior Civil & Structural EPC Engineer AI Advisor"
-      >
-        <div className="flex h-5 w-5 items-center justify-center rounded-full bg-amber-500/30 text-amber-400">
-          <HardHat className="h-3.5 w-3.5" />
-        </div>
-        <span>Senior Civil EPC Advisor</span>
-        <span className="bg-amber-500/20 text-amber-300 text-[10px] px-1.5 py-0.5 rounded font-mono">
-          AI
-        </span>
-      </button>
     </div>
   );
 }
