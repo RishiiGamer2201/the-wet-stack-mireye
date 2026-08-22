@@ -814,6 +814,7 @@ export function BeforeConstruction({
         activeSiteId={advisorSiteId ?? selectedSite}
         isOpen={showAdvisor}
         onClose={() => setShowAdvisor(false)}
+        onProjectChanged={onProjectChanged}
       />
 
       {/* Floating Senior Civil EPC Advisor Trigger */}

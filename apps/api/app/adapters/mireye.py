@@ -558,6 +558,11 @@ class MockMireyeClient:
 # ---------------------------------------------------------------------------
 
 
+#: /v1/ask writes prose rather than returning a stored field, so it takes tens of
+#: seconds. Sharing /fetch's timeout made every question look like an outage.
+ASK_TIMEOUT_SECONDS = 90.0
+
+
 class LiveMireyeClient:
     """HTTP client with timeout, bounded retries, and a response cache.
 
@@ -585,11 +590,13 @@ class LiveMireyeClient:
         )
 
     # -- plumbing -----------------------------------------------------------
-    def _request(self, method: str, path: str, payload: dict | None = None) -> dict:
+    def _request(
+        self, method: str, path: str, payload: dict | None = None, timeout: float | None = None
+    ) -> dict:
         last: Exception | None = None
         for attempt in range(self.settings.mireye_max_retries + 1):
             try:
-                response = self._client.request(method, path, json=payload)
+                response = self._client.request(method, path, json=payload, timeout=timeout)
                 if response.status_code >= 500:
                     raise MireyeUnavailableError(f"{path} returned {response.status_code}")
                 if response.status_code >= 400:
@@ -870,10 +877,16 @@ class LiveMireyeClient:
         return result
 
     def ask(self, question, latitude=None, longitude=None) -> AskResult:
-        body: dict[str, Any] = {"question": question}
-        if latitude is not None and longitude is not None:
-            body["lat"], body["lng"] = latitude, longitude
-        data = self._request("POST", "/v1/ask", body)
+        # /v1/ask rejects a body with neither coordinates nor an address (HTTP
+        # 422). Failing here keeps the reason legible instead of surfacing as a
+        # provider error that silently degrades to the local stand-in.
+        if latitude is None or longitude is None:
+            raise MireyeError(
+                "/v1/ask needs a location: pass a site with resolved coordinates, "
+                "or geocode an address first."
+            )
+        body: dict[str, Any] = {"question": question, "lat": latitude, "lng": longitude}
+        data = self._request("POST", "/v1/ask", body, timeout=ASK_TIMEOUT_SECONDS)
         try:
             payload = AskResponse.model_validate(data)
         except ValidationError as exc:
@@ -888,10 +901,12 @@ class LiveMireyeClient:
         )
 
     def ask_stream(self, question, latitude=None, longitude=None) -> Iterator[str]:
-        body: dict[str, Any] = {"question": question}
-        if latitude is not None and longitude is not None:
-            body["lat"], body["lng"] = latitude, longitude
-        with self._client.stream("POST", "/v1/ask/stream", json=body) as response:
+        if latitude is None or longitude is None:
+            raise MireyeError("/v1/ask/stream needs a location, same as /v1/ask.")
+        body: dict[str, Any] = {"question": question, "lat": latitude, "lng": longitude}
+        with self._client.stream(
+            "POST", "/v1/ask/stream", json=body, timeout=ASK_TIMEOUT_SECONDS
+        ) as response:
             for line in response.iter_lines():
                 if line:
                     yield line
@@ -993,6 +1008,10 @@ class FallbackMireyeClient:
                     "Live Mireye was configured but unavailable; this is a deterministic "
                     "local stand-in, not an observation."
                 )
+        elif isinstance(result, AskResult):
+            # `mock` reads as "this deployment has no credentials". It does, and
+            # they failed, which is a different thing and the UI must say which.
+            result.mode = "degraded_fallback"
         return result
 
     def meta_fields(self):

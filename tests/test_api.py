@@ -387,6 +387,98 @@ def test_ask_endpoint_is_labelled_exploratory(api):
     assert "Exploratory" in body["disclaimer"]
 
 
+def test_ask_names_the_place_it_answered_about(api):
+    """Mireye answers about a coordinate. Without saying which, an answer for one
+    candidate reads as an answer for whichever site the user happens to be on."""
+    pid = project_id(api)
+    body = api.post(f"/api/projects/{pid}/ask", json={"question": "Describe the terrain."}).json()
+    location = next(c for c in body["citations"] if c["source"] == "location")
+    sites = api.get(f"/api/projects/{pid}/sites").json()
+    located = [s for s in sites if s["latitude"] is not None]
+    assert located[0]["name"] in location["detail"]
+
+
+def test_ask_about_a_named_site_uses_that_site(api):
+    pid = project_id(api)
+    sites = [s for s in api.get(f"/api/projects/{pid}/sites").json() if s["latitude"] is not None]
+    target = sites[-1]
+    body = api.post(
+        f"/api/projects/{pid}/ask",
+        json={"question": "Describe the terrain.", "site_id": target["id"]},
+    ).json()
+    location = next(c for c in body["citations"] if c["source"] == "location")
+    assert target["name"] in location["detail"]
+
+
+def test_ask_refuses_a_site_with_no_coordinates(api, store):
+    """Better a clear 422 than a question about nowhere.
+
+    The API will not create an unlocated site, so this one is written straight
+    into the store — which is the state a geocode failure actually leaves behind.
+    """
+    from app.domain import CandidateSite
+    from app.store import C
+
+    pid = project_id(api)
+    site = CandidateSite(project_id=pid, name="Unlocated parcel")
+    store.put(C.SITES, site, project_id=pid)
+
+    response = api.post(
+        f"/api/projects/{pid}/ask",
+        json={"question": "Describe the terrain.", "site_id": site.id},
+    )
+    assert response.status_code == 422
+    assert "coordinates" in response.json()["detail"]
+
+
+def test_advisor_next_steps_come_from_this_project(api):
+    """They used to be four fixed strings on every question for every project."""
+    pid = project_id(api)
+
+    def steps_now() -> list[str]:
+        body = api.post(
+            f"/api/projects/{pid}/advisor/chat", json={"message": "What are the main risks here?"}
+        ).json()
+        return body["suggested_improvements"]
+
+    # Nothing investigated yet, so there is nothing open to report. Silence is
+    # the honest answer here; the old code offered four suggestions regardless.
+    assert steps_now() == []
+
+    assert api.post(f"/api/projects/{pid}/investigations/site", json={}).status_code == 200
+
+    steps = steps_now()
+    gaps = api.get(f"/api/projects/{pid}/gaps").json()
+    open_descriptions = {g["description"] for g in gaps if g["status"] != "resolved"}
+    assert steps, "the investigation recorded gaps, so there is something to report"
+    for step in steps:
+        assert any(step.startswith(d) for d in open_descriptions), step
+
+
+def test_advisor_can_cite_a_document_uploaded_seconds_earlier(api, tmp_path):
+    """The point of the attach button: ingest, then ask, in one session."""
+    import fitz
+
+    pid = project_id(api)
+    pdf = tmp_path / "chiller-submittal.pdf"
+    doc = fitz.open()
+    page = doc.new_page()
+    page.insert_text((72, 96), "CH-99 net cooling capacity shall be 2,410 kW at 7C leaving water.")
+    doc.save(pdf)
+    doc.close()
+
+    upload = api.post(
+        f"/api/projects/{pid}/documents",
+        files={"file": (pdf.name, pdf.read_bytes(), "application/pdf")},
+        data={"kind": "submittal"},
+    )
+    assert upload.status_code == 201, upload.text
+    assert upload.json()["chunk_count"] >= 1
+
+    hits = api.get(f"/api/projects/{pid}/search", params={"q": "CH-99 net cooling capacity"}).json()
+    assert any("CH-99" in hit["text"] for hit in hits["results"])
+
+
 def test_seed_and_reset_endpoints(api, store):
     pid = project_id(api)
     assert api.post("/api/admin/reset").status_code == 200

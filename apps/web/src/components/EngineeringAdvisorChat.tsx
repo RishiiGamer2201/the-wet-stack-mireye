@@ -1,6 +1,7 @@
 import {
   HardHat,
   Lightbulb,
+  Paperclip,
   RefreshCw,
   Send,
   User,
@@ -26,6 +27,8 @@ interface EngineeringAdvisorChatProps {
   activeSiteId?: string | null;
   isOpen: boolean;
   onClose: () => void;
+  /** Called after an upload so the rest of the app sees the new document. */
+  onProjectChanged?: () => void;
 }
 
 const QUICK_PROMPTS = [
@@ -42,10 +45,12 @@ export function EngineeringAdvisorChat({
   activeSiteId,
   isOpen,
   onClose,
+  onProjectChanged,
 }: EngineeringAdvisorChatProps) {
   const [selectedSiteId, setSelectedSiteId] = useState<string | null>(activeSiteId ?? null);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
     {
       id: "welcome-1",
@@ -73,6 +78,42 @@ export function EngineeringAdvisorChat({
   }, [messages, busy]);
 
   const activeSite = detail.sites.find((s) => s.id === selectedSiteId);
+
+  async function handleUpload(file: File) {
+    if (uploading) return;
+    setUploading(true);
+    const stamp = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    try {
+      const result = await api.uploadDocument(detail.project.id, file, "specification");
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `up-${Date.now()}`,
+          role: "assistant",
+          content:
+            `**${result.document.filename}** ingested: ${result.document.page_count} page(s), ` +
+            `${result.chunk_count} searchable chunk(s), ` +
+            `${result.requirements.length} candidate requirement(s).\n\n` +
+            "It is indexed now, so ask me about it and I will quote it by page." +
+            (result.warning ? `\n\nWarning: ${result.warning}` : ""),
+          timestamp: stamp,
+        },
+      ]);
+      onProjectChanged?.();
+    } catch (err: any) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `up-err-${Date.now()}`,
+          role: "assistant",
+          content: `⚠️ **Could not ingest ${file.name}:** ${err?.message || "upload failed"}`,
+          timestamp: stamp,
+        },
+      ]);
+    } finally {
+      setUploading(false);
+    }
+  }
 
   async function handleSend(textToSend?: string) {
     const text = (textToSend ?? input).trim();
@@ -257,7 +298,7 @@ export function EngineeringAdvisorChat({
               {msg.improvements && msg.improvements.length > 0 && (
                 <div className="pt-2 border-t border-ink-100 space-y-1.5">
                   <p className="text-[10px] font-bold uppercase tracking-wider text-ink-400 flex items-center gap-1">
-                    <Lightbulb className="h-3 w-3 text-amber-500" /> Actionable Civil Mitigations
+                    <Lightbulb className="h-3 w-3 text-amber-500" /> Open gaps on this project
                   </p>
                   <div className="flex flex-col gap-1">
                     {msg.improvements.map((imp, idx) => (
@@ -328,6 +369,30 @@ export function EngineeringAdvisorChat({
           }}
           className="flex gap-2"
         >
+          <label
+            title="Attach a specification, submittal or datasheet (PDF)"
+            className={`flex h-[34px] w-[34px] shrink-0 cursor-pointer items-center justify-center rounded-lg border border-ink-300 text-ink-600 transition hover:border-signal-500 hover:text-signal-600 ${
+              uploading ? "opacity-50" : ""
+            }`}
+          >
+            {uploading ? (
+              <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Paperclip className="h-3.5 w-3.5" />
+            )}
+            <span className="sr-only">Attach a PDF document</span>
+            <input
+              type="file"
+              accept="application/pdf,.pdf"
+              className="sr-only"
+              disabled={uploading || busy}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) void handleUpload(file);
+                e.target.value = "";
+              }}
+            />
+          </label>
           <input
             type="text"
             placeholder="Ask about civil grading, soil capacity, 230kV substation, seismic PGA…"
@@ -347,7 +412,8 @@ export function EngineeringAdvisorChat({
           </Button>
         </form>
         <p className="text-[10px] text-ink-400 mt-1.5 text-center">
-          Strict Domain: Hyperscale data center civil, structural, mechanical cooling &amp; substation engineering.
+          Attach a PDF to ground answers in your own specifications. Strict domain: hyperscale data
+          center civil, structural, mechanical cooling &amp; substation engineering.
         </p>
       </div>
     </div>

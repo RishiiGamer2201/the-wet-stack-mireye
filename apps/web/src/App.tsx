@@ -3,6 +3,7 @@ import {
   ArrowRight,
   Building2,
   CheckCircle2,
+  FileUp,
   HardHat,
   Layers,
   Plus,
@@ -475,7 +476,13 @@ export default function App() {
                   {view === "during" && (
                     <DuringConstruction key={detail.project.id} detail={detail} />
                   )}
-                  {view === "knowledge" && <KnowledgePanel key={detail.project.id} detail={detail} />}
+                  {view === "knowledge" && (
+                    <KnowledgePanel
+                      key={detail.project.id}
+                      detail={detail}
+                      onProjectChanged={() => loadProject(detail.project.id)}
+                    />
+                  )}
                 </div>
               </div>
             )}
@@ -512,14 +519,31 @@ export default function App() {
   );
 }
 
-function KnowledgePanel({ detail }: { detail: ProjectDetail }) {
+function KnowledgePanel({
+  detail,
+  onProjectChanged,
+}: {
+  detail: ProjectDetail;
+  onProjectChanged: () => void;
+}) {
+  const located = detail.sites.filter((s) => s.latitude !== null && s.longitude !== null);
   const [query, setQuery] = useState("chiller net cooling capacity requirement");
+  const [siteId, setSiteId] = useState<string>(located[0]?.id ?? "");
   const [results, setResults] = useState<SearchResponse | null>(null);
-  const [answer, setAnswer] = useState<{ answer: string; disclaimer: string; mode: string } | null>(
-    null,
-  );
+  const [answer, setAnswer] = useState<{
+    answer: string;
+    disclaimer: string;
+    mode: string;
+    citations: unknown[];
+  } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
+
+  const [kind, setKind] = useState("specification");
+  const [uploading, setUploading] = useState(false);
+  const [uploadNote, setUploadNote] = useState<string | null>(null);
+  const [uploadFailed, setUploadFailed] = useState(false);
+  const [dragging, setDragging] = useState(false);
 
   async function search(e?: React.FormEvent) {
     e?.preventDefault();
@@ -541,11 +565,32 @@ function KnowledgePanel({ detail }: { detail: ProjectDetail }) {
     setBusy(true);
     setError(null);
     try {
-      setAnswer(await api.ask(detail.project.id, query.trim()));
+      setAnswer(await api.ask(detail.project.id, query.trim(), siteId || undefined));
     } catch (err) {
       setError(err);
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function upload(file: File) {
+    setUploading(true);
+    setUploadNote(null);
+    setUploadFailed(false);
+    try {
+      const result = await api.uploadDocument(detail.project.id, file, kind);
+      setUploadNote(
+        `${result.document.filename}: ${result.document.page_count} page(s), ` +
+          `${result.chunk_count} searchable chunk(s), ` +
+          `${result.requirements.length} candidate requirement(s).` +
+          (result.warning ? ` Warning: ${result.warning}` : ""),
+      );
+      onProjectChanged();
+    } catch (err) {
+      setUploadFailed(true);
+      setUploadNote(err instanceof Error ? err.message : String(err));
+    } finally {
+      setUploading(false);
     }
   }
 
@@ -555,17 +600,91 @@ function KnowledgePanel({ detail }: { detail: ProjectDetail }) {
         title="Ingested Project Documents"
         subtitle="Extracted PDF submittals, specifications, and manufacturer datasheets"
       >
+        <div
+          onDragOver={(e) => {
+            e.preventDefault();
+            setDragging(true);
+          }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setDragging(false);
+            const file = e.dataTransfer.files?.[0];
+            if (file) void upload(file);
+          }}
+          className={cx(
+            "rounded-lg border-2 border-dashed p-3 text-xs transition",
+            dragging ? "border-sky-400 bg-sky-50" : "border-ink-200 bg-ink-50/40",
+          )}
+        >
+          <div className="flex flex-wrap items-center gap-2">
+            <FileUp aria-hidden className="h-4 w-4 text-ink-500" />
+            <span className="text-ink-600">Drop a PDF here, or</span>
+            <label className="cursor-pointer rounded border border-ink-300 bg-white px-2 py-1 font-medium text-ink-900 hover:bg-ink-100">
+              choose a file
+              <input
+                type="file"
+                accept="application/pdf,.pdf"
+                className="sr-only"
+                disabled={uploading}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) void upload(file);
+                  e.target.value = "";
+                }}
+              />
+            </label>
+            <label htmlFor="upload-kind" className="sr-only">
+              Document kind
+            </label>
+            <select
+              id="upload-kind"
+              className={cx(inputClass, "w-auto py-1 text-xs")}
+              value={kind}
+              onChange={(e) => setKind(e.target.value)}
+            >
+              <option value="specification">specification</option>
+              <option value="submittal">submittal</option>
+              <option value="datasheet">datasheet</option>
+              <option value="drawing">drawing</option>
+              <option value="report">report</option>
+              <option value="other">other</option>
+            </select>
+            {uploading && <Spinner label="Extracting…" />}
+          </div>
+          <p className="mt-1.5 text-[11px] text-ink-500">
+            Text is extracted, chunked and indexed on upload, so a document is searchable here and
+            citable by the advisor straight away. Real documents are never labelled synthetic.
+          </p>
+          {uploadNote && (
+            <p
+              className={cx(
+                "mt-2 rounded border p-2 text-[11px]",
+                uploadFailed
+                  ? "border-rose-200 bg-rose-50 text-rose-800"
+                  : "border-emerald-200 bg-emerald-50 text-emerald-900",
+              )}
+            >
+              {uploadNote}
+            </p>
+          )}
+        </div>
+
         {detail.documents.length === 0 ? (
-          <p className="text-xs text-ink-500">No documents ingested for this project yet.</p>
+          <p className="mt-3 text-xs text-ink-500">No documents ingested for this project yet.</p>
         ) : (
-          <ul className="divide-y divide-ink-100 text-xs">
+          <ul className="mt-2 divide-y divide-ink-100 text-xs">
             {detail.documents.map((document) => (
               <li key={document.id} className="py-2">
                 <div className="flex items-center justify-between">
                   <p className="font-semibold text-ink-900">{document.filename}</p>
                   <div className="flex gap-1">
-                    {document.synthetic && (
-                      <Badge className="border-amber-300 bg-amber-100 text-amber-900">synthetic</Badge>
+                    {document.synthetic ? (
+                      <Badge className="border-amber-300 bg-amber-100 text-amber-900">
+                        synthetic
+                      </Badge>
+                    ) : (
+                      <Badge className="border-sky-300 bg-sky-100 text-sky-900">uploaded</Badge>
                     )}
                     <Badge
                       className={
@@ -607,10 +726,32 @@ function KnowledgePanel({ detail }: { detail: ProjectDetail }) {
           <Button type="submit" variant="primary" loading={busy}>
             Search
           </Button>
-          <Button type="button" onClick={ask} loading={busy}>
+          <Button type="button" onClick={ask} loading={busy} disabled={located.length === 0}>
             Ask Mireye
           </Button>
         </form>
+
+        <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-ink-500">
+          <label htmlFor="ask-site">Ask Mireye about:</label>
+          <select
+            id="ask-site"
+            className={cx(inputClass, "w-auto py-1 text-xs")}
+            value={siteId}
+            onChange={(e) => setSiteId(e.target.value)}
+            disabled={located.length === 0}
+          >
+            {located.map((site) => (
+              <option key={site.id} value={site.id}>
+                {site.name}
+              </option>
+            ))}
+            {located.length === 0 && <option value="">no located site</option>}
+          </select>
+          <span>
+            Mireye answers questions about a place, so a question needs a site with coordinates.
+          </span>
+        </div>
+
         {error ? (
           <div className="mt-3">
             <ErrorState error={error} />
@@ -636,10 +777,33 @@ function KnowledgePanel({ detail }: { detail: ProjectDetail }) {
           </div>
         )}
         {answer && (
-          <div className="mt-3 rounded border border-sky-200 bg-sky-50 p-2 text-xs text-sky-900">
-            <p className="font-medium">Exploratory answer ({answer.mode})</p>
-            <p className="mt-1">{answer.answer}</p>
-            <p className="mt-1 text-[11px] text-sky-700">{answer.disclaimer}</p>
+          <div
+            className={cx(
+              "mt-3 rounded border p-2 text-xs",
+              answer.mode === "live"
+                ? "border-emerald-200 bg-emerald-50 text-emerald-900"
+                : "border-amber-200 bg-amber-50 text-amber-900",
+            )}
+          >
+            <p className="font-medium">
+              {answer.mode === "live"
+                ? "Live Mireye answer"
+                : answer.mode === "degraded_fallback"
+                  ? "Live Mireye was unreachable — deterministic stand-in, not an observation"
+                  : `Exploratory answer (${answer.mode})`}
+            </p>
+            <p className="mt-1 whitespace-pre-wrap">{answer.answer}</p>
+            {answer.citations.length > 0 && (
+              <p className="mt-1 text-[11px] opacity-80">
+                {answer.citations
+                  .map((c) => {
+                    const cite = c as { source?: string; detail?: string };
+                    return [cite.source, cite.detail].filter(Boolean).join(" — ");
+                  })
+                  .join(" · ")}
+              </p>
+            )}
+            <p className="mt-1 text-[11px] opacity-80">{answer.disclaimer}</p>
           </div>
         )}
       </Card>

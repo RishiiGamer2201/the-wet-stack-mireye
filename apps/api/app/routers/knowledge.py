@@ -54,6 +54,137 @@ STRICT DOMAIN RESTRICTIONS & SCOPE:
 """
 
 
+
+def _resolve_location(
+    store: Store, project: Project, site_id: str | None
+) -> tuple[float | None, float | None, str]:
+    """Coordinates for a Mireye question, and the name of what they describe.
+
+    `/v1/ask` is a question *about a place*, so it needs one. An explicit site
+    wins; otherwise the project's first located candidate stands in and is named
+    in the answer, so nobody reads a Cascade Flats answer as a Delta Fields one.
+    A project with no located site returns no coordinates and the caller reports
+    that rather than asking about nowhere.
+    """
+    if site_id:
+        site = store.get(C.SITES, site_id, CandidateSite)
+        if not site:
+            raise HTTPException(status_code=404, detail="site not found")
+        if site.latitude is None or site.longitude is None:
+            raise HTTPException(
+                status_code=422,
+                detail=f"{site.name} has no resolved coordinates; geocode it first.",
+            )
+        return site.latitude, site.longitude, site.name
+
+    for site in store.list(C.SITES, CandidateSite, project_id=project.id):
+        if site.latitude is not None and site.longitude is not None:
+            return site.latitude, site.longitude, site.name
+    return None, None, project.name
+
+
+def _retrieved_context(project_id: str, question: str, k: int = 4) -> tuple[str, list[dict]]:
+    """Top document chunks for the question, as prompt text plus citations.
+
+    This is what connects an uploaded PDF to the advisor: a specification that
+    was ingested five seconds ago is searchable in the same request.
+    """
+    if len(question.strip()) < 2:
+        return "", []
+    try:
+        hits = get_index().search(project_id, question, k=k)
+    except Exception as exc:  # noqa: BLE001 - retrieval is context, never the answer
+        log.warning("retrieval failed for advisor", extra={"error": str(exc)})
+        return "", []
+    if not hits:
+        return "", []
+    lines, citations = [], []
+    for hit in hits:
+        lines.append(f"[{hit.document_name} p.{hit.page}] {hit.text.strip()[:700]}")
+        citations.append(
+            {"source": hit.document_name, "detail": f"page {hit.page}", "chunk_id": hit.chunk_id}
+        )
+    return "\n\n".join(lines), citations
+
+
+def _real_next_steps(store: Store, project: Project, site_id: str | None) -> list[str]:
+    """Next steps taken from this project's own open gaps.
+
+    The previous four suggestions were the same four strings on every question
+    for every site, which reads as advice and is not. These come from gaps the
+    investigation actually recorded, so an empty list means nothing is open —
+    which is information too.
+    """
+    gaps = store.list(C.GAPS, InformationGap, project_id=project.id)
+    open_gaps = [g for g in gaps if g.status != GapStatus.RESOLVED]
+    if site_id:
+        scoped = [g for g in open_gaps if g.subject_id == site_id]
+        open_gaps = scoped or open_gaps
+    # Blocking first, then whatever else is open; one line per distinct concept.
+    open_gaps.sort(key=lambda g: (not g.blocking, g.field_key or ""))
+    steps, seen = [], set()
+    for gap in open_gaps:
+        key = gap.field_key or gap.description
+        if key in seen:
+            continue
+        seen.add(key)
+        action = (gap.suggested_action.value if gap.suggested_action else "clarification_request")
+        steps.append(f"{gap.description} ({action.replace('_', ' ')})")
+        if len(steps) == 4:
+            break
+    return steps
+
+
+def _deterministic_advice(question: str, site_name: str) -> str:
+    """Template advice for when no model is configured.
+
+    One copy. It used to exist twice, word for word, in the blocking and the
+    streaming route, so an edit to one silently disagreed with the other.
+    """
+    q = question.lower()
+    if "flood" in q or "water" in q:
+        body = (
+            "1. **Hydrology & Flood Risk**: Check FEMA 100-yr and 500-yr base flood elevations "
+            "(BFE). Critical switchgear, generators and IT floor slabs belong at BFE + 3.0 ft "
+            "finished floor elevation.\n"
+            "2. **Stormwater & Drainage**: On-site retention/detention designed for a 100-year, "
+            "24-hour storm with redundant culvert outfalls.\n"
+            "3. **Cooling**: In water-stressed basins, closed-loop air-cooled chillers with "
+            "adiabatic pre-cooling rather than open evaporative towers."
+        )
+    elif "seismic" in q or "earthquake" in q:
+        body = (
+            "1. **Seismic Hazard**: Review ASCE 7-22 peak ground acceleration and Risk Category "
+            "IV design parameters.\n"
+            "2. **Anchorage**: Chillers, generators and UPS battery skids need IBC-compliant "
+            "seismic snubbers and positive bolting into reinforced slab.\n"
+            "3. **Geotechnics**: CPT borings to rule out liquefaction in alluvial layers."
+        )
+    elif "power" in q or "grid" in q or "substation" in q:
+        body = (
+            "1. **Interconnection**: Dual-fed diverse 115kV or 230kV transmission from separate "
+            "utility substations with high-speed transfer switching.\n"
+            "2. **Substation Yard**: 3–5 acres for step-down transformers with blast deflection "
+            "walls and oil-catchment basins.\n"
+            "3. **Reserve Generation**: N+1 or 2N generator enclosures with 48–72 hours of "
+            "on-site fuel."
+        )
+    else:
+        body = (
+            "1. **Grading & Cut/Fill**: Minimise cut-and-fill imbalance. Slope above 3% forces "
+            "tiered pads and retaining walls.\n"
+            "2. **Foundations**: Drilled shaft piers or spread footings sized against a measured "
+            "allowable bearing pressure — which needs a geotechnical report, not an estimate.\n"
+            "3. **Permitting & Easements**: Secure heavy-haul routing for transformers and "
+            "confirm stormwater and wetland permits with the county early."
+        )
+    return (
+        f"**Senior Civil EPC Assessment for {site_name}:**\n\n{body}\n\n"
+        "_No language model is configured, so this is template guidance, not an "
+        "assessment of this site's evidence._"
+    )
+
+
 def _build_advisor_prompt(
     payload: AdvisorChatRequest,
     project: Project,
@@ -65,14 +196,11 @@ def _build_advisor_prompt(
     if project.targets and project.targets.it_load_mw:
         context_lines.append(f"Target IT Load: {project.targets.it_load_mw} MW")
 
-    site_name = "General Project Scope"
-    lat, lon = None, None
+    lat, lon, site_name = _resolve_location(store, project, payload.site_id)
 
     if payload.site_id:
         site = store.get(C.SITES, payload.site_id, CandidateSite)
         if site:
-            site_name = site.name
-            lat, lon = site.latitude, site.longitude
             context_lines.append(f"Active Site: {site.name} (Address: {site.address or 'N/A'}, Lat: {site.latitude}, Lon: {site.longitude}, Area: {site.area_hectares or 'N/A'} ha)")
             if site.notes:
                 context_lines.append(f"Site Notes/Specs: {site.notes}")
@@ -88,20 +216,24 @@ def _build_advisor_prompt(
         ctx_dump = ", ".join(f"{k}: {v}" for k, v in payload.site_context.items() if v is not None)
         context_lines.append(f"Discovery Context: {ctx_dump}")
 
-    # Query Mireye live for physical context if available
-    mireye_facts = []
-    if mireye_client:
+    # Mireye answers questions about a place, so it is only asked when there is
+    # one. Its answer is context for the model, never a calculation.
+    if mireye_client and lat is not None and lon is not None:
         try:
-            # If coordinates are available or mentioned in question, query Mireye
             mireye_res = mireye_client.ask(payload.message, lat, lon)
+        except Exception as exc:  # noqa: BLE001 - a provider outage must not end the chat
+            log.warning("mireye query failed in advisor", extra={"error": str(exc)})
+        else:
             if mireye_res and mireye_res.answer:
-                mireye_facts.append(f"Mireye Physical Data: {mireye_res.answer}")
-        except Exception as exc:
-            log.info("mireye live query skipped in advisor", extra={"error": str(exc)})
+                label = "MIREYE" if mireye_res.mode == "live" else f"MIREYE ({mireye_res.mode})"
+                context_lines.append(f"=== {label} · {site_name} ({lat:.4f}, {lon:.4f}) ===")
+                context_lines.append(mireye_res.answer)
 
-    if mireye_facts:
-        context_lines.append("=== LIVE MIREYE TELEMETRY ===")
-        context_lines.extend(mireye_facts)
+    # Whatever has been uploaded to this project, searched for this question.
+    retrieved, _citations = _retrieved_context(project.id, payload.message)
+    if retrieved:
+        context_lines.append("=== PROJECT DOCUMENTS (quote these by page) ===")
+        context_lines.append(retrieved)
 
     # Include recent chat history
     history_lines = []
@@ -123,12 +255,7 @@ USER QUESTION:
 
 Please provide your senior civil and EPC engineering assessment, identifying potential issues or risks, and recommending actionable improvements/mitigations."""
 
-    improvements = [
-        "Conduct geotechnical CPT borings for soil bearing verification",
-        "Establish Finished Floor Elevation (FFE) at minimum BFE + 3.0 ft",
-        "Specify closed-loop adiabatic cooling to eliminate municipal water dependency",
-        "Secure dual-diverse 230kV utility transmission feeds with on-site substation yard",
-    ]
+    improvements = _real_next_steps(store, project, payload.site_id)
 
     return user_prompt, site_name, improvements
 
@@ -149,15 +276,7 @@ def advisor_chat(
         reply = llm.complete(system=SENIOR_CIVIL_EPC_SYSTEM_PROMPT, user=user_prompt, max_tokens=1200)
 
     if not reply:
-        q_lower = payload.message.lower()
-        if "flood" in q_lower or "water" in q_lower:
-            reply = f"**Senior Civil EPC Assessment for {site_name}:**\n\n1. **Hydrology & Flood Risk**: Check FEMA 100-yr and 500-yr base flood elevations (BFE). All critical switchgear, diesel generators, and IT floor slabs must be established at minimum BFE + 3.0 ft finished floor elevation (FFE).\n2. **Stormwater & Drainage**: Require on-site retention/detention basins designed for a 100-year, 24-hour storm event with redundant culvert outfalls.\n3. **Cooling Infrastructure**: In water-stressed basins, specify closed-loop air-cooled chillers with adiabatic pre-cooling pads rather than open evaporative cooling towers."
-        elif "seismic" in q_lower or "earthquake" in q_lower:
-            reply = f"**Senior Civil EPC Assessment for {site_name}:**\n\n1. **Seismic Hazard**: Review ASCE 7-22 Peak Ground Acceleration (PGA) and Risk Category IV design parameters.\n2. **Structural Anchoring & Base Isolation**: Heavy equipment (chillers, 2.5 MW generators, 480V UPS battery skids) requires OSHPD/IBC pre-approved seismic snubber mounts and positive bolting into 12\"+ post-tensioned reinforced concrete slabs.\n3. **Soil Geotechnics**: Perform deep borehole CPT testing to rule out liquefaction potential in alluvial soil layers."
-        elif "power" in q_lower or "grid" in q_lower or "substation" in q_lower:
-            reply = f"**Senior Civil EPC Assessment for {site_name}:**\n\n1. **Grid Interconnection**: Target dual-fed, diverse 115kV or 230kV transmission lines from separate utility substations with automated high-speed transfer switching (ATS/STS).\n2. **Substation Civil Yard**: Allocate minimum 3 to 5 acres for dedicated on-site step-down transformers (230kV to 34.5kV/13.8kV) with concrete blast deflection containment walls and oil-catchment fire basins.\n3. **Reserve Generation**: Plan N+1 or 2N diesel/HVO generator enclosures with 48 to 72 hours of on-site bulk fuel storage capacity."
-        else:
-            reply = f"**Senior Civil EPC Assessment for {site_name}:**\n\nFrom a master-planning and EPC constructability perspective:\n1. **Site Civil Grading & Cut/Fill**: Minimize cut-and-fill imbalance across the parcel. Any slope exceeding 3% will require engineered tiered pads and soil retaining walls, adding $1.2M–$3.5M to civil site preparation.\n2. **Geotechnical Foundations**: Prioritize drilled shaft piers or spread footings bearing on minimum 4,000 psf allowable soil capacity to support dense server rack column point loads (up to 250–350 lbs/sq ft).\n3. **Permitting & Utility Easements**: Secure heavy-haul transportation routing for oversized electrical transformers and verify local stormwater/wetland permits with county civil authorities early."
+        reply = _deterministic_advice(payload.message, site_name)
 
     return AdvisorChatResponse(
         reply=reply,
@@ -193,15 +312,7 @@ def advisor_chat_stream(
 
         # If LLM didn't stream or is not available, stream the deterministic fallback chunk-by-chunk
         if not has_streamed:
-            q_lower = payload.message.lower()
-            if "flood" in q_lower or "water" in q_lower:
-                text = f"**Senior Civil EPC Assessment for {site_name}:**\n\n1. **Hydrology & Flood Risk**: Check FEMA 100-yr and 500-yr base flood elevations (BFE). All critical switchgear, diesel generators, and IT floor slabs must be established at minimum BFE + 3.0 ft finished floor elevation (FFE).\n2. **Stormwater & Drainage**: Require on-site retention/detention basins designed for a 100-year, 24-hour storm event with redundant culvert outfalls.\n3. **Cooling Infrastructure**: In water-stressed basins, specify closed-loop air-cooled chillers with adiabatic pre-cooling pads rather than open evaporative cooling towers."
-            elif "seismic" in q_lower or "earthquake" in q_lower:
-                text = f"**Senior Civil EPC Assessment for {site_name}:**\n\n1. **Seismic Hazard**: Review ASCE 7-22 Peak Ground Acceleration (PGA) and Risk Category IV design parameters.\n2. **Structural Anchoring & Base Isolation**: Heavy equipment (chillers, 2.5 MW generators, 480V UPS battery skids) requires OSHPD/IBC pre-approved seismic snubber mounts and positive bolting into 12\"+ post-tensioned reinforced concrete slabs.\n3. **Soil Geotechnics**: Perform deep borehole CPT testing to rule out liquefaction potential in alluvial soil layers."
-            elif "power" in q_lower or "grid" in q_lower or "substation" in q_lower:
-                text = f"**Senior Civil EPC Assessment for {site_name}:**\n\n1. **Grid Interconnection**: Target dual-fed, diverse 115kV or 230kV transmission lines from separate utility substations with automated high-speed transfer switching (ATS/STS).\n2. **Substation Civil Yard**: Allocate minimum 3 to 5 acres for dedicated on-site step-down transformers (230kV to 34.5kV/13.8kV) with concrete blast deflection containment walls and oil-catchment fire basins.\n3. **Reserve Generation**: Plan N+1 or 2N diesel/HVO generator enclosures with 48 to 72 hours of on-site bulk fuel storage capacity."
-            else:
-                text = f"**Senior Civil EPC Assessment for {site_name}:**\n\nFrom a master-planning and EPC constructability perspective:\n1. **Site Civil Grading & Cut/Fill**: Minimize cut-and-fill imbalance across the parcel. Any slope exceeding 3% will require engineered tiered pads and soil retaining walls, adding $1.2M–$3.5M to civil site preparation.\n2. **Geotechnical Foundations**: Prioritize drilled shaft piers or spread footings bearing on minimum 4,000 psf allowable soil capacity to support dense server rack column point loads (up to 250–350 lbs/sq ft).\n3. **Permitting & Utility Easements**: Secure heavy-haul transportation routing for oversized electrical transformers and verify local stormwater/wetland permits with county civil authorities early."
+            text = _deterministic_advice(payload.message, site_name)
 
             # Emit in readable words
             words = text.split(" ")
@@ -239,19 +350,25 @@ def ask_mireye(
 ):
     """Exploratory question (Mireye /v1/ask). Never used for scoring or calculation."""
     client = get_mireye_client()
-    lat = lon = None
-    if payload.site_id:
-        site = store.get(C.SITES, payload.site_id, CandidateSite)
-        if not site:
-            raise HTTPException(status_code=404, detail="site not found")
-        lat, lon = site.latitude, site.longitude
+    lat, lon, where = _resolve_location(store, project, payload.site_id)
+    if lat is None or lon is None:
+        raise HTTPException(
+            status_code=422,
+            detail="Mireye answers questions about a place. Add a candidate site with "
+            "coordinates, or select one, then ask again.",
+        )
     try:
         result = client.ask(payload.question, lat, lon)
     except MireyeError as exc:
         raise HTTPException(status_code=502, detail=f"Mireye ask failed: {exc}") from exc
+
+    citations = list(result.citations)
+    citations.insert(
+        0, {"source": "location", "detail": f"{where} ({lat:.4f}, {lon:.4f})"}
+    )
     return AskResponse(
         answer=result.answer,
-        citations=result.citations,
+        citations=citations,
         confidence=result.confidence,
         mode=result.mode,
         disclaimer="Exploratory answer. Scores and engineering checks use /v1/fetch fields only. "
