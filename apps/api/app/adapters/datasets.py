@@ -39,6 +39,9 @@ from ..domain import EvidenceRelation
 
 UTC = timezone.utc
 
+#: Distinguishes "cached as no result" from "never asked".
+_MISSING = object()
+
 log = logging.getLogger("datasets")
 
 #: Datasets small enough to ship with the code live here, so a fresh deploy on an
@@ -496,6 +499,9 @@ class CountyLookup:
 
     API_URL = "https://geocoding.geo.census.gov/geocoder/geographies/coordinates"
     TIMEOUT_SECONDS = 30.0
+    #: Both layers come back in one request, so a site that needs a county for
+    #: one dataset already has its tract for another.
+    LAYERS = "Counties,Census Tracts"
 
     def __init__(self, path: Path | None = None, *, allow_fetch: bool = True) -> None:
         self._path = path or (get_settings().data_dir / "datasets" / "county_cache.json")
@@ -509,13 +515,22 @@ class CountyLookup:
         return self._cache
 
     def county_for(self, latitude: float, longitude: float) -> dict | None:
-        """`{"state": "VA", "county": "Loudoun", "fips": "51107"}`, or None."""
+        """`{"state": "VA", "county": "Loudoun", "fips": "51107", "tract_fips": ...}`.
+
+        None when the point is not in a US county — offshore, abroad, or the
+        geocoder could not say. A guess here would put a site in the wrong
+        jurisdiction, and jurisdiction is the join key for everything downstream.
+        """
         cache = self._load()
         key = f"{latitude:.3f},{longitude:.3f}"
-        if key in cache:
-            return cache[key]
+        hit = cache.get(key, _MISSING)
+        # An entry cached before tracts were requested has no `tract_fips`, and
+        # returning it would report "not covered" forever. Re-fetch instead of
+        # trusting a shape that predates the field.
+        if hit is not _MISSING and (hit is None or "tract_fips" in hit):
+            return hit
         if not self._allow_fetch:
-            return None
+            return hit if hit is not _MISSING else None
         try:
             response = httpx.get(
                 self.API_URL,
@@ -524,25 +539,29 @@ class CountyLookup:
                     "y": latitude,
                     "benchmark": "Public_AR_Current",
                     "vintage": "Current_Current",
-                    "layers": "Counties",
+                    "layers": self.LAYERS,
                     "format": "json",
                 },
                 timeout=self.TIMEOUT_SECONDS,
                 headers={"User-Agent": "wetstack-mireye/1.0"},
             )
             response.raise_for_status()
-            matches = response.json()["result"]["geographies"]["Counties"]
+            geographies = response.json()["result"]["geographies"]
         except Exception as exc:  # noqa: BLE001 - offshore, abroad, or the service is down
-            log.warning("census county lookup failed", extra={"error": str(exc)})
+            log.warning("census lookup failed", extra={"error": str(exc)})
             return None
 
+        counties = geographies.get("Counties") or []
+        tracts = geographies.get("Census Tracts") or []
         found = None
-        if matches:
-            row = matches[0]
+        if counties:
+            row = counties[0]
             found = {
                 "state": STATE_FIPS.get(str(row.get("STATE", "")), ""),
                 "county": row.get("BASENAME") or "",
                 "fips": f"{row.get('STATE', '')}{row.get('COUNTY', '')}",
+                "tract_fips": (tracts[0].get("GEOID") if tracts else None),
+                "tract": (tracts[0].get("BASENAME") if tracts else None),
             }
         cache[key] = found
         self._path.parent.mkdir(parents=True, exist_ok=True)
@@ -861,6 +880,98 @@ class PADUSProtectedAreas:
         }
 
 
+
+class FEMANationalRiskIndex:
+    """Wildfire risk from the FEMA National Risk Index, per census tract.
+
+    The NRI is FEMA's own baseline risk measurement for every US county and
+    tract, built with academia, state and federal partners. It answers a concept
+    Mireye's catalog has no equivalent for: the catalog exposes an annual
+    wildfire frequency and hazard-zone classes, neither of which is a composite
+    index.
+
+    **The score is not a linear hazard rate, and reading it as one is the trap.**
+    `WFIR_RISKS` runs 0-100, so it looks directly comparable to any other 0-100
+    index, but its distribution is heavily skewed: the median tract FEMA rates
+    "Very Low" scores 43.6, and everything from "Relatively Moderate" upwards is
+    compressed into 88-100. Scoring it against thresholds meant for an evenly
+    spread index would penalise a genuinely safe site by half its wildfire
+    points and would not tell "Relatively High" from "Very High" at all.
+
+    So the scoring thresholds in `fields.py` are anchored to FEMA's own published
+    class boundaries (68.65 = top of Very Low, 96.26 = start of Relatively High),
+    which is why the value can be carried EXACT rather than converted.
+    """
+
+    name = "fema_nri"
+    fields = ("wildfire_risk_index",)
+
+    LICENCE = "FEMA National Risk Index, public domain (US Government work)"
+    RATING_NAMES = {
+        "N": "No Rating (no modelled wildfire exposure)",
+        "1": "Very Low",
+        "2": "Relatively Low",
+        "3": "Relatively Moderate",
+        "4": "Relatively High",
+        "5": "Very High",
+    }
+
+    def __init__(self, path: Path | None = None, counties: CountyLookup | None = None) -> None:
+        self._path = path or _dataset_path("fema_nri_wildfire.json")
+        self._counties = counties or CountyLookup()
+        self._payload: dict | None = None
+
+    @property
+    def available(self) -> bool:
+        return self._path.exists()
+
+    def _load(self) -> dict:
+        if self._payload is None:
+            self._payload = _read_json(self._path)
+        return self._payload
+
+    def values_for(self, latitude: float, longitude: float) -> dict[str, DatasetValue]:
+        payload = self._load()
+        if not payload:
+            log.warning(
+                "fema nri dataset missing; run scripts/build_fema_nri.py",
+                extra={"path": str(self._path)},
+            )
+            return {}
+        location = self._counties.county_for(latitude, longitude)
+        tract_fips = (location or {}).get("tract_fips")
+        if not tract_fips:
+            return {}  # outside the US, or the geocoder could not place it
+
+        row = payload.get("tracts", {}).get(tract_fips)
+        if not row:
+            # A tract the NRI does not cover. Absent, not zero — a zero here
+            # reads as "no wildfire risk", which is the opposite of unknown.
+            return {}
+
+        score, code = row[0], row[1]
+        rating = self.RATING_NAMES.get(code, "unknown")
+        where = f"census tract {location.get('tract') or tract_fips}"
+        if location.get("county"):
+            where += f", {location['county']} County, {location['state']}"
+        return {
+            "wildfire_risk_index": DatasetValue(
+                field_key="wildfire_risk_index",
+                value=score,
+                unit=None,
+                source=f"FEMA NRI tract {tract_fips}",
+                source_url="https://hazards.fema.gov/nri/map",
+                licence=self.LICENCE,
+                downloaded_at=payload.get("_downloaded_at"),
+                detail=f"FEMA National Risk Index wildfire score {score} for {where}, "
+                f"rated {rating}. The score is a composite of expected annual loss, "
+                "social vulnerability and community resilience, and its scale is "
+                "non-linear — read it against the rating, not as a percentage.",
+                confidence=0.85,
+            )
+        }
+
+
 _providers: list[DatasetProvider] | None = None
 
 
@@ -872,6 +983,7 @@ def get_dataset_providers() -> list[DatasetProvider]:
             WaterQualityPortal(),
             EIAReliability(),
             PADUSProtectedAreas(),
+            FEMANationalRiskIndex(),
         ]
     return _providers
 

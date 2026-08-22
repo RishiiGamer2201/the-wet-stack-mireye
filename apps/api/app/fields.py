@@ -396,10 +396,24 @@ FIELDS: list[FieldSpec] = [
         label="Wildfire risk",
         dimension=SiteDimension.HAZARDS_CLIMATE,
         direction="lower_better",
-        good=10,
-        bad=80,
+        # FEMA's own published class boundaries, measured from the NRI December
+        # 2025 tract table: 68.65 is the top of "Very Low", 96.26 the start of
+        # "Relatively High". The NRI score is 0-100 but heavily skewed — its
+        # median "Very Low" tract scores 43.6 — so the evenly spread 10/80 ramp
+        # this used to have scored Ashburn (31.2, Very Low) at 70/100 instead of
+        # 100. Anchoring to the real boundaries is what lets the value be carried
+        # as-is instead of rescaled.
+        #
+        # Known limit: anything FEMA rates "Relatively High" or worse scores 0
+        # here, so this ramp does not separate High from Very High. Both are
+        # already a serious wildfire constraint for a data centre, and the
+        # evidence carries FEMA's rating text for a human to read.
+        good=68.65,
+        bad=96.26,
         weight=1.2,
-        description="Composite wildfire hazard potential 0–100.",
+        description="FEMA National Risk Index composite wildfire risk score for the "
+        "census tract, 0–100 on FEMA's own non-linear scale.",
+        provider="fema_nri",
     ),
     _f(
         key="extreme_heat_days_per_year",
@@ -657,8 +671,6 @@ NO_PROVIDER_EQUIVALENT: dict[str, str] = {
     "distance to a long-haul route.",
     "cut_fill_volume_m3": "Earthworks volume is a derived design quantity, not a physical-world "
     "observation the provider offers.",
-    "wildfire_risk_index": "The catalog exposes an annual wildfire frequency and hazard-zone "
-    "classes, neither of which is a 0–100 composite hazard index.",
     "cropland_fraction": "The catalog exposes a dominant CDL class and farmland classification, not "
     "the cropland share of the parcel.",
     "biodiversity_sensitivity_index": "The catalog exposes critical-habitat status, not a composite "

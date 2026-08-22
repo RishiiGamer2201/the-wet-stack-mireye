@@ -39,3 +39,9 @@ sample_data/*.pdf
 .idea/
 .DS_Store
 Thumbs.db
+
+# Manually downloaded source data. FEMA blocks automated download, so the NRI
+# zip is fetched by hand and pointed at scripts/build_fema_nri.py. It is 606 MB
+# of source that produces a 2 MB committed extract — the extract is the artefact
+# worth keeping, not the archive.
+data_downloaded_manually/

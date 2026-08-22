@@ -59,7 +59,7 @@ def _warm() -> None:
     table, so a site nobody has asked about yet queries them live on its first
     investigation. Warming moves that cost to deploy time.
     """
-    from .adapters.datasets import EIAReliability
+    from .adapters.datasets import EIAReliability, FEMANationalRiskIndex
     from .config import get_settings
     from .domain import CandidateSite
     from .store import C, Store
@@ -77,6 +77,7 @@ def _warm() -> None:
     portal = WaterQualityPortal()
     padus = PADUSProtectedAreas()
     reliability = EIAReliability()
+    wildfire = FEMANationalRiskIndex()
     for site in sites:
         print(f"  {site.name}")
         try:
@@ -102,6 +103,11 @@ def _warm() -> None:
             "     grid reliability: "
             + (f"{value.value} min/yr (worst utility in county)" if value else "not reported here")
         )
+        # Shares the county lookup's cache, so this costs nothing extra.
+        found = wildfire.values_for(site.latitude, site.longitude)
+        risk = found.get("wildfire_risk_index")
+        rating = risk.detail.split("rated ")[-1].rstrip(".") if risk else ""
+        print("     wildfire risk: " + (f"{risk.value} ({rating.split('.')[0]})" if risk else "tract not covered"))
 
 
 if __name__ == "__main__":

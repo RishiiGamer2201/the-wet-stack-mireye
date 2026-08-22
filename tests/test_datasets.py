@@ -15,6 +15,7 @@ import pytest
 from app.adapters.datasets import (
     CountyLookup,
     EIAReliability,
+    FEMANationalRiskIndex,
     PADUSProtectedAreas,
     PeeringDBFacilities,
     WaterQualityPortal,
@@ -435,6 +436,122 @@ def test_all_providers_are_registered():
 
     set_dataset_providers(None)
     names = {p.name for p in get_dataset_providers()}
-    assert names == {"peeringdb", "water_quality_portal", "eia_reliability", "padus"}
+    assert names == {
+        "peeringdb",
+        "water_quality_portal",
+        "eia_reliability",
+        "padus",
+        "fema_nri",
+    }
     assert "protected_area_distance_km" in dataset_fields()
     assert "grid_reliability_saidi_min" in dataset_fields()
+    assert "wildfire_risk_index" in dataset_fields()
+
+
+# --- FEMA National Risk Index -----------------------------------------------
+
+
+@pytest.fixture
+def tracts(tmp_path) -> CountyLookup:
+    lookup = CountyLookup(path=tmp_path / "tracts.json", allow_fetch=False)
+    lookup._cache = {
+        # Ashburn VA — FEMA rates this tract Very Low.
+        "39.016,-77.459": {
+            "state": "VA",
+            "county": "Loudoun",
+            "fips": "51107",
+            "tract_fips": "51107611006",
+            "tract": "6110.06",
+        },
+        # Rio Verde Mesa AZ — Very High, next to Tonto National Forest.
+        "33.531,-111.632": {
+            "state": "AZ",
+            "county": "Maricopa",
+            "fips": "04013",
+            "tract_fips": "04013010102",
+            "tract": "101.02",
+        },
+        # A point the geocoder placed in no US county at all.
+        "0.000,-160.000": None,
+        # An entry cached before tracts were requested: no tract_fips key.
+        "1.000,-1.000": {"state": "XX", "county": "Nowhere", "fips": "99999"},
+    }
+    return lookup
+
+
+@pytest.fixture
+def nri(tracts) -> FEMANationalRiskIndex:
+    return FEMANationalRiskIndex(counties=tracts)
+
+
+def test_the_bundled_nri_table_is_real_fema_data(nri):
+    payload = nri._load()
+    assert "fema.gov" in payload["_url"]
+    assert len(payload["tracts"]) > 80_000, "the national table covers every US tract"
+    assert "WFIR_RISKS" in payload["_field"]
+
+
+def test_wildfire_score_comes_with_femas_own_rating(nri):
+    value = nri.values_for(39.0164, -77.4590)["wildfire_risk_index"]
+    assert value.relation is EvidenceRelation.EXACT
+    assert 0 <= value.value <= 100
+    assert "Very Low" in value.detail
+    assert "Loudoun County" in value.detail
+    assert "non-linear" in value.detail, "the scale caveat travels with the value"
+
+
+def test_a_high_risk_tract_scores_zero_and_a_low_risk_one_scores_full(nri):
+    """The point of re-anchoring the thresholds. On the old evenly-spread 10/80
+    ramp, Ashburn's Very Low tract scored 70/100 rather than 100, because a
+    'Very Low' NRI score is a number in the 20s-60s, not in the single digits."""
+    from app.engine.scoring import normalize
+    from app.fields import FIELD_INDEX
+
+    spec = FIELD_INDEX["wildfire_risk_index"]
+    low = nri.values_for(39.0164, -77.4590)["wildfire_risk_index"]
+    high = nri.values_for(33.5312, -111.6321)["wildfire_risk_index"]
+
+    assert low.value < high.value
+    assert normalize(spec, low.value) == 100.0
+    assert normalize(spec, high.value) == 0.0
+    # And the thresholds are FEMA's published class boundaries, not round numbers.
+    assert spec.good == 68.65 and spec.bad == 96.26
+
+
+def test_the_thresholds_match_the_boundaries_recorded_with_the_data(nri):
+    """If a future NRI version moves its class boundaries, this fails rather
+    than silently scoring against the old ones."""
+    from app.fields import FIELD_INDEX
+
+    bounds = nri._load()["_rating_bounds"]
+    spec = FIELD_INDEX["wildfire_risk_index"]
+    assert spec.good == bounds["Very Low"][1]
+    assert spec.bad == bounds["Relatively High"][0]
+
+
+def test_a_tract_outside_the_index_is_absent_not_zero(nri):
+    """Zero here would read as 'no wildfire risk', which is the opposite of
+    'we do not know'."""
+    nri._counties._cache["12.000,-12.000"] = {
+        "state": "ZZ",
+        "county": "Unknown",
+        "fips": "00000",
+        "tract_fips": "00000000000",
+        "tract": "0",
+    }
+    assert nri.values_for(12.0, -12.0) == {}
+
+
+def test_a_point_outside_the_us_returns_nothing(nri):
+    assert nri.values_for(0.0, -160.0) == {}
+
+
+def test_a_cache_entry_predating_tracts_is_refetched_when_it_can_be(tracts, nri):
+    """A cache written before tracts were requested has county data but no
+    tract. With fetching on it is re-fetched rather than trusted; with fetching
+    off the county half is still served, because it is still correct — and the
+    wildfire lookup reports nothing rather than guessing a tract."""
+    stale = tracts.county_for(1.0, -1.0)
+    assert stale is not None and "tract_fips" not in stale
+    assert stale["county"] == "Nowhere", "the county half is still usable"
+    assert nri.values_for(1.0, -1.0) == {}, "but no tract means no wildfire score"

@@ -28,6 +28,7 @@ Plus, as of this change, two public datasets shipped with the code:
 | EPA/USGS Water Quality Portal | `water_quality_tds_mg_l` (as context) | per-location query | Public domain |
 | USGS PAD-US 4.1 | `protected_area_distance_km` | 298,244 areas | Public domain |
 | EIA Form EIA-861 (2023) | `grid_reliability_saidi_min` (as context) | 734 utilities, 2,840 counties | Public domain |
+| FEMA National Risk Index v1.20 | `wildfire_risk_index` | 84,093 census tracts | Public domain |
 
 So the **before-construction** side is now almost entirely real. The
 **after-construction** side — the 84 synthetic document records — is not, and
@@ -184,6 +185,69 @@ join silently misses.
 Rebuild for a newer year: `pip install openpyxl && python scripts/build_eia861.py`
 (openpyxl is a download-time dependency only; the runtime reads the JSON).
 
+### 2.6 FEMA National Risk Index — wildfire risk
+
+`apps/api/app/adapters/datasets.py` → `FEMANationalRiskIndex`, built by
+`scripts/build_fema_nri.py`
+
+FEMA's own baseline risk measurement for every US census tract. Mireye's catalog
+has an annual wildfire frequency and hazard-zone classes, but no composite index,
+so this concept had no source at all.
+
+| Site | Tract score | FEMA rating | Scores |
+|---|---:|---|---:|
+| Ashburn, VA | 31.19 | Very Low | 100/100 |
+| Cascade Flats, WA | 48.33 | Very Low | 100/100 |
+| Harbour Point, VA | 50.66 | Very Low | 100/100 |
+| Delta Fields, MS | 62.72 | Very Low | 100/100 |
+| Prairie Junction, NE | 95.50 | Relatively Moderate | 2.8/100 |
+| **Rio Verde Mesa, AZ** | **99.81** | **Very High** | **0/100** |
+
+Rio Verde Mesa is inside Tonto National Forest and rated Very High for wildfire.
+Two independent public datasets now say the same thing about that candidate.
+
+**The scale is the trap, and it is worth understanding before trusting the
+number.** `WFIR_RISKS` runs 0–100, so it looks directly comparable to any other
+0–100 index. It is not. Measured across all 84,093 tracts:
+
+| FEMA rating | Score range | Tracts |
+|---|---|---:|
+| No Rating (no modelled exposure) | 0.00 | 15,507 |
+| Very Low | 18.44 – 68.65 | 42,223 |
+| Relatively Low | 68.65 – 88.34 | 16,561 |
+| Relatively Moderate | 88.35 – 96.26 | 6,656 |
+| Relatively High | 96.26 – 99.06 | 2,356 |
+| Very High | 99.06 – 100.00 | 790 |
+
+The median tract FEMA calls **Very Low scores 43.6**. This field previously used
+`good=10, bad=80` — round numbers invented for a synthetic 0–100 scale that never
+existed. Feeding real NRI scores into that ramp would have scored Ashburn, a Very
+Low tract, at 70/100 instead of 100, and would have penalised every safe site in
+the country by roughly half its wildfire points. The number looked compatible
+because both scales are "0–100"; that is exactly what makes it a silent error
+rather than a loud one.
+
+So the thresholds are re-anchored to **FEMA's own published class boundaries**
+(68.65 = top of Very Low, 96.26 = start of Relatively High), which are measured
+from the data and stored beside it in `_rating_bounds`. A test asserts the
+thresholds still match those bounds, so a future NRI version that moves them
+fails loudly instead of scoring against the old ones.
+
+Known limit, stated rather than hidden: anything FEMA rates *Relatively High* or
+worse scores 0 here, so the ramp does not separate High from Very High. Both are
+already a serious constraint for a data centre, and the evidence carries FEMA's
+rating text for a human to read.
+
+The tract is resolved from coordinates by the same Census geocoder used for
+counties — both layers come back in one request — so no geometry, no shapefile
+and no spatial library are involved. That is why the **Table Format** download is
+the right one and the 411 MB geodatabase is not.
+
+To rebuild for a newer NRI version: download *All Census tracts / Table Format*
+from <https://hazards.fema.gov/nri/data-resources> (605 MB CSV, 467 columns) and
+run `python scripts/build_fema_nri.py path/to/NRI_Table_CensusTracts.zip`. It
+keeps three columns and writes 2 MB.
+
 ### 2.3 Where the datasets live
 
 ```
@@ -195,9 +259,10 @@ apps/api/var/datasets/          # downloaded at runtime, wins when present
 |---|---|
 | `peeringdb_facilities.json` | 1,353 US interconnection facilities |
 | `eia861_reliability.json` | SAIDI per utility + county → utility map |
+| `fema_nri_wildfire.json` | wildfire risk score + rating for 84,093 tracts |
 | `wqp_tds_cache.json` | water-quality answers for the demo's sites |
 | `padus_cache.json` | nearest protected area for the demo's sites |
-| `county_cache.json` | coordinates → county, from the Census geocoder |
+| `county_cache.json` | coordinates → county *and tract*, from the Census geocoder |
 
 ```bash
 python -m app.datasets_cli list                  # what is present
@@ -224,11 +289,12 @@ or an engineer).
 
 ---
 
-### 3.1 `wildfire_risk_index` — FEMA National Risk Index ⭐
+### 3.1 `wildfire_risk_index` — FEMA National Risk Index ✅ DONE
 
-**Status from this machine: BLOCKED.** `hazards.fema.gov` refused the connection
-on every attempt (`ConnectError`). It is reachable from an ordinary browser, so
-this is a network-path problem here, not a dead source.
+**Implemented — see §2.6.** The zip was downloaded by hand, because
+`hazards.fema.gov` refuses connections from this network (`ConnectError`, every
+attempt, over two days) while being perfectly reachable from a browser. The
+steps below are what the build script now does.
 
 1. Open <https://hazards.fema.gov/nri/data-resources>.
 2. Under **Download NRI Data**, choose *National — Census Tracts* (or *Counties*
@@ -421,8 +487,14 @@ before spending a day on it.
 connection (it also returned 503 on an earlier attempt). The service is known to
 be intermittent.
 
-1. When it is up, the CropScape API takes a bounding box and returns CDL
-   statistics: <https://nassgeodata.gmu.edu/CropScape/>.
+1. The CropScape API is a separate web service, not a button in the viewer.
+   `GetCDLValue` (one pixel) works today; `GetCDLStat` (histogram over a box),
+   which is the one this field needs, returned HTTP 502 after three minutes on
+   every attempt. **Coordinates must be EPSG:5070 Albers metres**, not lat/lon —
+   passing lat/lon is why the service appears dead when it is not.
+   A working alternative without any download: sample `GetCDLValue` on a 5×5
+   grid over the parcel and take the crop share, which is ±10 percentage points
+   at 25 samples — comfortably inside this field's 0.05/0.80 thresholds.
 2. The reliable alternative is the annual national CDL GeoTIFF, roughly 5 GB per
    year, from <https://www.nass.usda.gov/Research_and_Science/Cropland/Release/>.
 3. Compute the fraction of cells within the parcel (or a fixed radius) whose CDL
@@ -519,7 +591,7 @@ because a station 40 km away at a different elevation is a proxy, not the site.
 | `distance_to_ix_km` | PeeringDB | ✅ done | — | EXACT |
 | `ix_facility_carrier_count` | PeeringDB | ✅ done | — | EXACT |
 | `water_quality_tds_mg_l` | Water Quality Portal | ✅ done | — | CONTEXTUAL_PROXY |
-| `wildfire_risk_index` | FEMA NRI | ⭐ | Yes (network) | EXACT |
+| `wildfire_risk_index` | FEMA NRI | ✅ done | manual download | EXACT |
 | `water_stress_index` | WRI Aqueduct 4.0 | ⭐⭐ | No (manual, ~1 GB) | EXACT |
 | `terrain_ruggedness_index` | USGS 3DEP | ⭐⭐ | No (large files) | EXACT |
 | `cropland_fraction` | USDA CDL | ⭐⭐ | Yes (service down) | EXACT |
@@ -665,15 +737,13 @@ finding — and by the time anyone notices, it is in a decision.
 
 ## 7. What is left, and in what order
 
-Done: PeeringDB, Water Quality Portal, PAD-US, EIA-861. Four concepts served,
-one proxy retired.
+Done: PeeringDB, Water Quality Portal, PAD-US, EIA-861, FEMA NRI. Five concepts
+served, one proxy retired.
 
 1. **AHRI + manufacturer cut sheets** (§5.1, §5.2) — biggest reduction in
    synthetic data per hour spent, no spatial code, and scanned documents now work
    because OCR runs on upload. This is the highest-value item left.
-2. **FEMA NRI** (§3.1) — one CSV, one join. Blocked from this machine only;
-   download it from a browser and the rest is straightforward.
-3. **WRI Aqueduct** (§3.2) — water stress is central to this product's thesis.
+2. **WRI Aqueduct** (§3.2) — water stress is central to this product's thesis.
    The Figshare id in §3.2 no longer resolves; take the current download link
    from the WRI landing page, which is live.
 4. **USGS 3DEP** (§3.7) — terrain ruggedness. Heavy files, simple maths.
@@ -687,8 +757,8 @@ Schedule them separately.
 
 | Source | Result | Why it is not done |
 |---|---|---|
-| FEMA NRI | `ConnectError` — TCP reset, every attempt, both days | This network cannot reach `hazards.fema.gov`. Nothing in the code can fix that; download it from a browser. |
-| USDA CropScape | HTTP 500 and 503 | Their service is intermittently down. |
+| FEMA NRI | `ConnectError` — TCP reset, every attempt | This network cannot reach `hazards.fema.gov`. Downloaded by hand instead; the build script takes the zip. |
+| USDA CropScape `GetCDLStat` | HTTP 502 after 183 s, twice | Their histogram operation is broken. `GetCDLValue` (single pixel) *does* work — coordinates must be EPSG:5070 Albers metres, not lat/lon, which is why it looks dead. A 5×5 grid of point queries would give cropland fraction to about ±10 pp, inside this field's 0.05/0.80 thresholds. |
 | WRI Aqueduct | Landing page 200, Figshare id 404 | The dataset moved; the direct link has to be re-read from the landing page. |
 | DSIRE incentives API | HTTP 403 | Programmatic access needs a licence agreement. |
 | HIFLD service territories | `Invalid URL` from the DHS-republished service | Authoritative copy moved; remaining mirrors are of unverifiable provenance. |
