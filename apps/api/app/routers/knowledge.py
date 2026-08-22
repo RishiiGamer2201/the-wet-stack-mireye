@@ -36,7 +36,6 @@ from ..schemas import (
     KnowledgeAgentResponse,
     MCPRpcRequest,
     MCPRpcResponse,
-    MCPToolSchema,
     RequirementUpdate,
     SearchResponse,
     TellMeInsightsSchema,

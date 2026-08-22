@@ -13,6 +13,7 @@ and verifiable citations.
 
 from __future__ import annotations
 
+import itertools
 import json
 import logging
 import re
@@ -23,18 +24,11 @@ from typing import Any
 
 from ..adapters.llm import get_llm
 from ..adapters.mcp import get_mcp_registry
-from ..adapters.mireye import get_mireye_client
-from ..adapters.vectorstore import get_index
 from ..adapters.websearch import get_web_search_engine
 from ..domain import (
     CandidateSite,
-    DocumentChunk,
-    Evidence,
-    InformationGap,
     Project,
-    Requirement,
 )
-from ..fields import FIELD_INDEX
 from ..store import C, Store, get_store
 
 log = logging.getLogger("knowledge_agent")
@@ -377,7 +371,7 @@ Formulate the optimal tool plan JSON."""
                                 chunk_id=c["chunk_id"],
                             )
                         )
-                    context_block = f"=== INGESTED PROJECT DOCUMENTS (ChromaDB + BM25) ===\n" + "\n\n".join(lines)
+                    context_block = "=== INGESTED PROJECT DOCUMENTS (ChromaDB + BM25) ===\n" + "\n\n".join(lines)
                     summary = f"Retrieved {len(chunks)} relevant chunk(s) from project documents."
                 else:
                     summary = "No matching document chunks found."
@@ -396,7 +390,7 @@ Formulate the optimal tool plan JSON."""
                                 url=h["url"],
                             )
                         )
-                    context_block = f"=== TECHNICAL STANDARDS & WEB EVIDENCE ===\n" + "\n\n".join(lines)
+                    context_block = "=== TECHNICAL STANDARDS & WEB EVIDENCE ===\n" + "\n\n".join(lines)
                     summary = f"Found {len(hits)} standard(s) & references."
                 else:
                     summary = "No web standards results found."
@@ -839,6 +833,20 @@ Please provide your rigorous Principal EPC Engineering assessment and conclude w
             for c in web_citations[:3]:
                 web_summary_lines.append(f"- **{c.title}** ({c.detail}): Referenced industry technical codes.")
 
+        # Show the telemetry rather than asserting it was consulted. This section
+        # used to claim "coordinates evaluated via Mireye" while rendering none of
+        # the readings it had collected, which reads as evidence and is not.
+        mireye_summary_lines = []
+        if mireye_citations:
+            for c in mireye_citations[:4]:
+                where = f" at {c.coordinates}" if c.coordinates else ""
+                mireye_summary_lines.append(f"- **{c.title}**{where}: {c.detail}")
+        else:
+            mireye_summary_lines.append(
+                "- *No Mireye telemetry was returned for this query, so no physical site "
+                "readings are cited below.*"
+            )
+
         body = (
             f"### Principal EPC Engineering Assessment · {site_name}\n\n"
             f"**Inquiry Analysis:** *\"{query}\"*\n\n"
@@ -848,12 +856,12 @@ Please provide your rigorous Principal EPC Engineering assessment and conclude w
             f"#### 2. Technical Evidence & Specification Findings\n"
             f"{chr(10).join(doc_summary_lines)}\n\n"
             f"#### 3. Environmental Telemetry & Site Constraints\n"
-            f"- **Location**: {site_name} physical coordinates evaluated via Mireye MCP.\n"
-            f"- **Key Takeaway**: {tell_me.key_findings[0] if tell_me.key_findings else 'Site conditions verified.'}\n\n"
+            f"{chr(10).join(mireye_summary_lines)}\n"
+            f"- **Key Takeaway**: {tell_me.key_findings[0] if tell_me.key_findings else 'No site conditions were retrieved for this query.'}\n\n"
             f"#### 4. Applicable Standards & Codes\n"
             f"{chr(10).join(f'- {s}' for s in tell_me.standards_compliance)}\n\n"
             f"#### 5. Engineering Risks & Actionable Mitigations\n"
-            f"{chr(10).join(f'1. **Risk:** {r}{chr(10)}   - **Mitigation:** {m}' for r, m in zip(tell_me.risks_identified, tell_me.actionable_mitigations))}"
+            f"{chr(10).join(f'1. **Risk:** {r}{chr(10)}   - **Mitigation:** {m or chr(0x2014) + chr(32) + chr(0x2014)}' for r, m in itertools.zip_longest(tell_me.risks_identified, tell_me.actionable_mitigations, fillvalue=''))}"
         )
         return body, tell_me
 

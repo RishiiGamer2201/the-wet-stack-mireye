@@ -22,7 +22,7 @@ import shutil
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath, PureWindowsPath
 
-from ..adapters.vectorstore import LocalVectorIndex, PgVectorIndex, get_index
+from ..adapters.vectorstore import get_index
 from ..config import get_settings
 from ..domain import (
     DocumentChunk,

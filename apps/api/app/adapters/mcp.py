@@ -8,20 +8,20 @@ and EPC project context inspection.
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
-from ..adapters.mireye import MireyeError, get_mireye_client
+from ..adapters.mireye import get_mireye_client
 from ..adapters.vectorstore import get_index
 from ..domain import (
     CandidateSite,
-    DocumentChunk,
     Evidence,
     InformationGap,
     Project,
     Requirement,
 )
-from ..fields import FIELD_INDEX, FIELDS
-from ..store import C, Store, get_store
+from ..fields import FIELD_INDEX
+from ..store import C, get_store
 
 log = logging.getLogger("mcp")
 

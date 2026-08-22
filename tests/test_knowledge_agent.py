@@ -4,9 +4,6 @@ from __future__ import annotations
 
 from app.adapters.mcp import get_mcp_registry
 from app.adapters.websearch import get_web_search_engine
-from app.agent.knowledge_agent import get_knowledge_agent
-from app.domain import CandidateSite, Project
-from app.store import C, get_store
 
 
 def test_mcp_tools_registration_and_list():
