@@ -176,6 +176,16 @@ At the very end of your response, output a strict JSON block delimited by ```jso
 """
 
 
+def _is_conversational_greeting(message: str) -> bool:
+    cleaned = re.sub(r"[^\w\s]", "", message.strip().lower())
+    greetings = {
+        "hi", "hello", "hey", "hola", "greetings", "good morning", "good afternoon",
+        "good evening", "howdy", "sup", "yo", "help", "who are you", "what can you do",
+        "start", "test", "hi there", "hello there", "hi agent", "hello agent", "hey agent"
+    }
+    return cleaned in greetings or len(cleaned) <= 2
+
+
 class KnowledgeAgent:
     """Agent that runs autonomous LLM tool-planning, multi-tool execution, and synthesis."""
 
@@ -450,6 +460,47 @@ Formulate the optimal tool plan JSON."""
         active_site = self._resolve_site(project_id, site_id)
         site_name = active_site.name if active_site else project.name
 
+        # Fast path for conversational greetings
+        if _is_conversational_greeting(message):
+            greeting_text = (
+                f"Hello! I am your **Autonomous EPC Project Knowledge & Research Agent**.\n\n"
+                f"I am actively connected to **{project.name}** and candidate site **{site_name}**"
+                f"{f' ({active_site.latitude:.4f}, {active_site.longitude:.4f})' if active_site and active_site.latitude else ''}.\n\n"
+                f"### What would you like to investigate?\n"
+                f"- **Mechanical Cooling:** *\"What is the chiller capacity and allowable operating temperatures?\"*\n"
+                f"- **Seismic & Structural:** *\"Verify seismic anchorage requirements for 480V switchgear under ASCE 7-22.\"*\n"
+                f"- **Hydrology & Flood Risk:** *\"Check FEMA base flood elevation (BFE) and required finished floor elevation.\"*\n"
+                f"- **Power & Interconnection:** *\"Review 230kV substation yard requirements and transformer redundancy.\"*\n"
+                f"- **Submittals & Drawings:** *\"Search uploaded specifications for equipment MCA and MOCP ratings.\"*\n\n"
+                f"Ask any question or select one of the suggested prompts to begin."
+            )
+            tell_me = TellMeInsights(
+                key_findings=[
+                    f"Active workspace: {project.name} (Region: {project.region or 'Global'}).",
+                    f"Candidate site: {site_name} ready for physical telemetry and document cross-referencing.",
+                ],
+                risks_identified=[
+                    "Unverified equipment submittals require verification against manufacturer cut sheets.",
+                    "Verify physical site telemetry (seismic PGA, flood zone, water stress) before design lock.",
+                ],
+                standards_compliance=[
+                    "ASHRAE TC 9.9 2023: Mission-critical thermal envelopes.",
+                    "ASCE 7-22 Risk Category IV: Structural seismic anchorage.",
+                ],
+                actionable_mitigations=[
+                    "Upload project specification or submittal PDFs into ChromaDB.",
+                    "Enter an engineering inquiry to run autonomous multi-tool reasoning.",
+                ],
+            )
+            return KnowledgeAgentResult(
+                answer=greeting_text,
+                tell_me=tell_me,
+                citations=[],
+                tool_traces=[],
+                site_name=site_name,
+                mode="conversational",
+            )
+
         # 1. Plan tools via LLM
         planned_tools = self.plan_tools(project, active_site, message, enabled_tools)
 
@@ -530,6 +581,49 @@ Please provide your rigorous Principal EPC Engineering assessment and conclude w
 
         active_site = self._resolve_site(project_id, site_id)
         site_name = active_site.name if active_site else project.name
+
+        # Fast path for conversational greetings
+        if _is_conversational_greeting(message):
+            greeting_text = (
+                f"Hello! I am your **Autonomous EPC Project Knowledge & Research Agent**.\n\n"
+                f"I am actively connected to **{project.name}** and candidate site **{site_name}**"
+                f"{f' ({active_site.latitude:.4f}, {active_site.longitude:.4f})' if active_site and active_site.latitude else ''}.\n\n"
+                f"### What would you like to investigate?\n"
+                f"- **Mechanical Cooling:** *\"What is the chiller capacity and allowable operating temperatures?\"*\n"
+                f"- **Seismic & Structural:** *\"Verify seismic anchorage requirements for 480V switchgear under ASCE 7-22.\"*\n"
+                f"- **Hydrology & Flood Risk:** *\"Check FEMA base flood elevation (BFE) and required finished floor elevation.\"*\n"
+                f"- **Power & Interconnection:** *\"Review 230kV substation yard requirements and transformer redundancy.\"*\n"
+                f"- **Submittals & Drawings:** *\"Search uploaded specifications for equipment MCA and MOCP ratings.\"*\n\n"
+                f"Ask any question or select one of the suggested prompts to begin."
+            )
+            tell_me = TellMeInsights(
+                key_findings=[
+                    f"Active workspace: {project.name} (Region: {project.region or 'Global'}).",
+                    f"Candidate site: {site_name} ready for physical telemetry and document cross-referencing.",
+                ],
+                risks_identified=[
+                    "Unverified equipment submittals require verification against manufacturer cut sheets.",
+                    "Verify physical site telemetry (seismic PGA, flood zone, water stress) before design lock.",
+                ],
+                standards_compliance=[
+                    "ASHRAE TC 9.9 2023: Mission-critical thermal envelopes.",
+                    "ASCE 7-22 Risk Category IV: Structural seismic anchorage.",
+                ],
+                actionable_mitigations=[
+                    "Upload project specification or submittal PDFs into ChromaDB.",
+                    "Enter an engineering inquiry to run autonomous multi-tool reasoning.",
+                ],
+            )
+            words = greeting_text.split(" ")
+            for i in range(0, len(words), 3):
+                chunk = " ".join(words[i:i+3]) + " "
+                yield f"data: {json.dumps({'event': 'token', 'chunk': chunk})}\n\n"
+                time.sleep(0.015)
+
+            yield f"data: {json.dumps({'event': 'tell_me', 'data': asdict(tell_me)})}\n\n"
+            yield f"data: {json.dumps({'event': 'citations', 'data': []})}\n\n"
+            yield f"data: {json.dumps({'event': 'done', 'site_name': site_name, 'mode': 'conversational', 'traces': []})}\n\n"
+            return
 
         # 1. Plan tools via LLM
         planned_tools = self.plan_tools(project, active_site, message, enabled_tools)
