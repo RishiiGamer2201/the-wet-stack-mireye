@@ -17,8 +17,11 @@ interface MarkdownRendererProps {
 export function MarkdownRenderer({ content, className = "" }: MarkdownRendererProps) {
   if (!content) return null;
 
-  // Clean raw json_tell_me if any leaked into the content
-  const cleanText = content.replace(/```json_tell_me[\s\S]*?```/g, "").trim();
+  // Clean raw json_tell_me or trailing partial tokens if any leaked into the content
+  const cleanText = content
+    .replace(/```json_tell_me[\s\S]*?```/g, "")
+    .replace(/`*json_tell[\s\S]*$/gi, "")
+    .trim();
 
   // Split into lines
   const lines = cleanText.split("\n");

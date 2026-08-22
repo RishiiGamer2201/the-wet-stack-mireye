@@ -101,11 +101,13 @@ Available Tools:
 
 3. `mireye_fetch_telemetry`:
    - Fetch physical environmental telemetry via Mireye MCP for coordinates.
-   - Args: {"latitude": <float>, "longitude": <float>, "fields": ["elevation_m", "mean_slope_pct", "seismic_pga_g", "flood_zone", "wetland_fraction", "distance_to_substation_km", "water_stress_index", "ambient_design_db_c", "design_wind_speed_mph", "soil_bearing_capacity_kpa", "grid_capacity_mw"]}
+   - By default, request low-cost standard physical fields: ["elevation_m", "mean_slope_pct", "seismic_pga_g", "flood_zone", "wetland_fraction", "distance_to_substation_km", "water_stress_index", "ambient_design_db_c", "design_wind_speed_mph"].
+   - Args: {"latitude": <float>, "longitude": <float>, "fields": [...]}
    - Tool category: "mireye"
 
 4. `mireye_environmental_ask`:
-   - Ask complex physical geospatial questions regarding the location.
+   - Exploratory geospatial and natural-language site questions (e.g. historical flooding, utility constraints, climate risks).
+   - Use this when the user specifically asks for qualitative site characteristics or specific parcel land-use context.
    - Args: {"question": "<geospatial question>", "latitude": <float>, "longitude": <float>}
    - Tool category: "mireye"
 
@@ -114,10 +116,10 @@ Available Tools:
    - Args: {"section": "all" | "sites" | "evidence" | "requirements" | "gaps"}
    - Tool category: "project"
 
-RULES:
-- Select only relevant tools needed to thoroughly answer the inquiry.
-- Formulate specific, high-recall search queries for each tool.
-- If the user asks about equipment capacity against site conditions (e.g. wet bulb, seismic, flood), invoke BOTH documents/standards AND mireye tools.
+COST & PLANNING RULES:
+- **Default to Low-Cost Physical Telemetry**: For standard terrain, weather, seismic, and flood queries, use `mireye_fetch_telemetry` with standard 1-credit physical fields.
+- **On-Demand Parcel Queries**: ONLY request legal cadastral/parcel records or deep parcel questions if the user specifically asks about parcel tax APN, legal parcel boundaries, or cadastral zoning.
+- Select only relevant tools needed for the user's specific question.
 - Output ONLY a JSON array of tool calls.
 
 Example Output format:
@@ -132,11 +134,6 @@ Example Output format:
     "tool": "mireye_fetch_telemetry",
     "category": "mireye",
     "args": {"latitude": 45.5898, "longitude": -122.5951, "fields": ["ambient_design_db_c", "elevation_m", "water_stress_index"]}
-  },
-  {
-    "tool": "web_search_standards",
-    "category": "web",
-    "args": {"query": "ASHRAE TC 9.9 2023 allowable chiller supply water temperatures"}
   }
 ]
 ```
@@ -682,7 +679,7 @@ Please provide your rigorous Principal EPC Engineering assessment and conclude w
                     if chunk:
                         has_streamed = True
                         full_text += chunk
-                        if "```json_tell_me" in full_text:
+                        if "json_tell" in full_text.lower() or "```json" in full_text.lower():
                             json_block_started = True
                         if not json_block_started:
                             yield f"data: {json.dumps({'event': 'token', 'chunk': chunk})}\n\n"
