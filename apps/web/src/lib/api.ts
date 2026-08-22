@@ -190,4 +190,85 @@ export const api = {
     request<{ mode: string; count: number; fields: { key: string; label: string; unit?: string }[] }>(
       "/mireye/fields",
     ),
+
+  // Autonomous Project Knowledge Agent & MCP
+  knowledgeAgentChat: (projectId: string, payload: import("./types").KnowledgeAgentRequest) =>
+    post<import("./types").KnowledgeAgentResponse>(`/projects/${projectId}/knowledge/agent/chat`, payload),
+
+  knowledgeAgentStream: async (
+    projectId: string,
+    payload: import("./types").KnowledgeAgentRequest,
+    callbacks: {
+      onToolStart?: (tool: { tool: string; title: string; input?: any }) => void;
+      onToolFinish?: (finish: { tool: string; output_summary: string; duration_ms: number }) => void;
+      onToken?: (token: string) => void;
+      onTellMe?: (tellMe: import("./types").TellMeInsights) => void;
+      onCitations?: (citations: import("./types").Citation[]) => void;
+      onDone?: (done: { site_name?: string; mode: string; traces: import("./types").ToolExecutionTrace[] }) => void;
+      onError?: (err: Error) => void;
+    },
+  ) => {
+    try {
+      const res = await fetch(`${BASE}/api/projects/${projectId}/knowledge/agent/stream`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        let errDetail = res.statusText;
+        try {
+          const errJson = await res.json();
+          errDetail = errJson.detail || errJson.error || res.statusText;
+        } catch {}
+        throw new Error(`Agent stream error: ${errDetail}`);
+      }
+      const reader = res.body?.getReader();
+      const decoder = new TextDecoder();
+      if (!reader) return;
+
+      let buffer = "";
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n\n");
+        buffer = lines.pop() || "";
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              if (data.event === "tool_start" && callbacks.onToolStart) {
+                callbacks.onToolStart(data);
+              } else if (data.event === "tool_finish" && callbacks.onToolFinish) {
+                callbacks.onToolFinish(data);
+              } else if (data.event === "token" && callbacks.onToken && data.chunk) {
+                callbacks.onToken(data.chunk);
+              } else if (data.event === "tell_me" && callbacks.onTellMe && data.data) {
+                callbacks.onTellMe(data.data);
+              } else if (data.event === "citations" && callbacks.onCitations && data.data) {
+                callbacks.onCitations(data.data);
+              } else if (data.event === "done" && callbacks.onDone) {
+                callbacks.onDone(data);
+              }
+            } catch {}
+          }
+        }
+      }
+    } catch (err: any) {
+      if (callbacks.onError) callbacks.onError(err);
+      else throw err;
+    }
+  },
+
+  knowledgeSuggestions: (projectId: string) =>
+    request<{ suggestions: string[] }>(`/projects/${projectId}/knowledge/suggestions`),
+
+  mcpTools: () => request<import("./types").MCPTool[]>("/mcp/tools"),
+  mcpRpc: (method: string, params: Record<string, any> = {}) =>
+    post<{ jsonrpc: string; id?: string | number; result?: any; error?: any }>("/mcp/rpc", {
+      jsonrpc: "2.0",
+      id: String(Date.now()),
+      method,
+      params,
+    }),
 };

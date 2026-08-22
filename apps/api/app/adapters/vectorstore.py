@@ -160,6 +160,80 @@ class LocalVectorIndex:
         ]
 
 
+class ChromaVectorIndex:
+    """ChromaDB-backed vector index with persistent local storage."""
+
+    backend = "chromadb"
+
+    def __init__(self, persist_dir: str | None = None, embedder: HashingEmbedder | None = None) -> None:
+        import chromadb
+        from chromadb.config import Settings as ChromaSettings
+
+        self.embedder = embedder or HashingEmbedder()
+        self.persist_dir = persist_dir or str(get_settings().data_dir / "chroma")
+        self._client = chromadb.PersistentClient(
+            path=self.persist_dir,
+            settings=ChromaSettings(anonymized_telemetry=False, is_persistent=True),
+        )
+        self._collection = self._client.get_or_create_collection(
+            name="project_documents",
+            metadata={"description": "The Wet Stack Ingested Project Document Chunks"},
+        )
+
+    def embed_chunk(self, chunk: DocumentChunk) -> DocumentChunk:
+        chunk.embedding = self.embedder.embed(chunk.text)
+        return chunk
+
+    def upsert(self, chunk: DocumentChunk, document_name: str) -> None:
+        embedding = chunk.embedding or self.embedder.embed(chunk.text)
+        metadata = {
+            "project_id": chunk.project_id,
+            "document_id": chunk.document_id,
+            "document_name": document_name,
+            "page": chunk.page,
+            "ocr": bool(chunk.ocr),
+        }
+        self._collection.upsert(
+            ids=[chunk.id],
+            embeddings=[embedding],
+            documents=[chunk.text],
+            metadatas=[metadata],
+        )
+
+    def search(self, project_id: str, query: str, k: int = 5) -> list[RetrievedChunk]:
+        query_vec = self.embedder.embed(query)
+        res = self._collection.query(
+            query_embeddings=[query_vec],
+            n_results=max(1, k),
+            where={"project_id": project_id},
+            include=["documents", "metadatas", "distances"],
+        )
+        if not res or not res.get("ids") or not res["ids"][0]:
+            return []
+
+        out: list[RetrievedChunk] = []
+        ids = res["ids"][0]
+        docs = res.get("documents", [[]])[0]
+        metas = res.get("metadatas", [[]])[0]
+        distances = res.get("distances", [[]])[0] if "distances" in res else [0.0] * len(ids)
+
+        for cid, doc_text, meta, dist in zip(ids, docs, metas, distances, strict=False):
+            score = max(0.0, 1.0 - float(dist)) if dist is not None else 0.5
+            out.append(
+                RetrievedChunk(
+                    chunk_id=cid,
+                    document_id=str(meta.get("document_id", "")),
+                    document_name=str(meta.get("document_name", "")),
+                    page=int(meta.get("page", 1)),
+                    text=doc_text or "",
+                    score=round(score, 4),
+                    method="vector(chromadb)",
+                    ocr=bool(meta.get("ocr", False)),
+                )
+            )
+        return out
+
+
 class PgVectorIndex:
     """pgvector-backed retrieval used when DATABASE_URL is configured."""
 
@@ -214,7 +288,7 @@ class PgVectorIndex:
 
 
 class HybridIndex:
-    """Reciprocal-rank fusion of a lexical and a vector index.
+    """Reciprocal-rank fusion of a lexical (BM25) and a vector index (Chroma/pgvector/local).
 
     If the vector side raises (service down, driver missing) the lexical result is
     returned and the degradation is logged — retrieval never hard-fails.
@@ -263,13 +337,23 @@ def get_index() -> Index:
     global _index
     if _index is None:
         settings = get_settings()
-        vector: Index | None = LocalVectorIndex()
+        vector: Index | None = None
+
         if settings.pgvector_live:
             try:
                 vector = PgVectorIndex(settings.database_url)
                 log.info("using pgvector index")
             except Exception as exc:  # noqa: BLE001
-                log.warning("pgvector unavailable, using local vectors", extra={"error": str(exc)})
+                log.warning("pgvector unavailable", extra={"error": str(exc)})
+
+        if vector is None:
+            try:
+                vector = ChromaVectorIndex()
+                log.info("using ChromaDB vector index")
+            except Exception as exc:  # noqa: BLE001
+                log.warning("ChromaDB init failed, falling back to LocalVectorIndex", extra={"error": str(exc)})
+                vector = LocalVectorIndex()
+
         _index = HybridIndex(LexicalIndex(), vector)
     return _index
 

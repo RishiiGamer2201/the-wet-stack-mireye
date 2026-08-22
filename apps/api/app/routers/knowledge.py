@@ -6,8 +6,10 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 
 from ..adapters.llm import get_llm
+from ..adapters.mcp import get_mcp_registry
 from ..adapters.mireye import MireyeError, get_mireye_client
 from ..adapters.vectorstore import get_index
+from ..agent.knowledge_agent import get_knowledge_agent
 from ..config import get_settings
 from ..domain import (
     Assumption,
@@ -28,9 +30,17 @@ from ..schemas import (
     AdvisorChatResponse,
     AskRequest,
     AskResponse,
+    CitationSchema,
     GapUpdate,
+    KnowledgeAgentRequest,
+    KnowledgeAgentResponse,
+    MCPRpcRequest,
+    MCPRpcResponse,
+    MCPToolSchema,
     RequirementUpdate,
     SearchResponse,
+    TellMeInsightsSchema,
+    ToolTraceSchema,
     UploadResponse,
 )
 from ..services.ingest import IngestionError, ingest_pdf, safe_filename, validate_upload
@@ -569,3 +579,138 @@ def sample_documents():
         "files": sorted(p.name for p in sample_dir.glob("*.pdf")) if sample_dir.exists() else [],
         "note": "All sample documents are synthetic demonstration data.",
     }
+
+
+# ---------------------------------------------------------------------------
+# Project Knowledge Autonomous Research Agent Endpoints
+# ---------------------------------------------------------------------------
+
+
+@router.post("/projects/{project_id}/knowledge/agent/chat", response_model=KnowledgeAgentResponse)
+def knowledge_agent_chat(
+    payload: KnowledgeAgentRequest,
+    project: Project = Depends(get_project),
+):
+    """Synchronous execution of the autonomous Knowledge & Research Agent."""
+    agent = get_knowledge_agent()
+    try:
+        res = agent.run(
+            project_id=project.id,
+            message=payload.message,
+            site_id=payload.site_id,
+            enabled_tools=payload.enabled_tools,
+            history=payload.history,
+        )
+        return KnowledgeAgentResponse(
+            answer=res.answer,
+            tell_me=TellMeInsightsSchema(
+                key_findings=res.tell_me.key_findings,
+                risks_identified=res.tell_me.risks_identified,
+                standards_compliance=res.tell_me.standards_compliance,
+                actionable_mitigations=res.tell_me.actionable_mitigations,
+            ),
+            citations=[
+                CitationSchema(
+                    source_type=c.source_type,
+                    title=c.title,
+                    detail=c.detail,
+                    url=c.url,
+                    page=c.page,
+                    chunk_id=c.chunk_id,
+                    coordinates=c.coordinates,
+                )
+                for c in res.citations
+            ],
+            tool_traces=[
+                ToolTraceSchema(
+                    tool=t.tool,
+                    title=t.title,
+                    input_params=t.input_params,
+                    output_summary=t.output_summary,
+                    duration_ms=t.duration_ms,
+                    ok=t.ok,
+                )
+                for t in res.tool_traces
+            ],
+            site_name=res.site_name,
+            mode=res.mode,
+            disclaimer=res.disclaimer,
+        )
+    except Exception as exc:
+        log.warning("knowledge agent failed", extra={"error": str(exc)})
+        raise HTTPException(status_code=500, detail=f"Knowledge agent error: {exc}") from exc
+
+
+@router.post("/projects/{project_id}/knowledge/agent/stream")
+def knowledge_agent_stream(
+    payload: KnowledgeAgentRequest,
+    project: Project = Depends(get_project),
+):
+    """Server-Sent Events (SSE) streaming execution of the Knowledge Agent."""
+    agent = get_knowledge_agent()
+    return StreamingResponse(
+        agent.stream(
+            project_id=project.id,
+            message=payload.message,
+            site_id=payload.site_id,
+            enabled_tools=payload.enabled_tools,
+            history=payload.history,
+        ),
+        media_type="text/event-stream",
+    )
+
+
+@router.get("/projects/{project_id}/knowledge/suggestions")
+def knowledge_suggestions(
+    project: Project = Depends(get_project),
+    store: Store = Depends(store_dep),
+):
+    """Contextual prompt suggestions generated from active project documents and candidate sites."""
+    sites = store.list(C.SITES, CandidateSite, project_id=project.id)
+    first_site = sites[0].name if sites else "active site"
+
+    return {
+        "suggestions": [
+            f"Analyze chiller net cooling capacity requirements for {first_site} against local wet-bulb temperatures.",
+            f"Verify seismic anchorage design for electrical switchgear at {first_site} against ASCE 7-22.",
+            f"Check FEMA base flood elevation (BFE) and finished floor elevation requirements for {first_site}.",
+            "Search ASHRAE TC 9.9 thermal operating envelope guidelines for Class A1 mission-critical facilities.",
+            f"Compare on-site water consumption with municipal water stress risk at {first_site}.",
+            "Review electrical MCA and MOCP submittal specifications against utility feed capacity.",
+        ]
+    }
+
+
+# ---------------------------------------------------------------------------
+# Model Context Protocol (MCP) Server Endpoints
+# ---------------------------------------------------------------------------
+
+
+@router.get("/mcp/tools", response_model=list[dict])
+def list_mcp_tools():
+    """Returns available tools conforming to the Model Context Protocol (MCP) specification."""
+    registry = get_mcp_registry()
+    return registry.list_tools()
+
+
+@router.post("/mcp/rpc", response_model=MCPRpcResponse)
+def handle_mcp_rpc(payload: MCPRpcRequest):
+    """JSON-RPC 2.0 endpoint for standard Model Context Protocol (MCP) tool execution."""
+    registry = get_mcp_registry()
+    if payload.method == "tools/list":
+        return MCPRpcResponse(id=payload.id, result={"tools": registry.list_tools()})
+    elif payload.method == "tools/call":
+        tool_name = payload.params.get("name")
+        arguments = payload.params.get("arguments", {})
+        if not tool_name:
+            return MCPRpcResponse(
+                id=payload.id,
+                error={"code": -32602, "message": "Missing 'name' in tools/call parameters"},
+            )
+        result = registry.execute(tool_name, arguments)
+        return MCPRpcResponse(id=payload.id, result=result)
+    else:
+        return MCPRpcResponse(
+            id=payload.id,
+            error={"code": -32601, "message": f"Method '{payload.method}' not implemented"},
+        )

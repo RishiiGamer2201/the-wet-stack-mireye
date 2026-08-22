@@ -202,6 +202,69 @@ class AdvisorChatResponse(BaseModel):
     disclaimer: str = "Advisory engineering opinion. Certified drawings and structural calculations require PE stamp."
 
 
+class CitationSchema(BaseModel):
+    source_type: str
+    title: str
+    detail: str
+    url: str | None = None
+    page: int | None = None
+    chunk_id: str | None = None
+    coordinates: str | None = None
+
+
+class ToolTraceSchema(BaseModel):
+    tool: str
+    title: str
+    input_params: dict[str, Any] = Field(default_factory=dict)
+    output_summary: str
+    duration_ms: int = 0
+    ok: bool = True
+
+
+class TellMeInsightsSchema(BaseModel):
+    key_findings: list[str] = Field(default_factory=list)
+    risks_identified: list[str] = Field(default_factory=list)
+    standards_compliance: list[str] = Field(default_factory=list)
+    actionable_mitigations: list[str] = Field(default_factory=list)
+
+
+class KnowledgeAgentRequest(BaseModel):
+    message: str = Field(min_length=2, max_length=2500)
+    site_id: str | None = None
+    enabled_tools: list[str] | None = None  # ["documents", "web", "mireye", "project"]
+    history: list[dict[str, str]] | None = None
+
+
+class KnowledgeAgentResponse(BaseModel):
+    answer: str
+    tell_me: TellMeInsightsSchema
+    citations: list[CitationSchema] = Field(default_factory=list)
+    tool_traces: list[ToolTraceSchema] = Field(default_factory=list)
+    site_name: str | None = None
+    mode: str = "llm"
+    disclaimer: str
+
+
+class MCPToolSchema(BaseModel):
+    name: str
+    description: str
+    inputSchema: dict[str, Any]
+
+
+class MCPRpcRequest(BaseModel):
+    jsonrpc: str = "2.0"
+    id: str | int | None = None
+    method: str
+    params: dict[str, Any] = Field(default_factory=dict)
+
+
+class MCPRpcResponse(BaseModel):
+    jsonrpc: str = "2.0"
+    id: str | int | None = None
+    result: Any = None
+    error: dict[str, Any] | None = None
+
+
 class SeedResponse(BaseModel):
     project_id: str
     project_name: str

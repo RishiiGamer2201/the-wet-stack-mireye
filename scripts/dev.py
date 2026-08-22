@@ -118,7 +118,7 @@ def serve(api_only: bool, ui_only: bool) -> None:
             say(f"starting the API on {API_URL}  (docs: {API_URL}/docs)")
             procs.append(
                 subprocess.Popen(
-                    [str(PY), "-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8000"],
+                    [str(PY), "-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8000", "--reload"],
                     cwd=str(API),
                     **kwargs,
                 )

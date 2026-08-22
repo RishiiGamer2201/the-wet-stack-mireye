@@ -459,14 +459,17 @@ def ingest_pdf(
     index = get_index()
     embedder = getattr(index, "vector", None)
     for chunk in chunks:
-        if isinstance(embedder, LocalVectorIndex):
-            embedder.embed_chunk(chunk)
+        if hasattr(embedder, "embed_chunk"):
+            try:
+                embedder.embed_chunk(chunk)
+            except Exception as exc:  # noqa: BLE001
+                log.warning("embed_chunk failed", extra={"error": str(exc)})
         store.put(C.CHUNKS, chunk, project_id=project_id, parent_id=document.id)
-        if isinstance(embedder, PgVectorIndex):
+        if hasattr(embedder, "upsert"):
             try:
                 embedder.upsert(chunk, document.filename)
             except Exception as exc:  # noqa: BLE001 - degrade to lexical retrieval
-                log.warning("pgvector upsert failed", extra={"error": str(exc)})
+                log.warning("vector upsert failed", extra={"error": str(exc)})
 
     requirements = extract_requirements(document, chunks)
     for requirement in requirements:

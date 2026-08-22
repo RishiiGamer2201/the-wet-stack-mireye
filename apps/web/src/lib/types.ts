@@ -484,3 +484,52 @@ export interface AdvisorChatResponse {
   disclaimer: string;
 }
 
+export interface Citation {
+  source_type: "document" | "web" | "mireye" | "project";
+  title: string;
+  detail: string;
+  url?: string | null;
+  page?: number | null;
+  chunk_id?: string | null;
+  coordinates?: string | null;
+}
+
+export interface ToolExecutionTrace {
+  tool: string;
+  title: string;
+  input_params: Record<string, any>;
+  output_summary: string;
+  duration_ms: number;
+  ok: boolean;
+}
+
+export interface TellMeInsights {
+  key_findings: string[];
+  risks_identified: string[];
+  standards_compliance: string[];
+  actionable_mitigations: string[];
+}
+
+export interface KnowledgeAgentRequest {
+  message: string;
+  site_id?: string | null;
+  enabled_tools?: string[] | null;
+  history?: Array<{ role: string; content: string }> | null;
+}
+
+export interface KnowledgeAgentResponse {
+  answer: string;
+  tell_me: TellMeInsights;
+  citations: Citation[];
+  tool_traces: ToolExecutionTrace[];
+  site_name?: string | null;
+  mode: string;
+  disclaimer: string;
+}
+
+export interface MCPTool {
+  name: string;
+  description: string;
+  inputSchema: Record<string, any>;
+}
+
