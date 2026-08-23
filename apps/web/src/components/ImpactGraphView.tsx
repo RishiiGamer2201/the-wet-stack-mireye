@@ -61,7 +61,7 @@ export function ImpactGraphView({ graph }: { graph: ImpactGraph | null }) {
   return (
     <Card
       title="Impact graph"
-      subtitle="Traversed from the analysis result — select a node to isolate its dependency path"
+      subtitle="Traversed from the analysis result - select a node to isolate its dependency path"
       actions={
         <Badge className="border-ink-300 bg-ink-100 text-ink-700">
           <Network aria-hidden className="h-3 w-3" /> {graph.backend} · {graph.nodes.length} nodes ·{" "}

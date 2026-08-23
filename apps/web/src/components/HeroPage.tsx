@@ -38,7 +38,7 @@ export function HeroPage({ onStart }: HeroPageProps) {
           <h1 className="text-4xl sm:text-6xl lg:text-7xl font-extrabold tracking-tight text-ink-900 leading-tight">
             The Wet Stack{" "}
             <span className="text-signal-600 font-extrabold">
-              — Mireye
+              - Mireye
             </span>
           </h1>
           <p className="text-lg sm:text-xl text-ink-600 font-medium tracking-wide">
@@ -176,7 +176,7 @@ export function HeroPage({ onStart }: HeroPageProps) {
 
       {/* Footer */}
       <footer className="relative z-10 border-t border-ink-200 bg-white py-4 px-6 text-center text-xs text-ink-500">
-        <p>The Wet Stack — Mireye · Data-Center Construction &amp; EPC Intelligence</p>
+        <p>The Wet Stack - Mireye · Data-Center Construction &amp; EPC Intelligence</p>
       </footer>
     </div>
   );

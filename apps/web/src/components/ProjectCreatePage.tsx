@@ -300,7 +300,7 @@ export function ProjectCreatePage({
 
       {/* Footer */}
       <footer className="relative z-10 border-t border-ink-200 bg-white py-3 px-6 text-center text-xs text-ink-500">
-        <p>The Wet Stack — Mireye · Data-Center Construction &amp; EPC Intelligence</p>
+        <p>The Wet Stack - Mireye · Data-Center Construction &amp; EPC Intelligence</p>
       </footer>
     </div>
   );

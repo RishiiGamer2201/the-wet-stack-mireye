@@ -278,7 +278,7 @@ def seed(store: Store | None = None, reset: bool = True) -> Project:
         get_graph_store().clear()
 
     project = Project(
-        name="Aurora DC-1 — 48 MW hyperscale campus (synthetic demo)",
+        name="Aurora DC-1 - 48 MW hyperscale campus (synthetic demo)",
         client="Aurora Digital Infrastructure (synthetic)",
         description=(
             "Demonstration project for The Wet Stack / Mireye. All sites, documents, "
@@ -293,7 +293,6 @@ def seed(store: Store | None = None, reset: bool = True) -> Project:
             max_permit_lead_time_months=12,
             min_bearing_capacity_kpa=200,
             max_seismic_pga_g=0.35,
-            max_latency_to_ix_ms=12,
         ),
         dimension_weights=dict(DEFAULT_DIMENSION_WEIGHTS),
     )
@@ -592,7 +591,7 @@ def seed(store: Store | None = None, reset: bool = True) -> Project:
     changes = [
         EquipmentChange(
             project_id=project.id,
-            title="Chiller substitution — VX-1150 offered for NT-1100",
+            title="Chiller substitution - VX-1150 offered for NT-1100",
             reason="Original model quoted at a 26-week lead time; contractor proposes an "
             "alternate with equivalent nameplate capacity.",
             equipment_tag="CH-01",
@@ -603,7 +602,7 @@ def seed(store: Store | None = None, reset: bool = True) -> Project:
         ),
         EquipmentChange(
             project_id=project.id,
-            title="Fan-wall unit revision — HC-560A supersedes HC-560",
+            title="Fan-wall unit revision - HC-560A supersedes HC-560",
             reason="Manufacturer running change; same series, minor coil revision.",
             equipment_tag="CH-02",
             existing_equipment_id=ch02_old.id,
@@ -612,7 +611,7 @@ def seed(store: Store | None = None, reset: bool = True) -> Project:
         ),
         EquipmentChange(
             project_id=project.id,
-            title="PDU substitution — KE-2100 offered for FP-2000",
+            title="PDU substitution - KE-2100 offered for FP-2000",
             reason="Alternate vendor proposed; submittal received without physical or "
             "electrical data sheets.",
             equipment_tag="PDU-3",

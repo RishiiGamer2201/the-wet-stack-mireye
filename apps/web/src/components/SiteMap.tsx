@@ -28,7 +28,7 @@ function pin(rank: number | null, risk: string | undefined, selected: boolean) {
 }
 
 /** Only re-fits when the positioned site IDs/coords actually change.
- *  Prevents the map from jumping when the Add-Site modal opens/closes. */
+ * Prevents the map from jumping when the Add-Site modal opens/closes. */
 function FitBounds({ sites }: { sites: CandidateSite[] }) {
   const map = useMap();
   const prevKey = useRef<string>("");
@@ -104,10 +104,10 @@ export function SiteMap({
               <Popup>
                 <strong>{site.name}</strong>
                 <br />
-                {site.address ?? "—"}
+                {site.address ?? "-"}
                 <br />
                 {score
-                  ? `Score ${score.overall_score ?? "—"} · ${score.risk_level} risk · ${(
+                  ? `Score ${score.overall_score ?? "-"} · ${score.risk_level} risk · ${(
                       score.evidence_coverage * 100
                     ).toFixed(0)}% coverage`
                   : "Not yet investigated"}

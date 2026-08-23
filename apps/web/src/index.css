@@ -58,7 +58,7 @@ body {
   font: inherit;
 }
 
-/* Modal overlay — must sit above Leaflet's highest pane (tooltip = 650). */
+/* Modal overlay - must sit above Leaflet's highest pane (tooltip = 650). */
 .modal-overlay {
   z-index: 1000;
 }

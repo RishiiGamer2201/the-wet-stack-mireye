@@ -52,6 +52,36 @@ interface AgentMessage {
   timestamp: string;
 }
 
+/**
+ * Follow a streaming conversation only while the reader is already at the
+ * bottom. Auto-scrolling unconditionally makes it impossible to read back
+ * through an answer while it is still being written.
+ */
+function useStickToBottom(
+  containerRef: React.RefObject<HTMLDivElement | null>,
+  deps: unknown[],
+) {
+  const stick = useRef(true);
+
+  useEffect(() => {
+    const node = containerRef.current;
+    if (!node) return;
+    const onScroll = () => {
+      // 48px of slack, so a hair of overscroll or a rounding error does not
+      // read as "the user scrolled away".
+      stick.current = node.scrollHeight - node.scrollTop - node.clientHeight < 48;
+    };
+    node.addEventListener("scroll", onScroll, { passive: true });
+    return () => node.removeEventListener("scroll", onScroll);
+  }, [containerRef]);
+
+  useEffect(() => {
+    const node = containerRef.current;
+    if (node && stick.current) node.scrollTop = node.scrollHeight;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, deps);
+}
+
 export function ProjectKnowledgeAgent({
   detail,
   onProjectChanged,
@@ -128,10 +158,9 @@ export function ProjectKnowledgeAgent({
   ]);
 
   const chatEndRef = useRef<HTMLDivElement | null>(null);
+  const chatScrollRef = useRef<HTMLDivElement | null>(null);
 
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, liveTokenText, activeTraces]);
+  useStickToBottom(chatScrollRef, [messages, liveTokenText, activeTraces]);
 
   // Load suggestions
   useEffect(() => {
@@ -691,7 +720,7 @@ export function ProjectKnowledgeAgent({
           )}
 
           {/* Messages Scroll Area */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          <div ref={chatScrollRef} className="flex-1 overflow-y-auto p-4 space-y-4">
             {messages.map((msg) => (
               <div
                 key={msg.id}

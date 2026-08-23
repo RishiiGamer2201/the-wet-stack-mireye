@@ -864,7 +864,7 @@ class PADUSProtectedAreas:
                         ". The site is inside this protected area."
                         if nearest["distance_km"] == 0
                         else f". Boundary distance, accurate to about "
-                        f"{self.PRECISION_KM} km — the boundary geometry is simplified, so "
+                        f"{self.PRECISION_KM} km - the boundary geometry is simplified, so "
                         "a gate within that margin needs the full-resolution polygon."
                     )
                     + (

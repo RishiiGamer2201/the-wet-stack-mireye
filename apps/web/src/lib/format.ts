@@ -8,7 +8,7 @@ const prettyUnit = (unit: string) =>
   unit.replace(/\s*\*\*\s*2\b/g, "²").replace(/\s*\*\*\s*3\b/g, "³").replace(/\s*\*\s*/g, "·");
 
 export function fmtQuantity(value: Quantity | string | null | undefined, digits = 2): string {
-  if (value === null || value === undefined) return "—";
+  if (value === null || value === undefined) return "-";
   if (typeof value === "string") return value;
   if (!isQuantity(value)) return String(value);
   const rounded =
@@ -17,10 +17,10 @@ export function fmtQuantity(value: Quantity | string | null | undefined, digits 
 }
 
 export const pct = (v: number | null | undefined, digits = 0) =>
-  v === null || v === undefined ? "—" : `${(v * 100).toFixed(digits)}%`;
+  v === null || v === undefined ? "-" : `${(v * 100).toFixed(digits)}%`;
 
 export const signedPct = (v: number | null | undefined) =>
-  v === null || v === undefined ? "—" : `${v > 0 ? "+" : ""}${v.toFixed(1)}%`;
+  v === null || v === undefined ? "-" : `${v > 0 ? "+" : ""}${v.toFixed(1)}%`;
 
 export const EVIDENCE_STATUS_LABEL: Record<EvidenceStatus, string> = {
   live: "Live",
@@ -75,7 +75,7 @@ export const titleize = (s: string) =>
   s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 
 export const fmtTime = (iso?: string | null) =>
-  iso ? new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "—";
+  iso ? new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "-";
 
 export const fmtDate = (iso?: string | null) =>
-  iso ? new Date(iso).toLocaleDateString(undefined, { dateStyle: "medium" }) : "—";
+  iso ? new Date(iso).toLocaleDateString(undefined, { dateStyle: "medium" }) : "-";

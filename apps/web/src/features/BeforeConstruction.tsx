@@ -145,7 +145,7 @@ function AddSiteModal({
 
           <div className="rounded-lg border border-ink-200 bg-ink-50 p-3">
             <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-ink-500">
-              Location — provide an address or coordinates
+              Location - provide an address or coordinates
             </p>
             <div className="flex flex-col gap-3">
               <Field
@@ -385,7 +385,7 @@ export function BeforeConstruction({
         notes: form.notes || null,
       });
       setShowAddModal(false);
-      setInvestigationFailed(false); // Real site saved — exit fallback mode
+      setInvestigationFailed(false); // Real site saved - exit fallback mode
       await refresh();
       onProjectChanged();
 
@@ -469,7 +469,7 @@ export function BeforeConstruction({
             <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
             <span>
               {investigationFailed
-                ? "The live Mireye investigation failed or returned no data. Showing synthetic demo sites as a fallback — add real sites or resolve the API connection to use live data."
+                ? "The live Mireye investigation failed or returned no data. Showing synthetic demo sites as a fallback - add real sites or resolve the API connection to use live data."
                 : 'No real sites added yet. The 5 demo sites below are synthetic placeholders. Click \u201c+ Add Site\u201d to add your actual candidate location and run a live Mireye investigation.'}
             </span>
           </div>
@@ -798,7 +798,7 @@ export function BeforeConstruction({
         onClose={() => setEvidenceFor(null)}
         projectId={projectId}
         subjectId={evidenceFor?.id}
-        title={`Evidence — ${evidenceFor?.name ?? ""}`}
+        title={`Evidence - ${evidenceFor?.name ?? ""}`}
       />
 
       {/* AI Site Scout Modal */}

@@ -56,7 +56,6 @@ export interface RequirementTargets {
   max_permit_lead_time_months?: number | null;
   min_bearing_capacity_kpa?: number | null;
   max_seismic_pga_g?: number | null;
-  max_latency_to_ix_ms?: number | null;
 }
 
 export interface Project {
@@ -401,7 +400,7 @@ export interface Requirement {
   page?: number | null;
   raw_text?: string | null;
   confidence: number;
-  /** Transcribed by OCR rather than read from a text layer — confirm the page. */
+  /** Transcribed by OCR rather than read from a text layer - confirm the page. */
   from_ocr?: boolean;
   confirmed: boolean;
   confirmed_by?: string | null;

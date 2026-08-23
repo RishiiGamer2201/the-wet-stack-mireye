@@ -126,16 +126,6 @@ FIELDS: list[FieldSpec] = [
         description="Average ground slope across the parcel; drives earthworks volume.",
     ),
     _f(
-        key="terrain_ruggedness_index",
-        label="Terrain ruggedness",
-        dimension=SiteDimension.GEO_TERRAIN,
-        direction="lower_better",
-        good=0.5,
-        bad=8.0,
-        weight=0.8,
-        description="Local relief variability index.",
-    ),
-    _f(
         key="land_cover_class",
         label="Land cover",
         dimension=SiteDimension.GEO_TERRAIN,
@@ -163,7 +153,7 @@ FIELDS: list[FieldSpec] = [
         good=0.5,
         bad=4.5,
         weight=1.6,
-        description="Baseline water stress 0 (low) – 5 (extremely high).",
+        description="Baseline water stress 0 (low) - 5 (extremely high).",
     ),
     _f(
         key="groundwater_availability_l_s",
@@ -305,17 +295,6 @@ FIELDS: list[FieldSpec] = [
         depth="deep",
     ),
     _f(
-        key="latency_to_ix_ms",
-        label="Latency to internet exchange",
-        dimension=SiteDimension.CONNECTIVITY,
-        unit="ms",
-        direction="lower_better",
-        good=3,
-        bad=25,
-        weight=1.0,
-        description="Round-trip latency to the nearest major internet exchange.",
-    ),
-    _f(
         key="distance_to_highway_km",
         label="Distance to highway",
         dimension=SiteDimension.CONNECTIVITY,
@@ -349,18 +328,6 @@ FIELDS: list[FieldSpec] = [
         band_tolerance=10,
         weight=1.0,
         description="Shallow bedrock implies blasting; very deep implies deep foundations.",
-        depth="deep",
-    ),
-    _f(
-        key="cut_fill_volume_m3",
-        label="Estimated cut/fill volume",
-        dimension=SiteDimension.CIVIL_SOIL,
-        unit="m ** 3",
-        direction="lower_better",
-        good=20000,
-        bad=400000,
-        weight=1.1,
-        description="Earthworks volume implied by terrain to reach a level pad.",
         depth="deep",
     ),
     _f(
@@ -485,17 +452,6 @@ FIELDS: list[FieldSpec] = [
         weight=1.2,
         description="Share of the parcel mapped as wetland.",
     ),
-    _f(
-        key="biodiversity_sensitivity_index",
-        label="Biodiversity sensitivity",
-        dimension=SiteDimension.ENVIRONMENTAL,
-        direction="lower_better",
-        good=15,
-        bad=75,
-        weight=0.9,
-        description="Composite habitat sensitivity 0–100.",
-        depth="deep",
-    ),
     # --- 8. Regulatory -----------------------------------------------------
     _f(
         key="zoning_class",
@@ -524,28 +480,6 @@ FIELDS: list[FieldSpec] = [
         bad=24,
         weight=1.3,
         description="Historic median approval time for comparable projects.",
-        depth="deep",
-    ),
-    _f(
-        key="incentive_score",
-        label="Incentive strength",
-        dimension=SiteDimension.REGULATORY,
-        direction="higher_better",
-        good=80,
-        bad=10,
-        weight=0.8,
-        description="Composite of tax abatement and utility incentive programmes.",
-        depth="deep",
-    ),
-    _f(
-        key="jurisdiction_complexity_index",
-        label="Jurisdiction complexity",
-        dimension=SiteDimension.REGULATORY,
-        direction="lower_better",
-        good=20,
-        bad=85,
-        weight=1.0,
-        description="Number and overlap of authorities having jurisdiction.",
         depth="deep",
     ),
 ]
@@ -597,10 +531,6 @@ PROVIDER_MAP: dict[str, tuple[str, str | None, str, ProviderAvailability, str | 
     "distance_to_fiber_km": ("nearest_antenna_structure_distance_m", "meters", "m_to_km", "unavailable", "Distance to nearest telecom antenna structure"),
 
     # --- proxies: close, but not the same quantity -------------------------
-    "terrain_ruggedness_index": (
-        "slope_degrees", "degrees", "identity", "unavailable",
-        "Local relief index derived from slope",
-    ),
     "groundwater_availability_l_s": (
         "nearest_groundwater_well_depth_to_water_m", "meters", "identity", "unavailable",
         "Depth to water table at nearest well",
@@ -628,10 +558,6 @@ PROVIDER_MAP: dict[str, tuple[str, str | None, str, ProviderAvailability, str | 
         "is_cultivated", None, "identity", "unavailable",
         "Parcel cultivation status",
     ),
-    "biodiversity_sensitivity_index": (
-        "intersects_critical_habitat", None, "identity", "unavailable",
-        "Critical habitat intersection status",
-    ),
 
     # --- mapped but billed separately (Mireye `parcel_record`, 300 credits) --
     "wetland_fraction": (
@@ -648,19 +574,11 @@ PROVIDER_MAP: dict[str, tuple[str, str | None, str, ProviderAvailability, str | 
 NO_PROVIDER_EQUIVALENT: dict[str, str] = {
     "grid_capacity_mw": "The catalog exposes interconnection-queue capacity, which is generation "
     "seeking connection — not deliverable load capacity at the point of interconnection.",
-    "latency_to_ix_ms": "No network-latency field exists in the Mireye catalog, and latency "
-    "cannot be derived from distance - it depends on the route and the carrier. "
-    "`distance_to_ix_km` is served from PeeringDB and measures distance only.",
     "permit_lead_time_months": "The catalog exposes county building-permit counts, not approval "
     "duration for comparable projects.",
-    "incentive_score": "The catalog exposes opportunity-zone membership only, not a composite "
-    "incentive strength.",
-    "jurisdiction_complexity_index": "No field describes the number or overlap of authorities "
-    "having jurisdiction.",
-    "water_stress_index": "The catalog exposes a US Drought Monitor category (D0–D4), which is a "
+    "water_stress_index": "The catalog exposes a US Drought Monitor category (D0-D4), which is a "
     "short-term drought class, not a baseline water-stress index.",
     "grid_reliability_saidi_min": "No utility reliability (SAIDI/SAIFI) field exists in the catalog.",
-    "terrain_ruggedness_index": "No ruggedness or local-relief index exists in the catalog.",
     "land_cover_class": "No single land-cover classification field exists in the catalog.",
     "water_quality_tds_mg_l": "No total-dissolved-solids or raw water-quality field exists.",
     "groundwater_availability_l_s": "The catalog exposes well counts and depth to water, not a "
@@ -669,12 +587,8 @@ NO_PROVIDER_EQUIVALENT: dict[str, str] = {
     "names, not distance to a usable supply connection.",
     "distance_to_fiber_km": "The catalog reports fiber availability and provider counts, not "
     "distance to a long-haul route.",
-    "cut_fill_volume_m3": "Earthworks volume is a derived design quantity, not a physical-world "
-    "observation the provider offers.",
     "cropland_fraction": "The catalog exposes a dominant CDL class and farmland classification, not "
     "the cropland share of the parcel.",
-    "biodiversity_sensitivity_index": "The catalog exposes critical-habitat status, not a composite "
-    "habitat-sensitivity index.",
 }
 
 FIELD_INDEX: dict[str, FieldSpec] = {f.key: f for f in FIELDS}

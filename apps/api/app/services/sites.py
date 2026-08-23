@@ -77,7 +77,7 @@ def fetch_site_fields(
         put_gap(store, gap, parent_id=site.id)
         return {
             "ok": False,
-            "summary": f"{site.name}: no coordinates — 1 gap recorded, no values assumed.",
+            "summary": f"{site.name}: no coordinates - 1 gap recorded, no values assumed.",
             "detail": {"gap_ids": [gap.id]},
             "evidence_ids": [],
             "gap_ids": [gap.id],
@@ -306,7 +306,7 @@ def _skipped_for_budget(
     log.warning("live budget reached", extra={"site": site.id, "reason": reason})
     return {
         "ok": False,
-        "summary": f"{site.name}: not queried — {reason}; {len(gaps)} field(s) recorded as gaps.",
+        "summary": f"{site.name}: not queried - {reason}; {len(gaps)} field(s) recorded as gaps.",
         "detail": {"reason": reason, "fields": field_keys},
         "evidence_ids": [],
         "gap_ids": [g.id for g in gaps],

@@ -369,7 +369,7 @@ def site_action(ctx: Context) -> Context:
     if weakest:
         rationale.append(
             f"Weakest dimension for {leader.site_name}: {DIMENSION_LABELS[weakest.dimension]} "
-            f"at {weakest.score:.0f}/100 — {'; '.join(weakest.concerns[:2]) or 'no metric below 55'}"
+            f"at {weakest.score:.0f}/100 - {'; '.join(weakest.concerns[:2]) or 'no metric below 55'}"
         )
 
     recommendation = Recommendation(
@@ -394,7 +394,7 @@ def site_action(ctx: Context) -> Context:
         actions.append(
             NextAction(
                 type=NextActionType(action_value),
-                title=f"{action_value.replace('_', ' ').title()} — close {len(items)} site evidence gap(s)",
+                title=f"{action_value.replace('_', ' ').title()} - close {len(items)} site evidence gap(s)",
                 recipient="Site selection / due-diligence team",
                 body=(
                     "The following physical-world facts are unavailable and are blocking or "

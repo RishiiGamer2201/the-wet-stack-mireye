@@ -177,6 +177,19 @@ def _is_conversational_greeting(message: str) -> bool:
     )
 
 
+def _greeting_reply(project_name: str, site_name: str, site) -> str:
+    """Two lines. The suggestion chips above the input carry the examples."""
+    where = ""
+    if site is not None and site.latitude is not None and site.longitude is not None:
+        where = f" at {site.latitude:.4f}, {site.longitude:.4f}"
+    return (
+        f"Hello. I can search this project's ingested documents, pull physical site "
+        f"telemetry from Mireye, and look up engineering standards.\n\n"
+        f"Working on **{project_name}**, site **{site_name}**{where}. "
+        f"What would you like to check?"
+    )
+
+
 class KnowledgeAgent:
     """Agent that runs autonomous LLM tool-planning, multi-tool execution, and synthesis."""
 
@@ -453,36 +466,10 @@ Formulate the optimal tool plan JSON."""
 
         # Fast path for conversational greetings
         if _is_conversational_greeting(message):
-            greeting_text = (
-                f"Hello! I am your **Autonomous EPC Project Knowledge & Research Agent**.\n\n"
-                f"I am actively connected to **{project.name}** and candidate site **{site_name}**"
-                f"{f' ({active_site.latitude:.4f}, {active_site.longitude:.4f})' if active_site and active_site.latitude else ''}.\n\n"
-                f"### What would you like to investigate?\n"
-                f"- **Mechanical Cooling:** *\"What is the chiller capacity and allowable operating temperatures?\"*\n"
-                f"- **Seismic & Structural:** *\"Verify seismic anchorage requirements for 480V switchgear under ASCE 7-22.\"*\n"
-                f"- **Hydrology & Flood Risk:** *\"Check FEMA base flood elevation (BFE) and required finished floor elevation.\"*\n"
-                f"- **Power & Interconnection:** *\"Review 230kV substation yard requirements and transformer redundancy.\"*\n"
-                f"- **Submittals & Drawings:** *\"Search uploaded specifications for equipment MCA and MOCP ratings.\"*\n\n"
-                f"Ask any question or select one of the suggested prompts to begin."
-            )
-            tell_me = TellMeInsights(
-                key_findings=[
-                    f"Active workspace: {project.name} (Region: {project.region or 'Global'}).",
-                    f"Candidate site: {site_name} ready for physical telemetry and document cross-referencing.",
-                ],
-                risks_identified=[
-                    "Unverified equipment submittals require verification against manufacturer cut sheets.",
-                    "Verify physical site telemetry (seismic PGA, flood zone, water stress) before design lock.",
-                ],
-                standards_compliance=[
-                    "ASHRAE TC 9.9 2023: Mission-critical thermal envelopes.",
-                    "ASCE 7-22 Risk Category IV: Structural seismic anchorage.",
-                ],
-                actionable_mitigations=[
-                    "Upload project specification or submittal PDFs into ChromaDB.",
-                    "Enter an engineering inquiry to run autonomous multi-tool reasoning.",
-                ],
-            )
+            greeting_text = _greeting_reply(project.name, site_name, active_site)
+            # Empty: a greeting has produced no findings, and rendering the
+            # panels with placeholder text would assert analysis that never ran.
+            tell_me = TellMeInsights()
             return KnowledgeAgentResult(
                 answer=greeting_text,
                 tell_me=tell_me,
@@ -575,36 +562,10 @@ Please provide your rigorous Principal EPC Engineering assessment and conclude w
 
         # Fast path for conversational greetings
         if _is_conversational_greeting(message):
-            greeting_text = (
-                f"Hello! I am your **Autonomous EPC Project Knowledge & Research Agent**.\n\n"
-                f"I am actively connected to **{project.name}** and candidate site **{site_name}**"
-                f"{f' ({active_site.latitude:.4f}, {active_site.longitude:.4f})' if active_site and active_site.latitude else ''}.\n\n"
-                f"### What would you like to investigate?\n"
-                f"- **Mechanical Cooling:** *\"What is the chiller capacity and allowable operating temperatures?\"*\n"
-                f"- **Seismic & Structural:** *\"Verify seismic anchorage requirements for 480V switchgear under ASCE 7-22.\"*\n"
-                f"- **Hydrology & Flood Risk:** *\"Check FEMA base flood elevation (BFE) and required finished floor elevation.\"*\n"
-                f"- **Power & Interconnection:** *\"Review 230kV substation yard requirements and transformer redundancy.\"*\n"
-                f"- **Submittals & Drawings:** *\"Search uploaded specifications for equipment MCA and MOCP ratings.\"*\n\n"
-                f"Ask any question or select one of the suggested prompts to begin."
-            )
-            tell_me = TellMeInsights(
-                key_findings=[
-                    f"Active workspace: {project.name} (Region: {project.region or 'Global'}).",
-                    f"Candidate site: {site_name} ready for physical telemetry and document cross-referencing.",
-                ],
-                risks_identified=[
-                    "Unverified equipment submittals require verification against manufacturer cut sheets.",
-                    "Verify physical site telemetry (seismic PGA, flood zone, water stress) before design lock.",
-                ],
-                standards_compliance=[
-                    "ASHRAE TC 9.9 2023: Mission-critical thermal envelopes.",
-                    "ASCE 7-22 Risk Category IV: Structural seismic anchorage.",
-                ],
-                actionable_mitigations=[
-                    "Upload project specification or submittal PDFs into ChromaDB.",
-                    "Enter an engineering inquiry to run autonomous multi-tool reasoning.",
-                ],
-            )
+            greeting_text = _greeting_reply(project.name, site_name, active_site)
+            # Empty: a greeting has produced no findings, and rendering the
+            # panels with placeholder text would assert analysis that never ran.
+            tell_me = TellMeInsights()
             words = greeting_text.split(" ")
             for i in range(0, len(words), 3):
                 chunk = " ".join(words[i:i+3]) + " "
@@ -750,7 +711,7 @@ Please provide your rigorous Principal EPC Engineering assessment and conclude w
             findings.append("Net cooling capacity must account for high-ambient derating factors and water stress.")
             risks.append("Cooling capacity shortfall during 99.6% ASHRAE peak ambient dry-bulb/wet-bulb excursions.")
             risks.append("Water consumption constraints in municipal supply zones.")
-            standards.append("ASHRAE TC 9.9 2023: Mission Critical Data Center Class A1 (18°C–27°C).")
+            standards.append("ASHRAE TC 9.9 2023: Mission Critical Data Center Class A1 (18°C-27°C).")
             standards.append("Uptime Institute Tier III/IV: Continuous cooling during utility outage.")
             mitigations.append("Specify chillers with 15% oversized adiabatic pre-cooling microchannel coils.")
             mitigations.append("Incorporate 48-hour chilled water thermal storage buffer tanks.")
@@ -780,7 +741,7 @@ Please provide your rigorous Principal EPC Engineering assessment and conclude w
         else:
             findings.append(f"EPC Infrastructure assessment for {site_name} regarding inquiry: \"{query}\".")
             findings.append("Multi-tier mechanical and electrical architecture cross-referenced against site physical conditions.")
-            risks.append("Long-lead utility transformer procurement delays (52–78 weeks).")
+            risks.append("Long-lead utility transformer procurement delays (52-78 weeks).")
             risks.append("Civil earthwork volume imbalances across natural site contours.")
             standards.append("Uptime Institute Tier III: Concurrently maintainable architecture.")
             standards.append("IEEE 1584 & NFPA 70E: Arc flash and medium-voltage substation design.")

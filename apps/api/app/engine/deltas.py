@@ -57,7 +57,7 @@ _LABELS = {
 def _severity(pct: float | None, key: str) -> tuple[Severity, CheckStatus, str]:
     trigger, critical = THRESHOLDS.get(key, (5.0, 15.0))
     if pct is None:
-        return Severity.MEDIUM, CheckStatus.OPEN, "baseline is zero — percent change undefined"
+        return Severity.MEDIUM, CheckStatus.OPEN, "baseline is zero - percent change undefined"
     mag = abs(pct)
     if mag > critical:
         return (

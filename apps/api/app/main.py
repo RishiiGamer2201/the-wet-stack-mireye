@@ -22,12 +22,12 @@ from .store import C, get_store
 log = logging.getLogger("api")
 
 DESCRIPTION = f"""
-Data-center construction and EPC intelligence API for **The Wet Stack — Mireye**.
+Data-center construction and EPC intelligence API for **The Wet Stack - Mireye**.
 
 Two workflows share one project context, evidence store and impact graph:
 
-* **Before Construction** — candidate-site intelligence, progressive investigation, ranking.
-* **During Construction** — equipment change verification, deltas, impact tracing.
+* **Before Construction** - candidate-site intelligence, progressive investigation, ranking.
+* **During Construction** - equipment change verification, deltas, impact tracing.
 
 The agent decides *what* to investigate. All unit conversion, scoring, thresholds,
 deltas and decision states run in deterministic, tested Python.

@@ -161,7 +161,7 @@ export default function App() {
                   </div>
                   <div>
                     <span className="text-sm font-bold text-ink-900 tracking-tight block leading-tight">
-                      The Wet Stack <span className="text-signal-600">— Mireye</span>
+                      The Wet Stack <span className="text-signal-600">- Mireye</span>
                     </span>
                     <span className="text-[11px] text-ink-500 block">
                       Data-Center EPC Intelligence
@@ -514,7 +514,7 @@ export default function App() {
             )}
           </main>
 
-          {/* Senior Civil EPC Advisor — available on every workflow */}
+          {/* Senior Civil EPC Advisor - available on every workflow */}
           {detail && (
             <>
               <EngineeringAdvisorChat
@@ -546,7 +546,7 @@ export default function App() {
           {meta && (
             <footer className="border-t border-ink-200 bg-white py-3 px-4 text-center text-[11px] text-ink-500">
               <div className="mx-auto max-w-[110rem] flex flex-wrap items-center justify-between gap-2">
-                <span>The Wet Stack — Mireye · Data-Center &amp; EPC Intelligence Platform</span>
+                <span>The Wet Stack - Mireye · Data-Center &amp; EPC Intelligence Platform</span>
                 <span>{meta.disclaimer}</span>
               </div>
             </footer>

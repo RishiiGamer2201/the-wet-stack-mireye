@@ -211,7 +211,7 @@ export function NextActionPreview({ actions }: { actions: NextAction[] }) {
     );
   }
   return (
-    <Card title="Generated next action" subtitle="Draft — review before sending">
+    <Card title="Generated next action" subtitle="Draft - review before sending">
       <div className="flex flex-col gap-3">
         {actions.map((action) => (
           <article key={action.id} className="rounded-lg border border-ink-200">

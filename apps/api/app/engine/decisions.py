@@ -51,9 +51,9 @@ def decide(
             f"could not be evaluated because required evidence is missing."
         )
         for c in open_checks[:4]:
-            rationale.append(f"OPEN — {c.name}: {c.detail}")
+            rationale.append(f"OPEN - {c.name}: {c.detail}")
         for d in open_deltas[:3]:
-            rationale.append(f"OPEN — {d.label}: {d.explanation}")
+            rationale.append(f"OPEN - {d.label}: {d.explanation}")
         return DecisionState.NEEDS_INFORMATION, rationale
 
     if triggered_checks or triggered_deltas:
@@ -62,9 +62,9 @@ def decide(
             "result(s) exceed a deterministic threshold and need engineering judgement."
         )
         for c in triggered_checks[:4]:
-            rationale.append(f"TRIGGERED — {c.name}: {c.detail}")
+            rationale.append(f"TRIGGERED - {c.name}: {c.detail}")
         for d in triggered_deltas[:4]:
-            rationale.append(f"TRIGGERED — {d.label}: {d.explanation}")
+            rationale.append(f"TRIGGERED - {d.label}: {d.explanation}")
         return DecisionState.ENGINEER_REVIEW, rationale
 
     rationale.append(
@@ -83,9 +83,9 @@ def build_recommendation(
     confidence: float,
 ) -> Recommendation:
     headline = {
-        DecisionState.NEEDS_INFORMATION: "Hold — required evidence is missing",
+        DecisionState.NEEDS_INFORMATION: "Hold - required evidence is missing",
         DecisionState.ENGINEER_REVIEW: "Route to engineer review before approval",
-        DecisionState.FIRST_PASS_CHECKS_CLOSED: "First-pass checks closed — ready for engineer sign-off",
+        DecisionState.FIRST_PASS_CHECKS_CLOSED: "First-pass checks closed - ready for engineer sign-off",
     }[state]
     caveats = [SAFETY_CAVEAT]
     if any(i.requires_human for i in impacts):
@@ -138,7 +138,7 @@ def build_next_actions(
         actions.append(
             NextAction(
                 type=action_type,
-                title=f"{action_type.value.replace('_', ' ').title()} — {equipment_tag}: {change_title}",
+                title=f"{action_type.value.replace('_', ' ').title()} - {equipment_tag}: {change_title}",
                 recipient=recipients[action_type],
                 body=(
                     f"Regarding equipment {equipment_tag} ({change_title}), first-pass automated "
@@ -161,7 +161,7 @@ def build_next_actions(
         actions.append(
             NextAction(
                 type=NextActionType.REVIEW_COMMENT,
-                title=f"Review comment — {equipment_tag}: {change_title}",
+                title=f"Review comment - {equipment_tag}: {change_title}",
                 recipient=recipients[NextActionType.REVIEW_COMMENT],
                 body=(
                     f"Automated first-pass verification of {equipment_tag} completed with evidence "
@@ -175,7 +175,7 @@ def build_next_actions(
         actions.append(
             NextAction(
                 type=NextActionType.HUMAN_CONFIRMATION,
-                title=f"Engineer confirmation required — {equipment_tag}",
+                title=f"Engineer confirmation required - {equipment_tag}",
                 recipient=recipients[NextActionType.HUMAN_CONFIRMATION],
                 body=(
                     "Confirm the extracted requirements and accept or reject the substitution. "
@@ -189,7 +189,7 @@ def build_next_actions(
         actions.append(
             NextAction(
                 type=NextActionType.HUMAN_CONFIRMATION,
-                title=f"Engineer sign-off — {equipment_tag}: {change_title}",
+                title=f"Engineer sign-off - {equipment_tag}: {change_title}",
                 recipient=recipients[NextActionType.HUMAN_CONFIRMATION],
                 body=(
                     f"All first-pass verification gates for {equipment_tag} closed with no missing "

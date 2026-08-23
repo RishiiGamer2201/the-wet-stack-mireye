@@ -34,7 +34,7 @@ ENGINEERING_STANDARDS_KB = [
         "title": "ASHRAE TC 9.9 Data Center Environmental Guidelines (2023 Revision)",
         "url": "https://www.ashrae.org/technical-resources/bookstore/datacom-series",
         "source": "ASHRAE Standard TC 9.9",
-        "snippet": "ASHRAE TC 9.9 establishes environmental operating envelopes for mission-critical IT equipment. Recommended Class A1-A4 ranges: Dry-bulb temperature 18°C to 27°C (64.4°F to 80.6°F), Dew point 5.5°C to 15°C with max relative humidity 60%. Allowable ranges expand to 15°C–32°C for A1 and up to 45°C for A4 under adiabatic operation.",
+        "snippet": "ASHRAE TC 9.9 establishes environmental operating envelopes for mission-critical IT equipment. Recommended Class A1-A4 ranges: Dry-bulb temperature 18°C to 27°C (64.4°F to 80.6°F), Dew point 5.5°C to 15°C with max relative humidity 60%. Allowable ranges expand to 15°C-32°C for A1 and up to 45°C for A4 under adiabatic operation.",
     },
     {
         "keywords": ["asce", "7-22", "seismic", "pga", "earthquake", "anchorage", "ground acceleration"],

@@ -99,7 +99,7 @@ def impact_graph(
     if change is None or investigation is None:
         raise HTTPException(
             status_code=404,
-            detail="no impact graph for this change yet — run the analysis first",
+            detail="no impact graph for this change yet - run the analysis first",
         )
     assumptions = {
         a.id: a

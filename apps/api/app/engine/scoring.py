@@ -100,7 +100,7 @@ def normalize(spec: FieldSpec, value: float | str | None) -> float | None:
 
 def _explain(spec: FieldSpec, value, normalized: float | None, status: EvidenceStatus) -> str:
     if status == EvidenceStatus.MISSING or normalized is None:
-        return f"{spec.label}: no evidence available — excluded from the score."
+        return f"{spec.label}: no evidence available - excluded from the score."
     unit = f" {spec.unit}" if spec.unit and spec.unit != "dimensionless" else ""
     shown = value if isinstance(value, str) else f"{float(value):g}{unit}"
     if spec.direction == "higher_better":
@@ -108,7 +108,7 @@ def _explain(spec: FieldSpec, value, normalized: float | None, status: EvidenceS
     elif spec.direction == "lower_better":
         basis = f"target ≤ {spec.good:g}, poor at {spec.bad:g}"
     elif spec.direction == "band":
-        basis = f"preferred band {spec.band_low:g}–{spec.band_high:g}"
+        basis = f"preferred band {spec.band_low:g}-{spec.band_high:g}"
     else:
         basis = "category scale"
     label = "" if status != EvidenceStatus.SYNTHETIC else " (synthetic demo value)"
@@ -210,7 +210,6 @@ def check_requirements(
             "ge",
         ),
         ("Seismic PGA", "max_seismic_pga_g", t.max_seismic_pga_g, "seismic_pga_g", "le"),
-        ("IX latency", "max_latency_to_ix_ms", t.max_latency_to_ix_ms, "latency_to_ix_ms", "le"),
     ]
     flags: list[RequirementFlag] = []
     for label, _attr, target, field_key, op in rules:
@@ -278,9 +277,13 @@ def score_site(
     weights = weights or project.dimension_weights or DEFAULT_DIMENSION_WEIGHTS
     by_key = {o.field_key: o for o in observations}
 
+    # A dimension weighted to zero is one the user has said does not matter here.
+    # Keeping it would still list its metrics as missing and raise gaps for them,
+    # so it is dropped outright rather than carried at zero influence.
     dimensions = [
-        score_dimension(dim, by_key, weights.get(dim, DEFAULT_DIMENSION_WEIGHTS[dim]))
+        score_dimension(dim, by_key, weight)
         for dim in SiteDimension
+        if (weight := weights.get(dim, DEFAULT_DIMENSION_WEIGHTS[dim])) > 0
     ]
 
     total_w = sum(d.weight for d in dimensions)

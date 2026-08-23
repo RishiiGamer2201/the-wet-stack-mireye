@@ -41,6 +41,36 @@ const QUICK_PROMPTS = [
   "What are typical lead times and switchyard requirements for a 230kV substation feed?",
 ];
 
+/**
+ * Follow a streaming conversation only while the reader is already at the
+ * bottom. Auto-scrolling unconditionally makes it impossible to read back
+ * through an answer while it is still being written.
+ */
+function useStickToBottom(
+  containerRef: React.RefObject<HTMLDivElement | null>,
+  deps: unknown[],
+) {
+  const stick = useRef(true);
+
+  useEffect(() => {
+    const node = containerRef.current;
+    if (!node) return;
+    const onScroll = () => {
+      // 48px of slack, so a hair of overscroll or a rounding error does not
+      // read as "the user scrolled away".
+      stick.current = node.scrollHeight - node.scrollTop - node.clientHeight < 48;
+    };
+    node.addEventListener("scroll", onScroll, { passive: true });
+    return () => node.removeEventListener("scroll", onScroll);
+  }, [containerRef]);
+
+  useEffect(() => {
+    const node = containerRef.current;
+    if (node && stick.current) node.scrollTop = node.scrollHeight;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, deps);
+}
+
 export function EngineeringAdvisorChat({
   detail,
   activeSiteId,
@@ -67,6 +97,7 @@ export function EngineeringAdvisorChat({
   ]);
 
   const endRef = useRef<HTMLDivElement | null>(null);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (activeSiteId) {
@@ -74,9 +105,7 @@ export function EngineeringAdvisorChat({
     }
   }, [activeSiteId]);
 
-  useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, busy]);
+  useStickToBottom(scrollRef, [messages, busy]);
 
   const activeSite = detail.sites.find((s) => s.id === selectedSiteId);
 
@@ -272,7 +301,7 @@ export function EngineeringAdvisorChat({
       </div>
 
       {/* Message List */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50/50">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50/50">
         {messages.map((msg) => (
           <div
             key={msg.id}

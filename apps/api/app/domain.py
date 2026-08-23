@@ -324,7 +324,6 @@ class RequirementTargets(Base):
     max_permit_lead_time_months: float | None = None
     min_bearing_capacity_kpa: float | None = None
     max_seismic_pga_g: float | None = None
-    max_latency_to_ix_ms: float | None = None
 
 
 class Project(Base):

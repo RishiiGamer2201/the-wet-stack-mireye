@@ -321,7 +321,7 @@ export function SiteScoutModal({
         // Slope / Flood
         if (hub.fema_flood_zone.startsWith("A")) {
           score -= 14;
-          flags.push("Located in FEMA coastal/riverine flood zone — requires elevated pads");
+          flags.push("Located in FEMA coastal/riverine flood zone - requires elevated pads");
         }
 
         score = Math.max(10, Math.min(99, Math.round(score)));
@@ -382,7 +382,7 @@ export function SiteScoutModal({
     setAddingSiteId(hub.id);
     try {
       await api.createSite(detail.project.id, {
-        name: `${hub.city} — Hyperscale Campus Site`,
+        name: `${hub.city} - Hyperscale Campus Site`,
         address: `${hub.city}, ${hub.state}`,
         latitude: hub.lat,
         longitude: hub.lon,

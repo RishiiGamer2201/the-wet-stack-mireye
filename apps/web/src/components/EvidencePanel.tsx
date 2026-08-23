@@ -29,7 +29,7 @@ export function EvidenceRow({ item }: { item: Evidence }) {
             <p className="text-sm font-medium text-ink-900">{item.claim}</p>
             <p className="tabular text-sm text-ink-700">
               {item.value === null || item.value === undefined ? (
-                <span className="italic text-rose-700">no value — not substituted</span>
+                <span className="italic text-rose-700">no value - not substituted</span>
               ) : (
                 <>
                   {String(item.value)} {item.unit ?? ""}
@@ -55,7 +55,7 @@ export function EvidenceRow({ item }: { item: Evidence }) {
             <dt className="text-ink-400">Location in source</dt>
             <dd>
               page {item.source.page}
-              {item.source.span ? ` · chars ${item.source.span.start}–${item.source.span.end}` : ""}
+              {item.source.span ? ` · chars ${item.source.span.start}-${item.source.span.end}` : ""}
             </dd>
           </div>
         )}

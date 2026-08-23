@@ -131,5 +131,5 @@ def percent_change(new: Quantity, old: Quantity) -> float | None:
 
 def fmt(quantity: Quantity | None, digits: int = 2) -> str:
     if quantity is None:
-        return "—"
+        return "-"
     return f"{round(quantity.value, digits):g} {quantity.unit}"

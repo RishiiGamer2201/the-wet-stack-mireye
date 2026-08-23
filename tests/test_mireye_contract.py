@@ -317,10 +317,7 @@ def test_no_mapping_invents_a_field_absent_from_the_catalog():
 def test_concepts_without_a_provider_equivalent_are_declared_unavailable():
     for key in (
         "grid_capacity_mw",
-        "latency_to_ix_ms",
         "permit_lead_time_months",
-        "incentive_score",
-        "jurisdiction_complexity_index",
         "water_stress_index",
     ):
         spec = FIELD_INDEX[key]

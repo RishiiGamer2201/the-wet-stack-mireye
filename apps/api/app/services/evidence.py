@@ -53,7 +53,7 @@ def evidence_from_field_value(
     provider_field = getattr(value, "provider_field", None)
     notes = value.note
     if relation == EvidenceRelation.CONTEXTUAL_PROXY:
-        notes = f"CONTEXTUAL EVIDENCE — does not populate this field. {notes or ''}".strip()
+        notes = f"CONTEXTUAL EVIDENCE - does not populate this field. {notes or ''}".strip()
     if provider_field:
         raw = getattr(value, "provider_value", None)
         raw_unit = getattr(value, "provider_unit", None) or ""
@@ -247,7 +247,7 @@ def record_fetch(
                     "Only contextual evidence is available for this concept — see the "
                     f"'{spec.provider_field}' record. No value substituted."
                     if is_proxy_only
-                    else "Field reported unavailable — no value substituted."
+                    else "Field reported unavailable - no value substituted."
                 ),
             ),
             status=EvidenceStatus.MISSING,

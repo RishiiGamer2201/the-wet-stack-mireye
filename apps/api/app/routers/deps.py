@@ -17,6 +17,6 @@ def get_project(project_id: str, store: Store = Depends(store_dep)) -> Project:
     if not project:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"project {project_id} not found — seed the demo data with POST /api/admin/seed",
+            detail=f"project {project_id} not found - seed the demo data with POST /api/admin/seed",
         )
     return project

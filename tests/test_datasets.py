@@ -127,15 +127,18 @@ def test_a_site_without_coordinates_gets_nothing(store: Store, seeded):
     assert result["evidence_ids"] == []
 
 
-def test_latency_stays_an_open_gap_because_distance_is_not_latency():
-    """Distance to an exchange does not answer round-trip latency; it depends on
-    the route and the carrier. Serving one as the other is the wet-bulb mistake."""
+def test_distance_to_an_exchange_is_never_relabelled_as_latency():
+    """Distance depends on geography; latency depends on the route and the
+    carrier. `latency_to_ix_ms` was removed rather than filled in from distance:
+    nothing can measure it before the fibre is lit, so it was a permanent gap
+    that produced no action. The remaining connectivity field says what it is."""
     from app.fields import FIELD_INDEX
 
-    assert FIELD_INDEX["latency_to_ix_ms"].provider_availability == "unavailable"
-    assert FIELD_INDEX["distance_to_ix_km"].provider == "peeringdb"
-    note = FIELD_INDEX["latency_to_ix_ms"].provider_note
-    assert "cannot be derived from distance" in note
+    assert "latency_to_ix_ms" not in FIELD_INDEX
+    spec = FIELD_INDEX["distance_to_ix_km"]
+    assert spec.provider == "peeringdb"
+    assert spec.unit == "km", "a distance, and it says so"
+    assert "not a latency estimate" in spec.description
 
 
 # --- Water Quality Portal --------------------------------------------------

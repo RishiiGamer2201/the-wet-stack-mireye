@@ -62,7 +62,7 @@ def ready(store: Store = Depends(store_dep)) -> ReadyResponse:
     except Exception as exc:  # noqa: BLE001
         checks["graph"] = f"degraded: {exc}"
     checks["vector"] = f"ok ({get_index().backend})"
-    checks["seeded"] = "yes" if store.count(C.PROJECTS) else "no — POST /api/admin/seed"
+    checks["seeded"] = "yes" if store.count(C.PROJECTS) else "no - POST /api/admin/seed"
     return ReadyResponse(ready=ok, checks=checks)
 
 

@@ -182,11 +182,11 @@ export function DuringConstruction({ detail }: { detail: ProjectDetail }) {
       {change && (
         <>
           <Card
-            title={`Old vs proposed — ${change.change.equipment_tag}`}
+            title={`Old vs proposed - ${change.change.equipment_tag}`}
             subtitle={
               change.site
                 ? `Linked site: ${change.site.name} (${change.site.geocode_resolution ?? "unresolved"})`
-                : "No site linked — site-dependent checks will be skipped"
+                : "No site linked - site-dependent checks will be skipped"
             }
             actions={
               <div className="flex items-center gap-2">
@@ -213,10 +213,10 @@ export function DuringConstruction({ detail }: { detail: ProjectDetail }) {
                   <tr>
                     <th className="py-1 pr-3 font-medium">Property</th>
                     <th className="py-1 pr-3 font-medium">
-                      Existing — {change.existing.configuration.model_number ?? "—"}
+                      Existing - {change.existing.configuration.model_number ?? "-"}
                     </th>
                     <th className="py-1 pr-3 font-medium">
-                      Proposed — {change.proposed.configuration.model_number ?? "—"}
+                      Proposed - {change.proposed.configuration.model_number ?? "-"}
                     </th>
                     <th className="py-1 font-medium">Delta</th>
                   </tr>
@@ -246,7 +246,7 @@ export function DuringConstruction({ detail }: { detail: ProjectDetail }) {
                               )}
                             </span>
                           ) : (
-                            <span className="text-ink-300">—</span>
+                            <span className="text-ink-300">-</span>
                           )}
                         </td>
                       </tr>
@@ -319,7 +319,7 @@ export function DuringConstruction({ detail }: { detail: ProjectDetail }) {
                         <p className="mt-1 text-xs text-ink-600">{check.detail}</p>
                         {(check.expected || check.observed) && (
                           <p className="mt-1 text-[11px] text-ink-500">
-                            expected: {check.expected ?? "—"} · observed: {check.observed ?? "—"}
+                            expected: {check.expected ?? "-"} · observed: {check.observed ?? "-"}
                           </p>
                         )}
                       </li>
@@ -329,7 +329,7 @@ export function DuringConstruction({ detail }: { detail: ProjectDetail }) {
 
                 <Card
                   title="Deterministic deltas"
-                  subtitle="Computed in Pint-checked units — never by the language model"
+                  subtitle="Computed in Pint-checked units - never by the language model"
                 >
                   <div className="overflow-x-auto">
                     <table className="w-full text-left text-xs">
@@ -396,7 +396,7 @@ export function DuringConstruction({ detail }: { detail: ProjectDetail }) {
         onClose={() => setEvidenceFor(null)}
         projectId={projectId}
         subjectId={evidenceFor?.id}
-        title={`Evidence — ${evidenceFor?.name ?? ""}`}
+        title={`Evidence - ${evidenceFor?.name ?? ""}`}
       />
     </div>
   );
@@ -589,7 +589,7 @@ function RequirementsPanel({
                     {requirement.value} {requirement.unit ?? ""}
                   </td>
                   <td className="py-1.5 pr-2 text-[11px] text-ink-500">
-                    page {requirement.page ?? "—"}
+                    page {requirement.page ?? "-"}
                     {requirement.raw_text && (
                       <span className="mt-0.5 block max-w-[18rem] truncate" title={requirement.raw_text}>
                         “{requirement.raw_text}”
@@ -609,9 +609,9 @@ function RequirementsPanel({
                     {requirement.from_ocr && (
                       <Badge
                         className="ml-1 border-rose-300 bg-rose-100 text-rose-900"
-                        title="Transcribed by OCR from a scanned page. Read the page before confirming — a misread digit is a wrong number with a citation on it."
+                        title="Transcribed by OCR from a scanned page. Read the page before confirming - a misread digit is a wrong number with a citation on it."
                       >
-                        OCR — read the page
+                        OCR - read the page
                       </Badge>
                     )}
                     {requirement.corrected_from && (
