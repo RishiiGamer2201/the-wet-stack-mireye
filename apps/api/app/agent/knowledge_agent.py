@@ -190,6 +190,18 @@ def _greeting_reply(project_name: str, site_name: str, site) -> str:
     )
 
 
+
+def _reading(value, unit: str = "") -> str:
+    """A measurement, or an explicit statement that there is not one.
+
+    Never a default. A fabricated number carrying a site name reads exactly like
+    a measured one, and it is the reader who pays for the difference.
+    """
+    if value is None or value == "":
+        return "not retrieved"
+    return f"{value}{unit}"
+
+
 class KnowledgeAgent:
     """Agent that runs autonomous LLM tool-planning, multi-tool execution, and synthesis."""
 
@@ -706,7 +718,8 @@ Please provide your rigorous Principal EPC Engineering assessment and conclude w
             ambient_db = telemetry_fields.get("ambient_design_db_c", {}).get("value")
             elev = telemetry_fields.get("elevation_m", {}).get("value")
             findings.append(
-                f"Thermal analysis for {site_name}: Ambient design dry-bulb {ambient_db or 35.0}°C at elevation {elev or 100}m."
+                f"Thermal analysis for {site_name}: ambient design dry-bulb "
+                f"{_reading(ambient_db, ' degC')}, elevation {_reading(elev, ' m')}."
             )
             findings.append("Net cooling capacity must account for high-ambient derating factors and water stress.")
             risks.append("Cooling capacity shortfall during 99.6% ASHRAE peak ambient dry-bulb/wet-bulb excursions.")
@@ -718,7 +731,10 @@ Please provide your rigorous Principal EPC Engineering assessment and conclude w
 
         elif "seismic" in q or "earthquake" in q or "pga" in q:
             pga = telemetry_fields.get("seismic_pga_g", {}).get("value")
-            findings.append(f"Seismic ground acceleration for {site_name}: Peak ground acceleration PGA ~ {pga or 0.28}g.")
+            findings.append(
+                f"Seismic ground acceleration for {site_name}: peak ground acceleration "
+                f"{_reading(pga, ' g')}."
+            )
             findings.append("Mission-critical equipment classified under ASCE 7-22 Risk Category IV (Importance Factor Ie = 1.5).")
             risks.append("Non-structural equipment anchorage shear failure under peak horizontal ground motions.")
             risks.append("Differential settlement of utility piping across building seismic expansion joints.")
@@ -729,7 +745,10 @@ Please provide your rigorous Principal EPC Engineering assessment and conclude w
 
         elif "flood" in q or "water" in q or "drainage" in q:
             fzone = telemetry_fields.get("flood_zone", {}).get("value")
-            findings.append(f"Hydrologic review for {site_name}: Centroid FEMA flood classification zone {fzone or 'X'}.")
+            findings.append(
+                f"Hydrologic review for {site_name}: FEMA flood zone at the centroid "
+                f"{_reading(fzone)}."
+            )
             findings.append("Critical electrical and mechanical pads require elevation above 500-year Base Flood Elevation (BFE).")
             risks.append("Inundation of fuel oil transfer pumps, generator pads, and medium-voltage switchgear yards.")
             risks.append("Surface runoff accumulation from extreme 100-year 24-hour storm precipitation events.")

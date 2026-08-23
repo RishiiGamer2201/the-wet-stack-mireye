@@ -16,6 +16,7 @@ from ..domain import (
     CandidateSite,
     DocumentChunk,
     DocumentKind,
+    EquipmentChange,
     Evidence,
     GapStatus,
     InformationGap,
@@ -24,7 +25,7 @@ from ..domain import (
     Requirement,
 )
 from ..engine.decisions import SAFETY_CAVEAT
-from ..fields import FIELDS
+from ..fields import FIELD_INDEX, FIELDS
 from ..schemas import (
     AdvisorChatRequest,
     AdvisorChatResponse,
@@ -664,20 +665,62 @@ def knowledge_suggestions(
     project: Project = Depends(get_project),
     store: Store = Depends(store_dep),
 ):
-    """Contextual prompt suggestions generated from active project documents and candidate sites."""
-    sites = store.list(C.SITES, CandidateSite, project_id=project.id)
-    first_site = sites[0].name if sites else "active site"
+    """Prompt suggestions drawn from what this project actually contains.
 
-    return {
-        "suggestions": [
-            f"Analyze chiller net cooling capacity requirements for {first_site} against local wet-bulb temperatures.",
-            f"Verify seismic anchorage design for electrical switchgear at {first_site} against ASCE 7-22.",
-            f"Check FEMA base flood elevation (BFE) and finished floor elevation requirements for {first_site}.",
-            "Search ASHRAE TC 9.9 thermal operating envelope guidelines for Class A1 mission-critical facilities.",
-            f"Compare on-site water consumption with municipal water stress risk at {first_site}.",
-            "Review electrical MCA and MOCP submittal specifications against utility feed capacity.",
+    A suggestion that points at data the project does not have wastes the click
+    and teaches the reader the agent is guessing, so each one below is backed by
+    something already in the store: an uploaded document, an open gap, a pending
+    change, a located site.
+    """
+    sites = store.list(C.SITES, CandidateSite, project_id=project.id)
+    documents = [
+        d
+        for d in store.list(C.DOCUMENTS, ProjectDocument, project_id=project.id)
+        if d.extraction_status == "extracted"
+    ]
+    changes = store.list(C.CHANGES, EquipmentChange, project_id=project.id)
+    open_gaps = [
+        g
+        for g in store.list(C.GAPS, InformationGap, project_id=project.id)
+        if g.status != GapStatus.RESOLVED
+    ]
+    located = [s for s in sites if s.latitude is not None and s.longitude is not None]
+
+    suggestions: list[str] = []
+
+    for document in documents[:2]:
+        suggestions.append(f"What are the key requirements in {document.filename}?")
+
+    for change in changes[:2]:
+        suggestions.append(
+            f"What does the {change.equipment_tag} substitution change, and what is still open?"
+        )
+
+    # Gaps are the project's own list of what it does not know. Naming one is the
+    # most useful thing to offer, because the answer is an action.
+    seen_fields: set[str] = set()
+    for gap in open_gaps:
+        if not gap.field_key or gap.field_key in seen_fields:
+            continue
+        seen_fields.add(gap.field_key)
+        spec = FIELD_INDEX.get(gap.field_key)
+        if not spec:
+            continue
+        suggestions.append(f"How do we obtain {spec.label.lower()} for this project?")
+        if len(seen_fields) == 2:
+            break
+
+    if located:
+        site = located[0]
+        suggestions.append(f"Summarise the physical site constraints at {site.name}.")
+
+    if not suggestions:
+        suggestions = [
+            "Upload a specification or submittal PDF to get started.",
+            "Add a candidate site with coordinates, then ask about its constraints.",
         ]
-    }
+
+    return {"suggestions": suggestions[:6]}
 
 
 # ---------------------------------------------------------------------------
