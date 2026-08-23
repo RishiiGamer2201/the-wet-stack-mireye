@@ -78,6 +78,9 @@ def store(tmp_path, monkeypatch) -> Store:
     monkeypatch.setenv("DATA_DIR", str(tmp_path / "var"))
     monkeypatch.setenv("REDIS_CACHE_FILE", str(tmp_path / "var" / "redis_cache.json"))
     monkeypatch.setenv("SEED_ON_STARTUP", "true")
+    # Redis is optional and irrelevant to every test here. Probing for it once
+    # per test turned a 40-second suite into a 66-minute one.
+    monkeypatch.setenv("REDIS_ENABLED", "false")
     get_settings.cache_clear()
     from app.adapters.rediscache import RedisCacheManager, set_redis_cache
     rc = RedisCacheManager()

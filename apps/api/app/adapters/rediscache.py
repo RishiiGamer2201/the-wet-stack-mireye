@@ -12,9 +12,12 @@ from __future__ import annotations
 
 import json
 import logging
+import socket
 import threading
 import time
+from contextlib import closing
 from typing import Any
+from urllib.parse import urlparse
 
 from ..config import Settings, get_settings
 
@@ -70,9 +73,49 @@ class RedisCacheManager:
         except Exception as exc:  # noqa: BLE001
             log.warning("Could not flush local redis cache file", extra={"error": str(exc)})
 
+    def _endpoint(self) -> tuple[str, int]:
+        """Host and port to probe, whether configured as a URL or as parts."""
+        if self.settings.redis_url:
+            parsed = urlparse(self.settings.redis_url)
+            return parsed.hostname or "localhost", parsed.port or 6379
+        return self.settings.redis_host, self.settings.redis_port
+
+    def _port_is_open(self) -> bool:
+        """Is anything listening? A plain connect with a hard deadline.
+
+        redis-py retries a failed connection with backoff, and on Windows
+        `localhost` resolves to both ::1 and 127.0.0.1, so discovering that
+        Redis is absent cost 47 seconds — paid on every process start and every
+        test that built a store. Redis is optional here; finding out it is
+        missing must be nearly free.
+        """
+        host, port = self._endpoint()
+        timeout = self.settings.redis_probe_timeout_seconds
+        for family, socktype, proto, _canon, address in socket.getaddrinfo(
+            host, port, proto=socket.IPPROTO_TCP
+        ):
+            try:
+                with closing(socket.socket(family, socktype, proto)) as probe:
+                    probe.settimeout(timeout)
+                    if probe.connect_ex(address) == 0:
+                        return True
+            except OSError:
+                continue
+        return False
+
     def _init_redis_client(self) -> None:
         if not REDIS_INSTALLED or not redis:
             log.info("Redis package not installed or disabled; using persistent file cache fallback")
+            return
+        if not self.settings.redis_enabled:
+            log.info("Redis discovery disabled; using persistent file cache fallback")
+            return
+        if not self._port_is_open():
+            host, port = self._endpoint()
+            log.info(
+                "No Redis listening; using durable local redis_cache.json",
+                extra={"host": host, "port": port},
+            )
             return
 
         try:

@@ -44,6 +44,15 @@ class Settings(BaseSettings):
     redis_port: int = 6379
     redis_password: str | None = None
     redis_db: int = 0
+    #: Set false to skip live-Redis discovery entirely and go straight to the
+    #: durable local cache file. Tests set this: an optional dependency must not
+    #: be probed 150 times over a test run.
+    redis_enabled: bool = True
+    #: Budget for finding out whether Redis is there at all. A plain socket probe
+    #: runs first because redis-py's own retry policy turned "nothing listening"
+    #: into a 47-second startup stall on Windows, where a refused connection to
+    #: localhost is retried across both ::1 and 127.0.0.1.
+    redis_probe_timeout_seconds: float = 0.3
     redis_cache_file: Path | None = None
     redis_ttl_seconds: int = 86400 * 7  # 7 days default cache TTL
 
@@ -167,14 +176,17 @@ class Settings(BaseSettings):
 
     @property
     def sample_dir(self) -> Path:
-        """Where the synthetic demonstration PDFs live.
+        """Where the synthetic demonstration PDFs are written.
 
-        The repository's own `sample_data/` when running from a checkout, so the
-        committed files are used as-is; otherwise a writable path under DATA_DIR,
-        because a container has no checkout and the seed regenerates them.
+        Always under DATA_DIR, never the repository's committed `sample_data/`.
+        The seed *writes* these files, so pointing it at the checkout meant two
+        processes with different DATA_DIRs — a running server and a test run —
+        wrote the same PDFs at the same time and blocked on Windows. DATA_DIR is
+        already per-process and per-deployment; the samples belong with it.
+
+        The committed `sample_data/` stays as a human-readable copy to hand to
+        someone trying the upload flow, and is not a runtime path.
         """
-        if REPO_ROOT is not None and (REPO_ROOT / "sample_data").exists():
-            return REPO_ROOT / "sample_data"
         return self.data_dir / "sample_data"
 
     @property

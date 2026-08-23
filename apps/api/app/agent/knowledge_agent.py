@@ -673,7 +673,11 @@ Please provide your rigorous Principal EPC Engineering assessment and conclude w
                     if chunk:
                         has_streamed = True
                         full_text += chunk
-                        if "json_tell" in full_text.lower() or "```json" in full_text.lower():
+                        # Only the sentinel stops the stream. Matching a bare
+                        # "```json" would truncate any answer that legitimately
+                        # shows a JSON example — a real request in this domain,
+                        # and the rest of the reply would vanish silently.
+                        if "json_tell" in full_text.lower():
                             json_block_started = True
                         if not json_block_started:
                             yield f"data: {json.dumps({'event': 'token', 'chunk': chunk})}\n\n"
