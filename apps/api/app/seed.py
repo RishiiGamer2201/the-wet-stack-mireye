@@ -585,7 +585,150 @@ def seed(store: Store | None = None, reset: bool = True) -> Project:
         ),
     )
 
-    for equipment in (ch01_old, ch01_new, ch02_old, ch02_new, pdu_old, pdu_new):
+
+
+
+
+    gen_rating = RatingConditions(
+        ambient_temp=Quantity(value=38, unit="degC"),
+        standard="ISO 8528-1 standby rating",
+    )
+    gen_old = Equipment(
+        project_id=project.id,
+        tag="GEN-01",
+        name="Standby generator GEN-01 (basis of design)",
+        site_id=sites[1].id,
+        configuration=EquipmentConfiguration(
+            manufacturer="Cascade Power Systems",
+            model_number="CPS-2500-D",
+            equipment_type="standby_generator",
+            configuration_code="STBY-13.8kV",
+            weight=Quantity(value=27500, unit="kg"),
+            weight_basis="operating",
+            length=Quantity(value=7100, unit="mm"),
+            width=Quantity(value=2290, unit="mm"),
+            height=Quantity(value=2950, unit="mm"),
+            voltage=Quantity(value=13800, unit="V"),
+            phases=3,
+            full_load_amps=Quantity(value=130, unit="A"),
+            mca=Quantity(value=163, unit="A"),
+            mocp=Quantity(value=200, unit="A"),
+            power_input=Quantity(value=2500, unit="kW"),
+            rating_conditions=gen_rating,
+            evidence_ids=_sourced(
+                store, project.id, "GEN-01", "Cascade-CPS-2500-D-Datasheet-SYNTHETIC", 1,
+                {
+                    "weight": (27500, "kg"), "length": (7100, "mm"), "width": (2290, "mm"),
+                    "height": (2950, "mm"), "full_load_amps": (130, "A"), "mca": (163, "A"),
+                    "power_input": (2500, "kW"),
+                },
+            ),
+        ),
+    )
+    gen_new = Equipment(
+        project_id=project.id,
+        tag="GEN-01",
+        name="Standby generator GEN-01 (proposed substitution)",
+        site_id=sites[1].id,
+        configuration=EquipmentConfiguration(
+            manufacturer="Cascade Power Systems",
+            model_number="CPS-2750-DF",
+            equipment_type="standby_generator",
+            configuration_code="STBY-13.8kV",
+            weight=Quantity(value=31200, unit="kg"),
+            weight_basis="operating",
+            length=Quantity(value=7620, unit="mm"),
+            width=Quantity(value=2290, unit="mm"),
+            height=Quantity(value=3050, unit="mm"),
+            voltage=Quantity(value=13800, unit="V"),
+            phases=3,
+            full_load_amps=Quantity(value=143, unit="A"),
+            mca=Quantity(value=179, unit="A"),
+            mocp=Quantity(value=200, unit="A"),
+            power_input=Quantity(value=2750, unit="kW"),
+            rating_conditions=gen_rating,
+            evidence_ids=_sourced(
+                store, project.id, "GEN-01", "Aurora-DC1-Generator-Submittal-SYNTHETIC", 1,
+                {
+                    "weight": (31200, "kg"), "length": (7620, "mm"), "width": (2290, "mm"),
+                    "height": (3050, "mm"), "full_load_amps": (143, "A"), "mca": (179, "A"),
+                    "power_input": (2750, "kW"),
+                },
+            ),
+        ),
+    )
+
+    ups_rating = RatingConditions(
+        ambient_temp=Quantity(value=24, unit="degC"),
+        standard="IEC 62040-3",
+    )
+    ups_old = Equipment(
+        project_id=project.id,
+        tag="UPS-1",
+        name="UPS-1 (basis of design)",
+        configuration=EquipmentConfiguration(
+            manufacturer="Meridian Power",
+            model_number="M800-1000",
+            equipment_type="ups",
+            configuration_code="MOD-N+1",
+            weight=Quantity(value=2950, unit="kg"),
+            weight_basis="operating",
+            length=Quantity(value=2200, unit="mm"),
+            width=Quantity(value=900, unit="mm"),
+            height=Quantity(value=2000, unit="mm"),
+            voltage=Quantity(value=480, unit="V"),
+            phases=3,
+            full_load_amps=Quantity(value=1203, unit="A"),
+            mca=Quantity(value=1504, unit="A"),
+            power_input=Quantity(value=1000, unit="kW"),
+            mocp=Quantity(value=1800, unit="A"),
+            rating_conditions=ups_rating,
+            evidence_ids=_sourced(
+                store, project.id, "UPS-1", "Meridian-M800-Datasheet-SYNTHETIC", 1,
+                {
+                    "weight": (2950, "kg"), "full_load_amps": (1203, "A"), "mca": (1504, "A"),
+                    "power_input": (1000, "kW"), "mocp": (1800, "A"),
+                },
+            ),
+        ),
+    )
+    ups_new = Equipment(
+        project_id=project.id,
+        tag="UPS-1",
+        name="UPS-1 (proposed substitution)",
+        configuration=EquipmentConfiguration(
+            manufacturer="Meridian Power",
+            model_number="M900-1200",
+            equipment_type="ups",
+            configuration_code="MOD-N+1",
+            weight=Quantity(value=3180, unit="kg"),
+            weight_basis="operating",
+            length=Quantity(value=2400, unit="mm"),
+            width=Quantity(value=900, unit="mm"),
+            height=Quantity(value=2000, unit="mm"),
+            voltage=Quantity(value=480, unit="V"),
+            phases=3,
+            full_load_amps=Quantity(value=1443, unit="A"),
+            mca=Quantity(value=1804, unit="A"),
+            power_input=Quantity(value=1200, unit="kW"),
+            # MOCP is deliberately absent: the published datasheet gives MCA but
+            # not maximum overcurrent protection, so the upstream breaker check
+            # stays open rather than being closed against an assumed figure.
+            rating_conditions=ups_rating,
+            evidence_ids=_sourced(
+                store, project.id, "UPS-1", "Meridian-UPS-M900-Datasheet-SYNTHETIC", 1,
+                {
+                    "weight": (3180, "kg"), "full_load_amps": (1443, "A"), "mca": (1804, "A"),
+                    "power_input": (1200, "kW"),
+                },
+            ),
+        ),
+    )
+
+    for equipment in (
+        ch01_old, ch01_new, ch02_old, ch02_new, pdu_old, pdu_new,
+        gen_old, gen_new, ups_old, ups_new,
+    ):
         store.put(C.EQUIPMENT, equipment, project_id=project.id)
 
     changes = [
@@ -617,6 +760,27 @@ def seed(store: Store | None = None, reset: bool = True) -> Project:
             equipment_tag="PDU-3",
             existing_equipment_id=pdu_old.id,
             proposed_equipment_id=pdu_new.id,
+            submitted_by="Electrical subcontractor (synthetic)",
+        ),
+        EquipmentChange(
+            project_id=project.id,
+            title="Generator substitution - CPS-2750-DF offered for CPS-2500-D",
+            reason="Uprated frame offered against a shorter lead time; 250 kW more standby "
+            "capacity and 3.7 tonnes more operating weight.",
+            equipment_tag="GEN-01",
+            site_id=sites[1].id,
+            existing_equipment_id=gen_old.id,
+            proposed_equipment_id=gen_new.id,
+            submitted_by="Electrical subcontractor (synthetic)",
+        ),
+        EquipmentChange(
+            project_id=project.id,
+            title="UPS substitution - M900-1200 offered for M800-1000",
+            reason="Capacity uplift to 1200 kW. Electrical data is complete; the datasheet "
+            "does not publish maximum overcurrent protection.",
+            equipment_tag="UPS-1",
+            existing_equipment_id=ups_old.id,
+            proposed_equipment_id=ups_new.id,
             submitted_by="Electrical subcontractor (synthetic)",
         ),
     ]
