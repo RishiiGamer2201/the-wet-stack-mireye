@@ -120,13 +120,14 @@ export function DuringConstruction({ detail }: { detail: ProjectDetail }) {
     try {
       const result = await api.analyzeChange(projectId, selectedId);
       setInvestigation(result);
-      const [impactGraph, allGaps] = await Promise.all([
+      const [impactGraph, allGaps, changeDetail] = await Promise.all([
         api.impact(selectedId).catch(() => null),
         api.gaps(projectId),
+        api.change(projectId, selectedId),
       ]);
       setGraph(impactGraph);
+      setChange(changeDetail);
       setGaps(allGaps.filter((g) => g.subject_id === selectedId));
-      await load(selectedId);
     } catch (e) {
       setError(e);
     } finally {
@@ -378,7 +379,12 @@ export function DuringConstruction({ detail }: { detail: ProjectDetail }) {
               />
 
               <ImpactList impacts={investigation.impacts} />
-              <ImpactGraphView graph={graph} />
+              <ImpactGraphView
+                graph={graph}
+                changeLabel={change ? `${change.change.equipment_tag}: ${change.change.title}` : undefined}
+                impacts={investigation.impacts}
+                assumptions={change.assumptions}
+              />
               <GapPanel
                 projectId={projectId}
                 gaps={gaps}

@@ -2,7 +2,7 @@ import { ArrowRight, Network } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { titleize } from "../lib/format";
-import type { ImpactGraph, ImpactNode } from "../lib/types";
+import type { Impact, ImpactGraph, ImpactNode } from "../lib/types";
 import { Badge, Card, EmptyState, cx } from "./ui";
 
 const COLUMNS: { kind: ImpactNode["kind"]; label: string }[] = [
@@ -21,16 +21,113 @@ const KIND_STYLE: Record<string, string> = {
   commissioning: "border-emerald-300 bg-emerald-50 text-emerald-900",
 };
 
-export function ImpactGraphView({ graph }: { graph: ImpactGraph | null }) {
+export function ImpactGraphView({
+  graph,
+  changeLabel = "Equipment Change",
+  impacts = [],
+  assumptions = [],
+}: {
+  graph: ImpactGraph | null;
+  changeLabel?: string;
+  impacts?: Impact[];
+  assumptions?: { id: string; statement: string; status?: string; stale_reason?: string | null }[];
+}) {
   const [selected, setSelected] = useState<string | null>(null);
 
+  const resolvedGraph: ImpactGraph | null = useMemo(() => {
+    if (graph && graph.nodes && graph.nodes.length > 1) {
+      return graph;
+    }
+    if (!impacts || impacts.length === 0) {
+      return graph;
+    }
+    // Synthesize graph from impacts & assumptions
+    const nodes: Record<string, ImpactNode> = {};
+    const edges: { source: string; target: string; relation: string }[] = [];
+    const paths: string[][] = [];
+    const rootId = "change:active";
+    nodes[rootId] = {
+      id: rootId,
+      label: changeLabel,
+      kind: "change",
+      status: "analyzed",
+    };
+
+    const asmMap = new Map(assumptions.map((a) => [a.id, a]));
+
+    for (const imp of impacts) {
+      const discId = `discipline:${imp.discipline}`;
+      nodes[discId] = {
+        id: discId,
+        label: titleize(imp.discipline),
+        kind: "discipline",
+        status: imp.severity,
+        detail: imp.title,
+      };
+
+      const upstream = [rootId];
+      if (imp.stale_assumption_ids && imp.stale_assumption_ids.length > 0) {
+        for (const aid of imp.stale_assumption_ids) {
+          const asm = asmMap.get(aid);
+          const nid = `assumption:${aid}`;
+          nodes[nid] = {
+            id: nid,
+            label: asm?.statement || `Assumption (${aid.slice(0, 8)})`,
+            kind: "assumption",
+            status: asm?.status || "stale",
+            detail: asm?.stale_reason ?? undefined,
+          };
+          edges.push({ source: rootId, target: nid, relation: "INVALIDATES" });
+          edges.push({ source: nid, target: discId, relation: "AFFECTS" });
+          upstream.push(nid);
+        }
+      } else {
+        edges.push({ source: rootId, target: discId, relation: "AFFECTS" });
+      }
+
+      for (const act of imp.activities || []) {
+        const actId = `activity:${imp.discipline}:${act.slice(0, 20)}`;
+        nodes[actId] = {
+          id: actId,
+          label: act,
+          kind: "activity",
+        };
+        edges.push({ source: discId, target: actId, relation: "REQUIRES" });
+
+        for (const comm of imp.commissioning || []) {
+          const commId = `commissioning:${comm.slice(0, 20)}`;
+          nodes[commId] = {
+            id: commId,
+            label: comm,
+            kind: "commissioning",
+          };
+          edges.push({ source: actId, target: commId, relation: "VERIFIED_BY" });
+          const start = upstream.length > 1 ? upstream[1] : rootId;
+          paths.push([rootId, ...(start !== rootId ? [start] : []), discId, actId, commId]);
+        }
+      }
+    }
+
+    const uniqueEdges = Array.from(
+      new Map(edges.map((e) => [`${e.source}->${e.target}:${e.relation}`, e])).values(),
+    );
+
+    return {
+      change_id: "active",
+      nodes: Object.values(nodes),
+      edges: uniqueEdges,
+      paths,
+      backend: graph?.backend || "in_memory",
+    };
+  }, [graph, impacts, assumptions, changeLabel]);
+
   const connected = useMemo(() => {
-    if (!graph || !selected) return null;
+    if (!resolvedGraph || !selected) return null;
     const keep = new Set<string>([selected]);
     let changed = true;
     while (changed) {
       changed = false;
-      for (const edge of graph.edges) {
+      for (const edge of resolvedGraph.edges) {
         if (keep.has(edge.source) && !keep.has(edge.target)) {
           keep.add(edge.target);
           changed = true;
@@ -42,9 +139,9 @@ export function ImpactGraphView({ graph }: { graph: ImpactGraph | null }) {
       }
     }
     return keep;
-  }, [graph, selected]);
+  }, [resolvedGraph, selected]);
 
-  if (!graph || graph.nodes.length <= 1) {
+  if (!resolvedGraph || resolvedGraph.nodes.length <= 1) {
     return (
       <Card title="Impact graph" subtitle="Change → Stale assumption → Discipline → Activity → Commissioning">
         <EmptyState
@@ -55,7 +152,7 @@ export function ImpactGraphView({ graph }: { graph: ImpactGraph | null }) {
     );
   }
 
-  const byKind = (kind: string) => graph.nodes.filter((n) => n.kind === kind);
+  const byKind = (kind: string) => resolvedGraph.nodes.filter((n) => n.kind === kind);
   const dimmed = (id: string) => (connected ? !connected.has(id) : false);
 
   return (
@@ -64,8 +161,8 @@ export function ImpactGraphView({ graph }: { graph: ImpactGraph | null }) {
       subtitle="Traversed from the analysis result - select a node to isolate its dependency path"
       actions={
         <Badge className="border-ink-300 bg-ink-100 text-ink-700">
-          <Network aria-hidden className="h-3 w-3" /> {graph.backend} · {graph.nodes.length} nodes ·{" "}
-          {graph.edges.length} edges
+          <Network aria-hidden className="h-3 w-3" /> {resolvedGraph.backend} · {resolvedGraph.nodes.length} nodes ·{" "}
+          {resolvedGraph.edges.length} edges
         </Badge>
       }
     >
@@ -83,10 +180,10 @@ export function ImpactGraphView({ graph }: { graph: ImpactGraph | null }) {
                       onClick={() => setSelected(selected === node.id ? null : node.id)}
                       aria-pressed={selected === node.id}
                       className={cx(
-                        "w-full rounded-lg border p-2 text-left text-xs transition-opacity",
+                        "w-full rounded-lg border p-2 text-left text-xs transition-all",
                         KIND_STYLE[node.kind],
                         dimmed(node.id) && "opacity-25",
-                        selected === node.id && "ring-2 ring-ink-900 ring-offset-1",
+                        selected === node.id && "ring-2 ring-signal-600 ring-offset-1 shadow-sm font-semibold",
                       )}
                     >
                       <span className="block font-medium">{node.label}</span>
@@ -112,37 +209,39 @@ export function ImpactGraphView({ graph }: { graph: ImpactGraph | null }) {
         </div>
       </div>
 
-      <div className="mt-4">
-        <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-ink-500">
-          Traced paths ({graph.paths.length})
-        </h3>
-        <ul className="flex max-h-56 flex-col gap-1 overflow-y-auto text-xs">
-          {graph.paths.slice(0, 40).map((path, i) => {
-            const labels = path.map(
-              (id) => graph.nodes.find((n) => n.id === id)?.label ?? id,
-            );
-            const relevant = !connected || path.some((id) => connected.has(id));
-            return (
-              <li
-                key={i}
-                className={cx(
-                  "flex flex-wrap items-center gap-1 rounded border border-ink-100 px-2 py-1",
-                  !relevant && "opacity-25",
-                )}
-              >
-                {labels.map((label, j) => (
-                  <span key={j} className="flex items-center gap-1">
-                    <span className="text-ink-700">{label}</span>
-                    {j < labels.length - 1 && (
-                      <ArrowRight aria-hidden className="h-3 w-3 text-ink-300" />
-                    )}
-                  </span>
-                ))}
-              </li>
-            );
-          })}
-        </ul>
-      </div>
+      {resolvedGraph.paths.length > 0 && (
+        <div className="mt-4">
+          <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-ink-500">
+            Traced paths ({resolvedGraph.paths.length})
+          </h3>
+          <ul className="flex max-h-56 flex-col gap-1 overflow-y-auto text-xs">
+            {resolvedGraph.paths.slice(0, 40).map((path, i) => {
+              const labels = path.map(
+                (id) => resolvedGraph.nodes.find((n) => n.id === id)?.label ?? id,
+              );
+              const relevant = !connected || path.some((id) => connected.has(id));
+              return (
+                <li
+                  key={i}
+                  className={cx(
+                    "flex flex-wrap items-center gap-1 rounded border border-ink-100 px-2 py-1",
+                    !relevant && "opacity-25",
+                  )}
+                >
+                  {labels.map((label, j) => (
+                    <span key={j} className="flex items-center gap-1">
+                      <span className="text-ink-700">{label}</span>
+                      {j < labels.length - 1 && (
+                        <ArrowRight aria-hidden className="h-3 w-3 text-ink-300" />
+                      )}
+                    </span>
+                  ))}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
     </Card>
   );
 }

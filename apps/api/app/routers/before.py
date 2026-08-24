@@ -167,6 +167,17 @@ def override_site_value(
             status_code=422, detail=f"unknown field '{payload.field_key}'"
         ) from exc
     updated = site_service.score_sites(store, project, sites, project.dimension_weights or None)
+    # Persist the updated ranking onto the latest before_construction investigation
+    investigations = [
+        i
+        for i in store.list(C.INVESTIGATIONS, Investigation, project_id=project.id)
+        if i.workflow == Workflow.BEFORE_CONSTRUCTION
+    ]
+    if investigations:
+        latest_inv = investigations[-1]
+        latest_inv.ranking = updated
+        store.put(C.INVESTIGATIONS, latest_inv, project_id=project.id)
+
     before = {s.site_id: (s.rank, s.overall_score) for s in baseline.scores}
     explanation = []
     for score in updated.scores:
@@ -177,5 +188,5 @@ def override_site_value(
                 f"rank {prev[0]} → {score.rank}"
             )
     if not explanation:
-        explanation.append("The override did not change any score.")
+        explanation.append(f"Override applied for {payload.field_key}={payload.value}.")
     return WhatIfResponse(ranking=updated, changed_from=baseline, explanation=explanation)

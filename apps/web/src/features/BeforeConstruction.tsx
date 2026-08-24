@@ -715,27 +715,33 @@ export function BeforeConstruction({
               actions={<Badge className={RISK_STYLE[selected.risk_level]}>{selected.risk_level} risk</Badge>}
             >
               <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                {selected.dimensions.map((dimension) => (
+                {selected.dimensions
+                  .map((dim) => ({
+                    ...dim,
+                    metrics: dim.metrics.filter(
+                      (m) => m.status !== "missing" && m.raw_value !== null && m.raw_value !== undefined,
+                    ),
+                  }))
+                  .filter((dim) => dim.metrics.length > 0 || (dim.score !== null && dim.score > 0))
+                  .map((dimension) => (
                   <div key={dimension.dimension} className="rounded-lg border border-ink-200 p-3">
                     <div className="flex items-center justify-between gap-2">
-                      <h3 className="text-xs font-semibold text-ink-800">{meta.dimension_labels[dimension.dimension]}</h3>
-                      <span className="tabular text-sm font-semibold text-ink-900">{dimension.score?.toFixed(0) ?? "\u2014"}</span>
+                      <h3 className="text-xs font-semibold text-ink-800">{meta.dimension_labels[dimension.dimension] ?? dimension.dimension}</h3>
+                      <span className="tabular text-sm font-semibold text-ink-900">{dimension.score?.toFixed(0) ?? "—"}</span>
                     </div>
                     <Meter value={dimension.score ?? 0} className="mt-2 bg-signal-600" />
-                    <p className="mt-1 text-[11px] text-ink-500">weight {dimension.weight.toFixed(1)} \u00b7 coverage {pct(dimension.coverage)}</p>
+                    <p className="mt-1 text-[11px] text-ink-500">weight {dimension.weight.toFixed(1)} · coverage {pct(dimension.coverage)}</p>
                     <ul className="mt-2 flex flex-col gap-1">
                       {dimension.metrics.map((metric) => (
                         <li key={metric.field_key} className="text-[11px]">
                           <div className="flex items-center justify-between gap-1">
-                            <span className="truncate text-ink-700" title={metric.explanation}>{metric.label}</span>
+                            <span className="truncate text-ink-700 font-medium" title={metric.explanation}>{metric.label}</span>
                             <Badge className={EVIDENCE_STATUS_STYLE[metric.status]}>
-                              {metric.status === "missing" ? "missing" : (metric.normalized?.toFixed(0) ?? "\u2014")}
+                              {metric.normalized?.toFixed(0) ?? "—"}
                             </Badge>
                           </div>
                           <p className="text-ink-500">
-                            {metric.status === "missing"
-                              ? "No evidence \u2014 excluded from the score."
-                              : `${metric.raw_value} ${metric.unit && metric.unit !== "dimensionless" ? metric.unit : ""} \u00b7 ${EVIDENCE_STATUS_LABEL[metric.status]}`}
+                            {`${metric.raw_value} ${metric.unit && metric.unit !== "dimensionless" ? metric.unit : ""} · ${EVIDENCE_STATUS_LABEL[metric.status]}`}
                           </p>
                         </li>
                       ))}
@@ -758,7 +764,7 @@ export function BeforeConstruction({
                           flag.passed === null && "border-amber-200 bg-amber-50",
                         )}
                       >
-                        <span className="font-medium">{flag.requirement}</span> \u2014 {flag.explanation}
+                        <span className="font-medium">{flag.requirement}</span> — {flag.explanation}
                       </li>
                     ))}
                     {selected.requirement_flags.length === 0 && <li className="text-ink-500">No hard targets set on this project.</li>}
@@ -768,12 +774,27 @@ export function BeforeConstruction({
                   <h3 className="text-xs font-semibold uppercase tracking-wide text-ink-500">What-if: correct one site assumption</h3>
                   <WhatIfOverride
                     busy={busyOverride}
-                    fields={selected.dimensions.flatMap((d) => d.metrics.map((m) => ({ key: m.field_key, label: m.label })))}
+                    fields={selected.dimensions.flatMap((d) =>
+                      d.metrics.map((m) => ({
+                        key: m.field_key,
+                        label: `${meta.dimension_labels[d.dimension] ?? d.dimension}: ${m.label}`,
+                      })),
+                    )}
                     onApply={overrideValue}
                   />
                   <p className="mt-2 text-[11px] text-ink-500">
                     The override is stored as user-confirmed evidence (the previous value is kept and marked superseded), then the backend re-scores every candidate.
                   </p>
+                  {whatIf.length > 0 && (
+                    <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 p-2 text-xs text-emerald-900">
+                      <p className="font-semibold">Latest re-scoring result:</p>
+                      <ul className="mt-1 list-disc pl-4">
+                        {whatIf.map((line) => (
+                          <li key={line}>{line}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                 </div>
               </div>
             </Card>
@@ -854,7 +875,7 @@ function SiteListItem({
           )}
         </div>
         <span className="block text-[11px] text-ink-500 mt-0.5">
-          {site.latitude?.toFixed(4)}, {site.longitude?.toFixed(4)} \u00b7 {site.geocode_resolution ?? "unresolved"}
+          {site.latitude?.toFixed(4)}, {site.longitude?.toFixed(4)} · {site.geocode_resolution ?? "unresolved"}
         </span>
       </button>
       <Button size="sm" variant="ghost" aria-label={`Remove ${site.name}`} onClick={onDelete}>
@@ -877,22 +898,69 @@ function WhatIfOverride({
 }) {
   const [fieldKey, setFieldKey] = useState(fields[0]?.key ?? "");
   const [value, setValue] = useState("");
+  const [feedback, setFeedback] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!fieldKey || !fields.some((f) => f.key === fieldKey)) {
+      if (fields[0]?.key) {
+        setFieldKey(fields[0].key);
+      }
+    }
+  }, [fields, fieldKey]);
+
+  const activeKey = fieldKey || fields[0]?.key || "";
+
   return (
     <form
       className="mt-2 flex flex-wrap items-end gap-2"
-      onSubmit={(e) => { e.preventDefault(); if (fieldKey && value) onApply(fieldKey, value); }}
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (activeKey && value.trim()) {
+          onApply(activeKey, value.trim());
+          const targetLabel = fields.find((f) => f.key === activeKey)?.label || activeKey;
+          setFeedback(`Applied ${targetLabel}: ${value.trim()}`);
+          setValue("");
+        }
+      }}
     >
-      <Field label="Field" htmlFor="override-field">
-        <select id="override-field" className={inputClass} value={fieldKey} onChange={(e) => setFieldKey(e.target.value)}>
-          {fields.map((f) => <option key={f.key} value={f.key}>{f.label}</option>)}
+      <Field label="Field / Parameter" htmlFor="override-field">
+        <select
+          id="override-field"
+          className={cx(inputClass, "max-w-[14rem]")}
+          value={activeKey}
+          onChange={(e) => {
+            setFieldKey(e.target.value);
+            setFeedback(null);
+          }}
+        >
+          {fields.map((f) => (
+            <option key={f.key} value={f.key}>
+              {f.label}
+            </option>
+          ))}
         </select>
       </Field>
       <Field label="Confirmed value" htmlFor="override-value">
-        <input id="override-value" className={inputClass} value={value} onChange={(e) => setValue(e.target.value)} placeholder="450" />
+        <input
+          id="override-value"
+          className={inputClass}
+          value={value}
+          onChange={(e) => {
+            setValue(e.target.value);
+            setFeedback(null);
+          }}
+          placeholder="e.g. 450 or 0.15"
+          required
+        />
       </Field>
       <Button type="submit" loading={busy} variant="primary">
         <Sparkles aria-hidden className="h-3.5 w-3.5" /> Apply &amp; re-rank
       </Button>
+      {feedback && (
+        <span className="text-[11px] font-medium text-emerald-600 basis-full">
+          ✓ {feedback}
+        </span>
+      )}
     </form>
   );
 }

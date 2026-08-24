@@ -91,16 +91,31 @@ def impact_graph(
     """
     graph_store = get_graph_store()
     graph = graph_store.traverse(change_id, max_depth=max_depth)
-    if graph is not None:
+    if graph is not None and len(graph.nodes) > 1:
         return graph
 
     change = store.get(C.CHANGES, change_id, EquipmentChange)
     investigation = _latest_investigation(store, change) if change else None
-    if change is None or investigation is None:
-        raise HTTPException(
-            status_code=404,
-            detail="no impact graph for this change yet - run the analysis first",
+    if change is None:
+        raise HTTPException(status_code=404, detail="change not found")
+    if investigation is None:
+        # If no investigation yet, return an initial single-node graph for the change
+        initial = ImpactGraph(
+            change_id=change_id,
+            nodes=[
+                ImpactNode(
+                    id=f"change:{change_id}",
+                    label=f"{change.equipment_tag}: {change.title}",
+                    kind="change",
+                    status=change.status,
+                )
+            ],
+            edges=[],
+            paths=[],
+            backend=graph_store.backend,
         )
+        return initial
+
     assumptions = {
         a.id: a
         for a in store.list(C.ASSUMPTIONS, Assumption, project_id=change.project_id)
