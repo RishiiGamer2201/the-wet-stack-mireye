@@ -1,164 +1,192 @@
-# The Wet Stack — Mireye
+<div align="center">
 
-A data-center construction and EPC intelligence platform featuring two unified workflows: **Site Intelligence (Before Construction)** and **Change Intelligence (During Construction)**.
-
-The system is built on a strict separation of concerns: **AI agents plan and orchestrate investigations, while deterministic Python engines execute all mathematical calculations, unit conversions, gate validations, and scoring.**
+# The Wet Stack: Mireye
 
 ---
 
-## Core Libraries and Dependencies
+### *Mission-Critical Data Center Site Feasibility and Deterministic Change Intelligence Pipeline*
 
-### Backend (Python 3.10+)
-* **FastAPI (`>=0.110`)**: High-performance asynchronous API framework and OpenAPI contract generation.
-* **Pydantic v2 (`>=2.6`) & Pydantic-Settings**: Strict data validation, schema enforcement, and environment configuration.
-* **Pint (`>=0.23`)**: Deterministic physical and electrical unit arithmetic, dimensional analysis, and conversion.
-* **LangGraph (`>=0.2`)**: Stateful graph orchestration for multi-step agent workflows.
-* **PyMuPDF / fitz (`>=1.24`)**: High-speed PDF ingestion, structured text/table extraction, and OCR document processing.
-* **HTTPX (`>=0.27`)**: Asynchronous HTTP client for external dataset querying and live Mireye API connectivity.
-* **Redis (`>=5.0`)**: In-memory caching for external datasets, rate-limiting, and distributed state caching.
-* **Uvicorn (`>=0.29`)**: ASGI production web server.
-* **Neo4j (`>=5.19`) & Psycopg 3 (`>=3.1`)** *(Optional Live Mode)*: Graph database impact traversal and Postgres / pgvector vector storage.
-* **Pytest (`>=8.1`) & Ruff (`>=0.4`)**: Test runner, static analysis, and code formatting.
+<br/>
 
-### Frontend (Node 20+, TypeScript)
-* **React 18 & TypeScript**: Typed component architecture for critical engineering interfaces.
-* **Vite 6**: Fast modern frontend build tool and dev server.
-* **Tailwind CSS v4**: Design system and responsive layout styling.
-* **Lucide React**: Clean technical iconography.
-* **Recharts**: Engineering metrics visualization and design margin charts.
-* **Leaflet & React-Leaflet**: Geospatial candidate site mapping and GIS overlays.
+![Python](https://img.shields.io/badge/PYTHON-3.10%20%7C%203.11-3776AB?style=for-the-badge&logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FASTAPI-0.110%2B-009688?style=for-the-badge&logo=fastapi&logoColor=white)
+![LangGraph](https://img.shields.io/badge/LANGGRAPH-STATEFUL%20WORKFLOWS-FF6F00?style=for-the-badge&logo=langchain&logoColor=white)
+![Pint](https://img.shields.io/badge/PINT-UNIT%20ARITHMETIC-4B8BBE?style=for-the-badge)
+![PyMuPDF](https://img.shields.io/badge/PYMUPDF-PDF%20%26%20OCR-E53935?style=for-the-badge)
+![Redis](https://img.shields.io/badge/REDIS-DATASET%20CACHE-DC382D?style=for-the-badge&logo=redis&logoColor=white)
+![React](https://img.shields.io/badge/REACT-18%2B-61DAFB?style=for-the-badge&logo=react&logoColor=black)
+![TypeScript](https://img.shields.io/badge/TYPESCRIPT-5.6%2B-3178C6?style=for-the-badge&logo=typescript&logoColor=white)
+![Vite](https://img.shields.io/badge/VITE-FAST%20HMR-646CFF?style=for-the-badge&logo=vite&logoColor=white)
+![Tailwind](https://img.shields.io/badge/TAILWIND_CSS-V4-38B2AC?style=for-the-badge&logo=tailwindcss&logoColor=white)
+![License](https://img.shields.io/badge/LICENSE-MIT-F1C40F?style=for-the-badge)
+
+<br/>
+
+[Quick Overview](#quick-overview) • [Problem & Solution](#problem--solution) • [Tech Stack & Libraries](#tech-stack--libraries) • [Agent Architecture](#agent-architecture) • [Key Features](#key-features) • [Decision Logic](#decision-precedence) • [Quick Start](#quick-start) • [REST API & Docs](#documentation)
+
+</div>
 
 ---
 
-## System Architecture
+## Quick Overview
 
+**The Wet Stack: Mireye** is an engineering, procurement, and construction (EPC) intelligence platform designed for mission-critical data center developments. It connects early-stage parcel feasibility with real-time field change verification under a unified, evidence-backed architecture.
+
+---
+
+## Problem & Solution
+
+### The Industry Problem
+* **Before Construction (Site Selection):** Developers spend months evaluating parcels using fragmented, unverified spreadsheets across power, water, climate, and soil, leading to expensive post-acquisition surprises.
+* **During Construction (Equipment Substitutions):** When supply chain delays force equipment substitutions (e.g. chillers, transformers), contractors approve replacements based on superficial nameplate capacity without evaluating electrical MCA/MOCP headroom, structural slab loads, site ASHRAE extreme climate limits, or multi-equipment cascade loading.
+
+### Solution
+
+The **Mireye Platform** eliminates data center construction and procurement risk through two unified workflows governed by a single core principle: **AI agents plan and orchestrate investigations, while deterministic Python engines execute all mathematical calculations, unit conversions, gate validations, and scoring.**
+
+#### 1. Before Construction: Site Feasibility Intelligence
+* **Multi-Source Geospatial Ingestion:** Automatically cross-references parcel coordinates against verified public datasets (USGS 3DEP elevation, FEMA National Flood Hazard Layer, EIA-861 utility reliability, EPA Water Quality Portal, and NOAA/ASHRAE climate stations).
+* **Transparent Multi-Factor Scoring:** Scores parcels across 8 critical dimensions (Terrain, Water, Power, Fiber, Geotechnical, Natural Hazards, Climate, and Permitting) using an explainable mathematical formula rather than black-box AI ratings.
+* **Evidence Provenance & Gap Tracking:** Every metric retains its citation and relation type (Exact, Unit-Converted, Categorical-Normalized, Contextual Proxy). Missing or unevidenced attributes are explicitly tracked as blocking or non-blocking *Information Gaps* instead of being assumed or hallucinated.
+
+#### 2. During Construction: Change Intelligence & Verification Pipeline
+* **Submittal PDF & Spec Sheet Ingestion:** PyMuPDF OCR extracts structured mechanical, electrical, and dimensional parameters directly from manufacturer submittals.
+* **9 Deterministic Verification Gates:** Evaluates strict pre-comparison boundary criteria (Manufacturer Comparability, Voltage/Phase Matching, Refrigerant Compliance, Rated Ambient vs Site ASHRAE Climate Extremes, Physical Footprint Boundary, and Structural Floor Loading).
+* **13 Pint Unit-Checked Deltas:** Computes unit-safe physical and electrical deltas (Weight, Dimensions, FLA, MCA, MOCP, Power Input, Refrigerant Charge, Cooling Capacity, COP) with dimensional safety thresholds.
+* **Facility Design Margins & Headroom:** Tracks remaining substation transformer headroom, central chilled water duty, and structural slab capacities. Missing baseline capacities are explicitly flagged as `NEEDS_INFORMATION`.
+* **Cumulative Cascade Loading Analysis:** Evaluates the combined, facility-wide impact of multiple concurrent equipment substitutions across electrical infrastructure, standby generators, and structural steel.
+* **11-Category Recommendation Studio:** Uses NLP constraint extraction to query benchmark equipment catalogs and rank alternatives using deterministic multi-criteria scoring.
+* **Automated Action Packages & RFIs:** Generates formal engineering drafts (RFIs to Engineers of Record, vendor clarification requests, engineering review packages) complete with calculated delta tables and source citations.
+* **Project Knowledge MCP Agent:** Interactive engineering copilot equipped with hybrid vector RAG and automatic detection of stale project assumptions invalidated by field modifications.
+
+---
+
+## Tech Stack & Libraries
+
+### Backend Stack
+* **`fastapi` (`>=0.110`)**: Asynchronous API framework and typed OpenAPI contract generator.
+* **`uvicorn[standard]` (`>=0.29`)**: High-throughput ASGI production server.
+* **`pydantic` (`>=2.6`) & `pydantic-settings`**: Runtime schema validation and environment management across 19 domain models.
+* **`pint` (`>=0.23`)**: Deterministic physical and electrical unit arithmetic and dimensional verification.
+* **`pymupdf` / fitz (`>=1.24`)**: PDF specification sheet ingestion, OCR, and table/text extraction.
+* **`langgraph` (`>=0.2`)**: Stateful graph orchestration for multi-step agent investigations.
+* **`httpx` (`>=0.27`)**: Asynchronous HTTP client for external geospatial and environmental APIs.
+* **`redis` (`>=5.0`)**: In-memory caching for external datasets and distributed rate-limiting.
+* **`pytest` (`>=8.1`) & `ruff` (`>=0.4`)**: Automated test runner and high-speed Python static analysis.
+
+### Frontend Stack
+* **`react` & `react-dom` (`^18.3.1`)**: Component-driven UI architecture for engineering telemetry.
+* **`typescript` (`^5.6.3`)**: Strict static type checking matching backend Pydantic schemas.
+* **`vite` (`^6.0.5`)**: Development server with instant HMR and optimized production rollup builds.
+* **`tailwindcss` (`^4.0.0`)**: Curated engineering design system and responsive layout styling.
+* **`lucide-react` (`^0.469.0`)**: High-clarity technical iconography.
+* **`recharts` (`^2.15.0`)**: Reactive visual charts for electrical deltas, design margins, and site rankings.
+* **`leaflet` & `react-leaflet` (`^1.9.4` / `^4.2.1`)**: Geospatial site parcel mapping and boundary visualization.
+
+---
+
+## Agent Architecture
+
+The platform deploys four specialized AI agents designed to plan, retrieve, and synthesize engineering context without performing unverified calculations:
+
+```mermaid
+flowchart LR
+    subgraph Inputs["Engineering Inputs"]
+        SUBMITTAL["Equipment Submittals & Spec Sheets (PDF)"]
+        PARCEL_GEO["Candidate Site Coordinates & Geocode"]
+        USER_QUERY["Natural Language Queries & Prompts"]
+    end
+
+    subgraph Agents["Specialized AI Agents"]
+        direction TB
+        A1["1. Site Intelligence Supervisor (LangGraph)<br/>Plans 8-dimension data harvesting & gap tracking"]
+        A2["2. Change Orchestrator Agent<br/>Coordinates 7-phase substitution verification"]
+        A3["3. Requirement Parser Agent<br/>Converts natural language into formal physics constraints"]
+        A4["4. Project Knowledge MCP Agent<br/>Multi-tool RAG copilot with verified PDF citations"]
+    end
+
+    subgraph Engines["Deterministic Engines"]
+        E1["Spatial Scoring Engine"]
+        E2["9 Gates & 13 Pint Deltas"]
+        E3["Catalog Matcher & Ranker"]
+        E4["Stale Assumption Invalidation"]
+    end
+
+    subgraph Outputs["Decision & Action Deliverables"]
+        O1["Site Rankings & Evidence Dossier"]
+        O2["Decision State (CLOSED / REVIEW / NEEDS INFO)"]
+        O3["Top 3 Equipment Replacements"]
+        O4["Action Packages & RFI Drafts"]
+    end
+
+    PARCEL_GEO --> A1 --> E1 --> O1
+    SUBMITTAL --> A2 --> E2 --> O2
+    USER_QUERY --> A3 --> E3 --> O3
+    USER_QUERY --> A4 --> E4 --> O4
 ```
-                                  +---------------------------------------+
-                                  |         React / Vite Web UI           |
-                                  +-------------------+-------------------+
-                                                      |
-                                                      v
-                                  +---------------------------------------+
-                                  |         FastAPI Gateway Layer         |
-                                  +---------+-------------------+---------+
-                                            |                   |
-                     +----------------------+                   +---------------------+
-                     |                                                                |
-                     v                                                                v
-+--------------------------------------------+                   +--------------------------------------------+
-|            AGENTIC WORKFLOWS               |                   |           DETERMINISTIC ENGINES            |
-|                                            |                   |                                            |
-| * Change Orchestrator Agent                |                   | * 9 Verification Gates (gates.py)          |
-| * Site Intelligence Supervisor (LangGraph) |                   | * 13 Pint Unit-Checked Deltas (deltas.py)  |
-| * Project Knowledge MCP Agent              |                   | * Facility Design Margins (margins.py)     |
-| * Requirement Parser Agent                 |                   | * Multi-Change Cascade Loading (cascade.py)|
-+--------------------+-----------------------+                   | * Catalog Recommendation (catalog.py)     |
-                     |                                           | * Cost & Schedule Impact (cost_schedule.py)|
-                     +----------------------+                    | * Multi-Factor Site Scoring (scoring.py)   |
-                                            |                    +--------------------+-----------------------+
-                                            v                                         v
-                                  +---------------------------------------------------+---+
-                                  |               SHARED UNIFIED STATE                |
-                                  |                                                       |
-                                  | * Evidence Store with Full Provenance & Relations    |
-                                  | * Information Gap Tracking (Blocking / Non-Blocking)  |
-                                  | * Dependency Impact Graph (Cross-Discipline Traversal)|
-                                  | * Stale Assumption Detection & Invalidation Engine    |
-                                  +-------------------------------------------------------+
-```
+
+### Agent Roles & Specifications
+
+1. **Site Intelligence Supervisor (`apps/api/app/agent/workflow.py` & `planner.py`)**
+   * **Role:** LangGraph-based supervisor that progressively investigates candidate parcels.
+   * **Workflow:** Assesses coordinates, calls external dataset adapters (USGS elevation, FEMA flood maps, EIA electrical grids, EPA water quality, ASHRAE climate stations), flags missing parameters as unassumed *Information Gaps*, and feeds validated evidence to the scoring engine.
+
+2. **Change Orchestrator Agent (`apps/api/app/agent/change_orchestrator.py`)**
+   * **Role:** Coordinates the 7-phase verification lifecycle of proposed equipment substitutions.
+   * **Workflow:** Extracts submittal parameters, triggers verification gates, runs Pint unit delta checks, evaluates facility margins, and determines the formal engineering decision state.
+
+3. **Requirement Parser Agent (`apps/api/app/agent/change_orchestrator.py`)**
+   * **Role:** Natural language translator for engineering queries.
+   * **Workflow:** Parses inputs such as *"Need a 1500 kW water-cooled chiller with COP > 6.0 and footprint under 25 m2"* into typed mathematical constraints (`cooling_capacity >= 1500 kW`, `cop > 6.0`, `footprint <= 25 m2`) for catalog ranking.
+
+4. **Project Knowledge & Document Agent (`apps/api/app/agent/knowledge_agent.py`)**
+   * **Role:** Model Context Protocol (MCP) copilot for active construction review.
+   * **Workflow:** Queries hybrid vector/BM25 embeddings of ingested submittals, inspects live project assumptions, performs live web queries for manufacturer datasheets, and flags stale assumptions when newly uploaded documents contradict earlier baselines.
 
 ---
 
-## AI Agents in the Architecture
+## Key Features
 
-1. **Change Orchestrator Agent (`apps/api/app/agent/change_orchestrator.py`)**
-   * Manages the lifecycle of an equipment substitution review.
-   * Coordinates extraction of submittal parameters, triggers verification gates, runs Pint unit delta checks, evaluates facility margins, and determines the formal engineering decision state.
+### 1. Change Intelligence (During Construction)
+* **9 Deterministic Verification Gates:** Boundary checks verifying Manufacturer Comparability, Voltage/Phase Match, Refrigerant Environmental Suitability, Rated Ambient vs Site ASHRAE Climate Extremes, Physical Footprint Boundary, and Structural Floor Loading.
+* **13 Pint Unit-Checked Deltas:** Mathematical differences for Weight, Length, Width, Height, Voltage, Full Load Amps, MCA, MOCP, Power Input, Refrigerant Charge, Cooling Capacity, and COP.
+* **Facility Design Margins:** Computes remaining electrical substation capacity, central plant chilled water duty, and structural slab capacity. Missing baselines are flagged explicitly as `NEEDS_INFORMATION`.
+* **Cost, Energy & Schedule Impact:** Calculates annual OPEX deltas (energy and water utility costs) and flags critical-path lead-time schedule delay risks.
+* **Equipment Recommendation Studio:** Multi-category catalog covering 11 equipment types with deterministic multi-criteria scoring out of 100.
+* **Cumulative Cascade Loading Analysis:** Assesses facility-wide cumulative impacts of simultaneous changes against substation transformer, backup generator, and structural steel limits.
+* **Action Package & RFI Generator:** Generates structured drafts for RFIs to Engineers of Record (EOR), vendor clarification requests, and engineering change sign-off packages.
 
-2. **Site Intelligence Supervisor (`apps/api/app/agent/workflow.py` & `planner.py`)**
-   * A LangGraph-powered state machine that plans site evaluation sequences across 8 spatial and civil dimensions.
-   * Dispatches data-gathering tasks to external dataset adapters (USGS, FEMA, EIA, EPA, NOAA), identifies unverified parameters as information gaps, and feeds validated evidence into the scoring engine.
-
-3. **Project Knowledge & Document Agent (`apps/api/app/agent/knowledge_agent.py`)**
-   * A Model Context Protocol (MCP) copilot that interfaces with project submittals and engineering drawings.
-   * Searches PDF vector embeddings, executes live web queries for manufacturer specs, inspects live project state, and provides verified page-level citations for technical inquiries.
-
-4. **Requirement Parser Agent (`apps/api/app/agent/change_orchestrator.py`)**
-   * Translates natural language equipment inquiries into structured physics, electrical, and dimensional constraints with mathematical operators (e.g., `cooling_capacity >= 1200 kW`, `voltage == 480 V`).
-
----
-
-## Feature Architecture: Change Intelligence (During Construction)
-
-The During Construction workspace manages equipment substitutions and engineering changes with 5 primary sub-features:
-
-### 1. Change Intelligence & Verification
-* **9 Deterministic Verification Gates (`gates.py`):** Pre-comparison boundary checks that must be satisfied before substitution approval (e.g., Manufacturer Comparability, Voltage/Phase Match, Refrigerant Environmental Suitability, Rated Ambient vs Site ASHRAE Climate Extremes, Physical Footprint Boundary, Structural Floor Loading).
-* **13 Pint Unit-Checked Deltas (`deltas.py` & `units.py`):** Dimensionally verified physical and electrical deltas (Weight, Length, Width, Height, Voltage, Full Load Amps, MCA, MOCP, Power Input, Refrigerant Charge, Cooling Capacity, COP).
-* **Deterministic Design Margins (`margins.py`):** Evaluates remaining facility headroom (electrical substation capacity, central plant chilled water duty, structural slab capacity). If baseline capacity is unbacked by evidence, it explicitly assigns `NEEDS_INFORMATION` rather than hallucinating safety.
-* **Cost, Energy & Schedule Impact (`cost_schedule.py`):** Calculates annual energy and water utility cost deltas based on efficiency curves and evaluates critical-path lead-time schedule delay risks.
-* **Dependency Impact Graph (`impact.py`):** Traverses cross-discipline dependencies (electrical, mechanical, civil, structural, environmental) to identify downstream components affected by a change.
-
-### 2. Equipment Recommendation Studio (`catalog_engine.py`)
-* **Multi-Category Catalog:** Covers 11 critical equipment classes (Chillers, CRAH fan walls, AHUs, Cooling Towers, Pumps, Substation Transformers, Modular UPS, Standby Generators, Switchgear, PDUs, Economizer Heat Exchangers).
-* **Deterministic Multi-Criteria Ranking:** Scores candidates out of 100 based on weighted engineering parameters: Capacity (25%), Energy Efficiency / COP (20%), Electrical Compatibility (15%), Climate Design Fit (10%), Physical Footprint (10%), and Acoustic/Refrigerant limits.
-* **One-Click Impact Pipeline:** Automatically loads top-ranked catalog alternatives into the verification pipeline for instant impact re-calculation.
-
-### 3. Cumulative Cascade Loading Analysis (`cascade.py`)
-* **Facility-Wide Multi-Change Aggregation:** Assesses the cumulative impact of multiple concurrent equipment substitutions across an entire facility.
-* **Infrastructure Headroom Protection:** Aggregates electrical load changes ($\Delta\text{kW}$), structural weight increases ($\Delta\text{kg}$), and cooling duty changes ($\Delta\text{kW}$) to ensure simultaneous changes do not collectively overload substation transformers, backup generators, or roof steel.
-* **Binary Facility Verdict:** Produces an overall status (`WITHIN_FACILITY_LIMITS` or `EXCEEDED_CAPACITY`) with detailed engineering boundary explanations.
-
-### 4. Action Package & RFI Generator (`routers/during.py`)
-* **Structured Engineering Documentation:** Generates formal documentation drafts tailored for project stakeholders:
-  * **RFIs (Requests for Information):** Formatted for the Structural Engineer of Record (EOR), Electrical Lead, or Mechanical Consultant.
-  * **Vendor Clarification Requests:** Requests missing submittal data directly from suppliers.
-  * **Engineering Change Review Packages:** Executive summaries with delta tables and governing specifications for client sign-off.
-* **Evidence Citation & Export:** Links all calculated deltas and references directly to source submittal page numbers with one-click Markdown export.
-
-### 5. Project Knowledge & Document Agent (`knowledge_agent.py`)
-* **Interactive Engineering Copilot:** Queries ingested PDF specifications, engineering submittals, and site contracts using hybrid vector and BM25 search.
-* **Real-Time Tool Execution:** Can run diagnostic calculations, query the live project state, and conduct external web queries through integrated MCP tools.
-* **Stale Assumption Invalidation:** Automatically detects when new submittals or field changes invalidate earlier engineering assumptions.
+### 2. Site Intelligence (Before Construction)
+Evaluates candidate parcels across an 8-dimension deterministic matrix:
+1. **Terrain & Topography:** Slope variance, digital elevation models (DEM), earthwork cut-and-fill.
+2. **Water Availability & Quality:** Municipal water capacity, groundwater total dissolved solids (TDS), and pH.
+3. **Power Infrastructure:** Transmission line proximity, grid capacity, utility SAIDI/SAIFI reliability history.
+4. **Fiber Connectivity:** Distance to long-haul fiber routes, carrier point-of-presence (PoP) density.
+5. **Civil & Geotechnical:** Soil bearing capacity, seismic peak ground acceleration (PGA), liquefaction risks.
+6. **Natural Hazards:** FEMA 100-year and 500-year flood plain boundaries, wildfire risk indices.
+7. **Environmental & Climate:** ASHRAE 0.4% and 1.0% dry-bulb / coincident wet-bulb design conditions (StationFinder).
+8. **Zoning & Regulatory:** Heavy industrial zoning compatibility, local environmental permitting timelines.
 
 ---
 
-## Feature Architecture: Site Intelligence (Before Construction)
+## Decision Precedence
 
-The Before Construction workspace evaluates candidate site locations across 8 distinct dimensions:
+Every equipment substitution resolves deterministically through a strict decision ladder:
 
-1. **Terrain & Topography:** Slope analysis, elevation changes, cut-and-fill grading complexity.
-2. **Water Availability & Quality:** Municipal capacity, groundwater chemistry (TDS/pH), cooling water source availability.
-3. **Power Infrastructure:** Substation proximity, transmission line voltage, utility reliability metrics (SAIDI/SAIFI from EIA-861).
-4. **Fiber Connectivity:** Distance to long-haul fiber routes, carrier density, latency metrics.
-5. **Civil & Geotechnical:** Soil bearing capacity, seismic risk, soil expansion potential.
-6. **Natural Hazards:** FEMA flood zone classifications, wildfire risk, extreme weather frequency.
-7. **Environmental & Climate:** ASHRAE 0.4% and 1.0% dry-bulb/wet-bulb temperatures from StationFinder, wetland delineations, air permit constraints.
-8. **Zoning & Regulatory:** Industrial zoning compliance, local permitting timeline estimates.
-
-Each site receives an explainable, deterministic score with exact evidence citations and an explicit list of missing data gaps.
-
----
-
-## Decision State Precedence
-
-Every change case resolves deterministically to one of three engineering states:
-
-```
-[ Incoming Substitution Case ]
-              │
-              ▼
-   Any required parameters
-    missing or unevidenced? ──────► YES ──────► [ NEEDS INFORMATION ]
-              │                                 (Generates Information Gaps)
-              ▼ NO
-   Any verification gate failed
-     OR delta threshold breached
-     OR site design limit exceeded? ─► YES ───► [ ENGINEER REVIEW ]
-              │                                 (Triggers Impact Graph Traversal)
-              ▼ NO
-  [ FIRST-PASS CHECKS CLOSED ]
-  (Within all design limits)
+```mermaid
+flowchart TD
+    START([Incoming Equipment Substitution Case]) --> CHECK_EVIDENCE{Are all mandatory<br/>parameters evidenced?}
+    
+    CHECK_EVIDENCE -->|No: Missing Specs| STATE_GAP[NEEDS INFORMATION]
+    STATE_GAP --> ACTION_GAP[Create Information Gaps & Draft Vendor Clarification Request]
+    
+    CHECK_EVIDENCE -->|Yes: Full Specs| CHECK_GATES{Do all 9 Verification<br/>Gates pass AND all deltas<br/>fall within thresholds?}
+    
+    CHECK_GATES -->|No: Threshold Exceeded<br/>or Site Limit Breached| STATE_REV[ENGINEER REVIEW]
+    STATE_REV --> ACTION_REV[Traverse Impact Graph, Flag Stale Assumptions & Draft RFI to EOR]
+    
+    CHECK_GATES -->|Yes: Fully Compliant| STATE_OK[FIRST-PASS CHECKS CLOSED]
+    STATE_OK --> ACTION_OK[Issue Routine Substitution Record & Close Review]
 ```
 
 ---
@@ -169,37 +197,32 @@ Every change case resolves deterministically to one of three engineering states:
 * Python 3.10+
 * Node.js 20+
 
-### Single Command Launch
+### Single-Command Start
 ```bash
 python scripts/dev.py
 ```
-This script automatically sets up the Python virtual environment, installs backend and frontend dependencies, seeds synthetic demo datasets, and starts the API and UI servers.
+This sets up the virtual environment, installs dependencies, seeds synthetic demo data, and runs the API and UI concurrently.
 
-* Web UI: `http://localhost:5173`
-* Backend API: `http://127.0.0.1:8000`
-* Interactive API Documentation: `http://127.0.0.1:8000/docs`
+* **Web UI:** `http://localhost:5173`
+* **FastAPI Backend:** `http://127.0.0.1:8000`
+* **Interactive OpenAPI Docs:** `http://127.0.0.1:8000/docs`
 
-### Useful Development Commands
+### CLI Utility Commands
 ```bash
-python scripts/dev.py --reset    # Wipe and re-seed the local database
-python scripts/dev.py --check    # Run pytest, ruff lint, type check, and web build
-python scripts/dev.py --api-only # Run API server only
-python scripts/dev.py --ui-only  # Run frontend UI server only
+python scripts/dev.py --reset    # Wipe SQLite/vector cache and re-seed synthetic data
+python scripts/dev.py --check    # Run full verification suite (pytest, ruff, tsc, vite build)
+python scripts/dev.py --api-only # Run FastAPI backend only
+python scripts/dev.py --ui-only  # Run Vite frontend only
 ```
 
----
-
-## Testing & Quality Assurance
-
-### Backend Tests
+### Running Tests
 ```bash
+# Backend unit & integration tests
 cd apps/api
 pytest ../../tests -v
 ruff check app ../../tests
-```
 
-### Frontend Type-Checking and Build
-```bash
+# Frontend type safety & build check
 cd apps/web
 npm run lint
 npm run build
@@ -207,15 +230,14 @@ npm run build
 
 ---
 
-## Documentation Index
+## Documentation
 
 Detailed architectural and engineering documentation is available in the [`docs/`](docs/) directory:
 
-* [`docs/architecture.md`](docs/architecture.md): Detailed component architecture and data flow diagrams.
-* [`docs/domain-model.md`](docs/domain-model.md): Comprehensive schema definitions and evidence lifecycle.
-* [`docs/engineering-rules.md`](docs/engineering-rules.md): Verification gates, delta thresholds, and decision precedence logic.
-* [`docs/scoring.md`](docs/scoring.md): Multi-factor site scoring formulas and weighting methodology.
+* [`docs/architecture.md`](docs/architecture.md): Component interaction models and state charts.
+* [`docs/domain-model.md`](docs/domain-model.md): Schema definitions and evidence lifecycle rules.
+* [`docs/engineering-rules.md`](docs/engineering-rules.md): Verification gates, delta thresholds, and safety limits.
+* [`docs/scoring.md`](docs/scoring.md): Multi-factor parcel scoring mathematical formulas and weights.
 * [`docs/api.md`](docs/api.md): REST API endpoints and payload specifications.
-* [`docs/production-lld.md`](docs/production-lld.md): Production deployment design (Postgres/pgvector, Redis, Kafka, Neo4j).
-* [`docs/deployment.md`](docs/deployment.md): Deployment guides for Render (API) and Vercel (Web).
-* [`docs/live-vs-demo.md`](docs/live-vs-demo.md): Configuration guide for switching from local mock adapters to live cloud services.
+* [`docs/production-lld.md`](docs/production-lld.md): Production architecture design for PostgreSQL, Redis, Kafka, and Neo4j.
+* [`docs/live-vs-demo.md`](docs/live-vs-demo.md): Service adapter configuration for mock versus live cloud infrastructure.
