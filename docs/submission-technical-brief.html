@@ -1,7 +1,7 @@
 <title>The Wet Stack</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chivo:wght@400;700&family=IBM+Plex+Mono:wght@400;500;600&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&display=swap">
 
 <style>
   /* ---- tokens: light is the base, because this document is printed ------- */
@@ -81,7 +81,7 @@
     padding-bottom: 0.7rem;
   }
   .wordmark {
-    font-family: Archivo, "Helvetica Neue", Arial, sans-serif;
+    font-family: Chivo, "Helvetica Neue", Arial, sans-serif;
     font-weight: 700;
     font-size: 1.95rem;
     letter-spacing: -0.021em;
@@ -134,10 +134,10 @@
   }
   .body { border-top: 1px solid var(--rule); padding-top: 0.34rem; }
   h2 {
-    font-family: Archivo, "Helvetica Neue", Arial, sans-serif;
+    font-family: Chivo, "Helvetica Neue", Arial, sans-serif;
     font-size: 1.06rem;
-    font-weight: 600;
-    letter-spacing: -0.011em;
+    font-weight: 700;
+    letter-spacing: -0.013em;
     margin: 0 0 0.4rem;
     text-wrap: balance;
   }
@@ -279,13 +279,43 @@
   }
 
   /* ---- print: two A4 pages, deliberately ----------------------------------- */
-  @page { size: A4; margin: 14mm 15mm; }
+  @page { size: A4; margin: 12mm 13mm; }
   @media print {
-    body { padding: 0; font-size: 9.5pt; background: #fff; color: #14181b; }
-    .sheet { max-width: none; gap: 1.05rem; }
-    .pagebreak { break-before: page; }
-    section, .colophon, .findings li, table { break-inside: avoid; }
-    .pipeline { background: #f6f8f8; }
+    /* Force the light palette: this is ink on paper whatever the screen says. */
+    :root {
+      --paper: #ffffff; --surface: #f4f7f7; --ink: #14181b; --ink-soft: #4d585d;
+      --ink-faint: #7b878c; --rule: #d5dcde; --rule-soft: #e7ecec;
+      --accent: #0f6d78; --accent-dim: #dcecec; --caution: #8a5a12;
+      --caution-dim: #f3e6cf; --absent: #8d3a3a;
+    }
+    body { padding: 0; font-size: 8.3pt; line-height: 1.4; background: #fff; }
+    .sheet { max-width: none; gap: 0.6rem; }
+
+    /* Prose may split across the break; only blocks that become unreadable
+       when divided are held together. Avoiding breaks everywhere is what
+       produced a page with four lines on it. */
+    section { break-inside: auto; }
+    /* A table held whole pushed the whole evidence block to page 2 and left two
+       inches empty at the foot of page 1. Rows stay intact; the table may span
+       the break. */
+    tr, .findings li, .thesis, .pipeline, .colophon { break-inside: avoid; }
+    table { break-inside: auto; }
+    h2 { break-after: avoid; }
+
+    section, .colophon { grid-template-columns: 4.6rem 1fr; gap: 0 1.1rem; }
+    .masthead { padding-bottom: 0.5rem; }
+    .wordmark { font-size: 1.6rem; }
+    .standfirst { font-size: 0.9rem; }
+    p { margin-bottom: 0.38rem; max-width: none; }
+    h2 { font-size: 0.98rem; margin-bottom: 0.28rem; }
+    .thesis { font-size: 0.94rem; padding: 0.45rem 0.7rem; margin-bottom: 0.5rem; max-width: none; }
+    ol.principles > li { margin-bottom: 0.32rem; }
+    .findings { gap: 0.32rem; }
+    table { font-size: 0.8rem; }
+    th, td { padding: 0.22rem 0.6rem 0.22rem 0; }
+    .pipeline { font-size: 0.6rem; line-height: 1.7; background: #f6f8f8; }
+    .stack { gap: 0.42rem; }
+
     a { color: inherit; text-decoration: none; }
   }
 </style>
@@ -352,17 +382,14 @@
             </tbody>
           </table>
         </div>
-        <p>A seven-node LangGraph loop (Understand, Plan, Evidence, Signals, Replan, Impact, Action) runs over 30 concepts across 8 dimensions: water, power, connectivity, civil, hazards, terrain, environmental, regulatory.</p>
-<div class="pipeline">React + Vite  →  FastAPI  →  ├─ <b>Mireye API</b>            live physical data
-                             ├─ <b>5 public datasets</b>     bundled, offline
-                             ├─ <b>Scoring engine</b>        Pint-checked units
-                             ├─ <b>Ingestion + OCR</b>       PDF and scans
-                             └─ <b>Neo4j</b>                 impact graph</div>
+        <p>A seven-node LangGraph loop (Understand, Plan, Evidence, Signals, Replan, Impact, Action) runs over 30 concepts across 8 dimensions: water, power, connectivity, civil, hazards, terrain, environmental and regulatory.</p>
+<div class="pipeline">React + Vite  →  FastAPI  →  <b>Mireye API</b> · <b>5 public datasets</b> · <b>scoring engine</b> (Pint units)
+                             <b>ingestion + OCR</b> · <b>Neo4j</b> impact graph</div>
       </div>
     </div>
   </section>
 
-  <section class="pagebreak">
+  <section>
     <div class="rail"><b>04</b>Built</div>
     <div class="body">
       <h2>What exists, and how we know</h2>
@@ -388,7 +415,7 @@
             </tr>
             <tr>
               <th scope="row">Ingestion</th>
-              <td>PDF text plus OCR for scans. A transcribed value is carried at half confidence and flagged for a human read, because a misread digit is a fabricated number with a citation on it.</td>
+              <td>PDF text plus OCR for scans. A transcribed value is carried at half confidence and flagged for a human read: a misread digit is a fabricated number with a citation on it.</td>
             </tr>
             <tr>
               <th scope="row">Verification</th>
@@ -425,10 +452,10 @@
     <div class="rail"><b>06</b>Impact</div>
     <div class="body">
       <h2>Why it matters</h2>
-      <p>A single hyperscale campus is a <strong>$1-3 bn</strong> commitment, and the siting decision is made in weeks on the thinnest evidence in the project's life.</p>
-      <p><strong>Before construction:</strong> the cost of choosing wrong is not the land. It is discovering brackish water, an unbuildable interconnection queue or a wildfire exposure after the option is signed. This surfaces them as tracked gaps with named owners, in hours rather than a six-week consultant study.</p>
+      <p>A single hyperscale campus is a <strong>$1-3 bn</strong> commitment, decided in weeks on the thinnest evidence in the project's life.</p>
+      <p><strong>Before construction:</strong> the cost of choosing wrong is not the land. It is discovering brackish water, an unbuildable interconnection queue or a wildfire exposure after the option is signed. This surfaces them as tracked gaps with named owners, in hours rather than a six-week study.</p>
       <p><strong>During construction:</strong> substitutions are constant and each is a small coordination risk. The system flags where structural, electrical or mechanical review is <em>required</em>, and never claims adequacy. That distinction is what makes it usable by the engineer who carries the liability.</p>
-      <p><strong>For Mireye:</strong> a demonstration of what the API is worth when something reasons over it rather than displaying it. Every call is credit-metered, cached against the catalog's own TTLs and budget-capped, because a product built on a paid API has to respect what it costs.</p>
+      <p><strong>For Mireye:</strong> a demonstration of what the API is worth when something reasons over it rather than displaying it. Every call is credit-metered, cached against the catalog's own TTLs and budget-capped.</p>
     </div>
   </section>
 
@@ -437,9 +464,9 @@
     <div class="body">
       <h2>What we do from here</h2>
       <ol class="principles">
-        <li><p><strong>Replace the last synthetic data.</strong> 84 document records remain and the path is written up: AHRI certified ratings and manufacturer submittals, through the upload flow that already works.</p></li>
+        <li><p><strong>Replace the last synthetic data.</strong> 84 document records remain; the path is written up. AHRI certified ratings and manufacturer submittals, through the upload flow that already works.</p></li>
         <li><p><strong>Four more public datasets.</strong> WRI Aqueduct, USGS 3DEP, USDA CropScape and NOAA ISD, each with its blocker and its procedure documented.</p></li>
-        <li><p><strong>Production architecture.</strong> Kafka, Redis, Postgres and a projection-based impact graph, designed with a migration order whose first four steps carry a real pilot on their own.</p></li>
+        <li><p><strong>Production architecture.</strong> Kafka, Redis, Postgres and a projection-based impact graph, with a migration order whose first four steps carry a pilot on their own.</p></li>
       </ol>
     </div>
   </section>
@@ -448,7 +475,7 @@
     <div class="rail">Colophon</div>
     <div>
       <p class="stackline">React 18 · TypeScript · Vite · Tailwind · FastAPI · Pydantic v2 · LangGraph · Pint · Neo4j AuraDB · SQLite / pgvector · Tesseract · OpenAI · Render (Docker) + Vercel</p>
-      <p style="margin-top:0.3rem">Repository <code>github.com/RishiiGamer2201/the-wet-stack-mireye</code>, 42 commits, ~21,000 lines, 15 documents including a verified Mireye contract reference, a public-dataset procedure guide and a production low-level design.</p>
+      <p style="margin-top:0.28rem">Repository <code>github.com/RishiiGamer2201/the-wet-stack-mireye</code>, 42 commits, ~21,000 lines, 15 documents including a verified Mireye contract reference, a public-dataset guide and a production low-level design.</p>
     </div>
   </div>
 
