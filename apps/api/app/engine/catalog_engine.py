@@ -17,7 +17,6 @@ from ..domain import (
     StructuredConstraint,
     StructuredRequirementSet,
 )
-from . import units
 
 log = logging.getLogger("catalog_engine")
 
@@ -112,11 +111,25 @@ def evaluate_candidate_product(
     # 2. Multi-Criteria Scoring (0 - 100)
     scores: dict[str, float] = {}
 
-    # Capacity Margin (25%)
-    cooling_kw = model.get("cooling_capacity_kw") or model.get("thermal_capacity_kw") or model.get("standby_rating_kw") or 1000.0
-    req_cap = _find_constraint_val(constraints, ["cooling_capacity", "capacity", "power_capacity_kw"], default=1000.0)
-    cap_ratio = cooling_kw / max(req_cap, 1.0)
-    scores["capacity_margin"] = min(100.0, max(0.0, 70.0 + (cap_ratio - 1.0) * 100.0))
+    # Capacity Margin (25%). A catalog entry that states no capacity is not
+    # scored on capacity; assuming one ranks an unspecified product against a
+    # described one.
+    cooling_kw = (
+        model.get("cooling_capacity_kw")
+        or model.get("thermal_capacity_kw")
+        or model.get("standby_rating_kw")
+    )
+    req_cap = _find_constraint_val(
+        constraints, ["cooling_capacity", "capacity", "power_capacity_kw"], default=None
+    )
+    if cooling_kw and req_cap:
+        cap_ratio = cooling_kw / max(req_cap, 1.0)
+        scores["capacity_margin"] = min(100.0, max(0.0, 70.0 + (cap_ratio - 1.0) * 100.0))
+    elif not cooling_kw:
+        warnings.append(
+            f"{model.get('model_number', 'This model')} publishes no rated capacity, "
+            "so capacity margin was not scored."
+        )
 
     # Energy Efficiency / COP (20%)
     cop = model.get("cop")
@@ -133,9 +146,17 @@ def evaluate_candidate_product(
     mod_volt = model.get("voltage_v") or 480
     scores["electrical_compatibility"] = 100.0 if mod_volt == req_volt else 0.0
 
-    # Climate Margin (10%)
-    amb_margin = max_ambient - (site_climate_db_c or 35.0)
-    scores["climate_margin"] = min(100.0, max(0.0, 50.0 + amb_margin * 5.0))
+    # Climate Margin (10%). The site's ambient design dry-bulb is a measurement
+    # of the user's site. Substituting a plausible one moves every candidate's
+    # ranking on a number nobody supplied.
+    if site_climate_db_c is not None:
+        amb_margin = max_ambient - site_climate_db_c
+        scores["climate_margin"] = min(100.0, max(0.0, 50.0 + amb_margin * 5.0))
+    else:
+        warnings.append(
+            "Site ambient design dry-bulb is not known, so climate margin was not "
+            "scored. Supply it to rank candidates on high-ambient derating."
+        )
 
     # Physical Compatibility / Weight / Footprint (10%)
     length = model.get("length_mm", 4000) / 1000.0
@@ -157,8 +178,14 @@ def evaluate_candidate_product(
     # Project Compatibility (5%)
     scores["project_compatibility"] = 95.0 if status == "COMPATIBLE" else (65.0 if status == "CONDITIONALLY_COMPATIBLE" else 20.0)
 
-    # Compute Total Weighted Score
-    total_score = sum(scores.get(k, 70.0) * weights.get(k, 0.1) for k in weights)
+    # Compute the weighted score over the criteria that were actually scored, and
+    # renormalise. Filling an unscored criterion with a neutral 70 would let a
+    # product with unknown capacity out-rank one that simply scores badly.
+    scored_weight = sum(weights.get(k, 0.1) for k in scores)
+    if scored_weight > 0:
+        total_score = sum(scores[k] * weights.get(k, 0.1) for k in scores) / scored_weight
+    else:
+        total_score = 0.0
     total_score = round(min(100.0, max(0.0, total_score)), 1)
 
     # Build Narrative Explanation
@@ -238,8 +265,8 @@ def _check_constraint(model: dict[str, Any], c: StructuredConstraint) -> tuple[b
 
 
 def _find_constraint_val(
-    constraints: list[StructuredConstraint], params: list[str], default: float
-) -> float:
+    constraints: list[StructuredConstraint], params: list[str], default: float | None
+) -> float | None:
     for c in constraints:
         if c.parameter.lower() in params:
             try:

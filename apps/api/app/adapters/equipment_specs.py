@@ -15,8 +15,6 @@ import math
 from dataclasses import dataclass
 from pathlib import Path
 
-from ..config import get_settings
-
 log = logging.getLogger("equipment_specs")
 
 BUNDLED_DIR = Path(__file__).resolve().parent.parent / "data" / "datasets"

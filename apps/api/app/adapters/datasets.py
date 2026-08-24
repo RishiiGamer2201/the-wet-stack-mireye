@@ -479,8 +479,10 @@ class WaterQualityPortal:
                 + f", within {self.SEARCH_RADIUS_KM} km of the site."
                 + (f" The reading is {age} years old." if stale else ""),
                 confidence=0.5 if stale else 0.7,
-                relation=EvidenceRelation.EXACT,
-                relation_note="A sample from a nearby monitoring station, providing regional groundwater chemistry.",
+                relation=EvidenceRelation.CONTEXTUAL_PROXY,
+                relation_note="A sample from a nearby monitoring station, not from this "
+                "site's supply. It indicates regional groundwater chemistry and cannot "
+                "stand in for an analysis of the actual source water.",
             )
         }
 
@@ -645,8 +647,11 @@ class EIAReliability:
                 f"{county['state']}: {listing}. Shown: the worst, SAIDI excluding Major "
                 "Event Days.",
                 confidence=0.6,
-                relation=EvidenceRelation.EXACT,
-                relation_note="EIA Form EIA-861 utility reliability data for the county.",
+                relation=EvidenceRelation.CONTEXTUAL_PROXY,
+                relation_note="A utility-wide annual average for a whole county, not this "
+                "site's feeder. Which utility serves the parcel is not public, and "
+                "reliability varies widely within one territory. Ask the serving utility "
+                "for circuit-level outage history.",
             )
         }
 

@@ -82,7 +82,10 @@ CANONICAL_RELATIONS = frozenset(
         EvidenceRelation.EXACT,
         EvidenceRelation.UNIT_CONVERTED,
         EvidenceRelation.CATEGORICAL_NORMALIZED,
-        EvidenceRelation.CONTEXTUAL_PROXY,
+        # CONTEXTUAL_PROXY is deliberately absent. A proxy is a real, cited,
+        # *different* measurement: readable everywhere, and structurally unable
+        # to populate a value, close a gap, add coverage or pass a gate. Adding
+        # it here is what lets wet-bulb satisfy a dry-bulb check.
     }
 )
 

@@ -9,7 +9,6 @@ from ..adapters.graphstore import get_graph_store
 from ..agent import workflow
 from ..domain import (
     Assumption,
-    CandidateProduct,
     CandidateSite,
     CascadeImpactSummary,
     CostScheduleImpact,
@@ -371,7 +370,7 @@ def get_change_margins(
     store: Store = Depends(store_dep),
 ):
     """Compute remaining design margins (structural, electrical, thermal, cooling, water, generator, transformer)."""
-    from ..domain import CandidateSite, DesignMargin, Equipment, EquipmentChange, Requirement
+    from ..domain import CandidateSite, Equipment, EquipmentChange, Requirement
     from ..engine import margins as margins_engine
 
     change = store.get(C.CHANGES, change_id, EquipmentChange)
@@ -447,7 +446,7 @@ def get_change_cost_schedule(
     store: Store = Depends(store_dep),
 ):
     """Calculate deterministic energy OPEX and schedule delay impact."""
-    from ..domain import CostScheduleImpact, Equipment, EquipmentChange
+    from ..domain import Equipment, EquipmentChange
     from ..engine import cost_schedule as cost_engine
 
     change = store.get(C.CHANGES, change_id, EquipmentChange)
@@ -482,7 +481,7 @@ def run_cascade_analysis(
     store: Store = Depends(store_dep),
 ):
     """Aggregate multi-change cumulative loading on power, transformer, and structural capacity."""
-    from ..domain import CascadeImpactSummary, EquipmentChange
+    from ..domain import EquipmentChange
     from ..engine import cascade as cascade_engine
 
     all_changes = store.list(C.CHANGES, EquipmentChange, project_id=project.id)

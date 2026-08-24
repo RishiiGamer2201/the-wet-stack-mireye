@@ -11,7 +11,6 @@ Strict Rule: If cost data is absent, flag as NEEDS_INFORMATION rather than fabri
 from __future__ import annotations
 
 import logging
-from typing import Any
 
 from ..domain import (
     CostScheduleImpact,

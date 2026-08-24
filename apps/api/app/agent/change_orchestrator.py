@@ -10,40 +10,25 @@ Coordinates:
 
 from __future__ import annotations
 
-import json
 import logging
 import re
-import time
-from typing import Any
 
 from ..adapters.equipment_specs import get_equipment_specs_adapter
-from ..adapters.llm import get_llm
 from ..domain import (
-    CandidateProduct,
-    CandidateSite,
-    DecisionLineageRecord,
     DecisionState,
     Discipline,
     Equipment,
     EquipmentChange,
     EquipmentConfiguration,
-    Evidence,
-    EvidenceSource,
-    EvidenceStatus,
     Investigation,
-    NextAction,
-    NextActionType,
     ProductRecommendationResult,
     Project,
     Quantity,
-    Requirement,
-    SourceType,
     StructuredConstraint,
     StructuredRequirementSet,
-    VerificationStatus,
     now,
 )
-from ..engine import catalog_engine, decisions, deltas, gates, impact as impact_engine, margins
+from ..engine import catalog_engine
 from ..schemas import ActionPackageResponse
 from ..store import C, Store
 
@@ -60,9 +45,14 @@ def parse_natural_language_requirements(
     equipment_type: str | None = None,
     project_id: str = "default",
 ) -> StructuredRequirementSet:
-    """Extract structured engineering constraints from a natural language request."""
-    # Attempt extraction via LLM if available
-    llm = get_llm()
+    """Extract structured engineering constraints from a natural language request.
+
+    Deliberately deterministic. The parsing below is regex over the user's own
+    words, so a constraint the system acts on is one the user actually typed. A
+    language model reading "at least 1400 kW" and returning 1400 would be doing
+    the same job less predictably, and the project's rule is that no number
+    reaching an engineering check comes from a model.
+    """
     constraints: list[StructuredConstraint] = []
     detected_type = equipment_type or "chiller"
 

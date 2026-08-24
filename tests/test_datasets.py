@@ -180,8 +180,9 @@ def test_non_mgl_units_and_censored_values_are_discarded():
 
 def test_tds_is_contextual_not_the_sites_own_water(wqp):
     value = wqp.values_for(*CASCADE)["water_quality_tds_mg_l"]
-    assert value.relation is EvidenceRelation.EXACT
+    assert value.relation is EvidenceRelation.CONTEXTUAL_PROXY
     assert value.unit == "mg/l"
+    assert "not from this" in (value.relation_note or "")
     assert "mg/L sampled" in (value.detail or "")
 
 
@@ -318,7 +319,8 @@ def test_reliability_reports_the_worst_utility_in_the_county(eia):
 
 def test_reliability_is_context_because_it_describes_a_territory_not_a_feeder(eia):
     value = eia.values_for(39.0164, -77.4590)["grid_reliability_saidi_min"]
-    assert value.relation is EvidenceRelation.EXACT
+    assert value.relation is EvidenceRelation.CONTEXTUAL_PROXY
+    assert "feeder" in (value.relation_note or "")
     assert "Loudoun" in value.detail
 
 

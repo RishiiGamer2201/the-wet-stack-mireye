@@ -7,7 +7,6 @@ Chiller + CRAH + Pump + UPS changes → Combined Electrical, Structural, Cooling
 from __future__ import annotations
 
 import logging
-from typing import Any
 
 from ..domain import (
     CascadeChangeItem,
@@ -96,45 +95,80 @@ def evaluate_cascade_impact(
         total_delta_cooling_kw += d_cool
         total_delta_water_m3 += d_water
 
-    # Facility Capacity Headroom Checks
-    caps = capacities or ProjectCapacities(
-        structural_roof_capacity_kg=50000.0,
-        substation_capacity_mw=10.0,
-        generator_capacity_kw=3000.0,
-        transformer_capacity_kva=2500.0,
-    )
+    # Facility capacity headroom. Headroom is a fraction of a capacity, so it can
+    # only be computed where that capacity is known. Nothing in the application
+    # populates ProjectCapacities today, which is exactly why this must report
+    # the absence rather than substitute a plausible building.
+    caps = capacities or ProjectCapacities()
 
     rationale: list[str] = []
     collective_status = "WITHIN_FACILITY_LIMITS"
+    unknown: list[str] = []
 
-    # Transformer Headroom
-    xfmr_kva = caps.transformer_capacity_kva or 2500.0
+    def headroom(capacity: float | None, consumed: float, label: str) -> float | None:
+        """Percent of capacity left, or None when the capacity is not known."""
+        if capacity is None or capacity <= 0:
+            unknown.append(label)
+            return None
+        return ((capacity - consumed) / capacity) * 100.0
+
+    # Transformer
     added_kva = total_delta_kw / 0.95
-    rem_xfmr_kva = xfmr_kva - added_kva
-    xfmr_headroom_pct = (rem_xfmr_kva / xfmr_kva) * 100.0 if xfmr_kva > 0 else 100.0
+    xfmr_headroom_pct = headroom(
+        caps.transformer_capacity_kva, added_kva, "transformer capacity (kVA)"
+    )
     if added_kva > 0:
-        rationale.append(f"Cumulative electrical addition of {total_delta_kw:+.1f} kW ({added_kva:.1f} kVA) consumes {((added_kva)/xfmr_kva)*100:.1f}% of transformer capacity.")
-    if xfmr_headroom_pct < 10.0:
+        consumed = (
+            f" ({added_kva / caps.transformer_capacity_kva * 100:.1f}% of transformer capacity)"
+            if xfmr_headroom_pct is not None
+            else ""
+        )
+        rationale.append(
+            f"Cumulative electrical addition of {total_delta_kw:+.1f} kW "
+            f"({added_kva:.1f} kVA){consumed}."
+        )
+    if xfmr_headroom_pct is not None and xfmr_headroom_pct < 10.0:
         collective_status = "FACILITY_LIMITS_EXCEEDED"
-        rationale.append("CRITICAL: Combined electrical load change exceeds safe substation transformer headroom.")
+        rationale.append(
+            "CRITICAL: Combined electrical load change exceeds safe substation transformer headroom."
+        )
 
-    # Generator Headroom
-    gen_kw = caps.generator_capacity_kw or 3000.0
-    rem_gen_kw = gen_kw - total_delta_kw
-    gen_headroom_pct = (rem_gen_kw / gen_kw) * 100.0 if gen_kw > 0 else 100.0
+    # Generator
+    gen_headroom_pct = headroom(
+        caps.generator_capacity_kw, total_delta_kw, "generator capacity (kW)"
+    )
 
-    # Structural Headroom
-    roof_kg = caps.structural_roof_capacity_kg or 50000.0
-    rem_roof_kg = roof_kg - total_delta_weight_kg
-    struct_headroom_pct = (rem_roof_kg / roof_kg) * 100.0 if roof_kg > 0 else 100.0
+    # Structure. This one is never a claim of adequacy: it reports how much of a
+    # stated allowance the added weight consumes, and a structural engineer
+    # decides what that means.
+    struct_headroom_pct = headroom(
+        caps.structural_roof_capacity_kg, total_delta_weight_kg, "structural roof allowance (kg)"
+    )
     if total_delta_weight_kg > 0:
-        rationale.append(f"Cumulative equipment weight delta is {total_delta_weight_kg:+.0f} kg across {len(evaluated_items)} substitutions.")
-    if struct_headroom_pct < 5.0:
+        rationale.append(
+            f"Cumulative equipment weight delta is {total_delta_weight_kg:+.0f} kg "
+            f"across {len(evaluated_items)} substitutions."
+        )
+    if struct_headroom_pct is not None and struct_headroom_pct < 5.0:
         collective_status = "FACILITY_LIMITS_EXCEEDED"
-        rationale.append("CRITICAL: Combined equipment weight additions exceed structural roof capacity limit.")
+        rationale.append(
+            "Combined equipment weight additions exceed the stated structural roof "
+            "allowance. Structural review required; this is not an adequacy assessment."
+        )
+
+    if unknown:
+        # An unknown capacity cannot be reported as being within limits.
+        if collective_status != "FACILITY_LIMITS_EXCEEDED":
+            collective_status = "NEEDS_INFORMATION"
+        rationale.append(
+            "Headroom not calculated for: "
+            + ", ".join(unknown)
+            + ". Supply the facility's stated capacities before relying on any "
+            "cumulative limit check."
+        )
 
     if not rationale:
-        rationale.append("All cumulative multi-equipment changes remain well within facility headroom envelope.")
+        rationale.append("No cumulative electrical, weight, cooling or water delta was found.")
 
     return CascadeImpactSummary(
         project_id=project.id,
@@ -143,9 +177,9 @@ def evaluate_cascade_impact(
         cumulative_weight_delta_kg=round(total_delta_weight_kg, 1),
         cumulative_cooling_delta_kw=round(total_delta_cooling_kw, 1),
         cumulative_water_delta_m3_yr=round(total_delta_water_m3, 1),
-        transformer_headroom_pct=round(xfmr_headroom_pct, 1),
-        generator_headroom_pct=round(gen_headroom_pct, 1),
-        structural_headroom_pct=round(struct_headroom_pct, 1),
+        transformer_headroom_pct=None if xfmr_headroom_pct is None else round(xfmr_headroom_pct, 1),
+        generator_headroom_pct=None if gen_headroom_pct is None else round(gen_headroom_pct, 1),
+        structural_headroom_pct=None if struct_headroom_pct is None else round(struct_headroom_pct, 1),
         collective_status=collective_status,
         rationale=rationale,
     )

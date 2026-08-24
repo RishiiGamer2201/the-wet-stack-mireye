@@ -13,10 +13,8 @@ Validates:
 from __future__ import annotations
 
 import pytest
-
 from app.agent import change_orchestrator
 from app.domain import (
-    CandidateProduct,
     DecisionState,
     Discipline,
     Equipment,
@@ -25,12 +23,16 @@ from app.domain import (
     MarginStatus,
     MarginType,
     Project,
+    ProjectCapacities,
     Quantity,
     Requirement,
     StructuredConstraint,
     StructuredRequirementSet,
 )
-from app.engine import cascade as cascade_engine, catalog_engine, cost_schedule as cost_engine, margins as margins_engine
+from app.engine import cascade as cascade_engine
+from app.engine import catalog_engine
+from app.engine import cost_schedule as cost_engine
+from app.engine import margins as margins_engine
 from app.store import C, Store
 
 
@@ -130,10 +132,59 @@ def test_cumulative_cascade_analysis(store: Store):
     )
     store.put(C.CHANGES, chg1, project_id=p.id)
 
+    # The deltas are arithmetic on supplied values, so they are always available.
     summary = cascade_engine.evaluate_cascade_impact(p, [chg1], store)
     assert summary.cumulative_electrical_delta_kw == 30.0
     assert summary.cumulative_weight_delta_kg == 800.0
-    assert summary.collective_status == "WITHIN_FACILITY_LIMITS"
+
+    # Headroom is a fraction of a capacity. With no capacities on the project it
+    # cannot be computed, and "within limits" would be a claim about a building
+    # nobody described.
+    assert summary.collective_status == "NEEDS_INFORMATION"
+    assert summary.transformer_headroom_pct is None
+    assert summary.structural_headroom_pct is None
+    assert summary.generator_headroom_pct is None
+    assert any("Headroom not calculated" in line for line in summary.rationale)
+
+    # Given the facility's stated capacities, the same change is measurable.
+    caps = ProjectCapacities(
+        structural_roof_capacity_kg=50_000.0,
+        generator_capacity_kw=3_000.0,
+        transformer_capacity_kva=2_500.0,
+    )
+    stated = cascade_engine.evaluate_cascade_impact(p, [chg1], store, capacities=caps)
+    assert stated.collective_status == "WITHIN_FACILITY_LIMITS"
+    assert stated.structural_headroom_pct == pytest.approx(98.4, abs=0.1)  # 800 of 50,000 kg
+    assert stated.transformer_headroom_pct is not None
+
+
+def test_cascade_will_not_report_within_limits_on_an_unknown_structure(store: Store):
+    """A stated electrical capacity does not license a structural verdict."""
+    p = Project(id="partial-caps", name="Partly Described Facility")
+    store.put(C.PROJECTS, p)
+    existing = Equipment(
+        project_id=p.id, tag="CH-9", name="Existing",
+        configuration=EquipmentConfiguration(weight=Quantity(value=6000, unit="kg")),
+    )
+    proposed = Equipment(
+        project_id=p.id, tag="CH-9", name="Proposed",
+        configuration=EquipmentConfiguration(weight=Quantity(value=9000, unit="kg")),
+    )
+    store.put(C.EQUIPMENT, existing, project_id=p.id)
+    store.put(C.EQUIPMENT, proposed, project_id=p.id)
+    change = EquipmentChange(
+        project_id=p.id, title="Heavier chiller", equipment_tag="CH-9",
+        existing_equipment_id=existing.id, proposed_equipment_id=proposed.id,
+    )
+    store.put(C.CHANGES, change, project_id=p.id)
+
+    summary = cascade_engine.evaluate_cascade_impact(
+        p, [change], store, capacities=ProjectCapacities(transformer_capacity_kva=2_500.0)
+    )
+    assert summary.transformer_headroom_pct is not None
+    assert summary.structural_headroom_pct is None
+    assert summary.collective_status == "NEEDS_INFORMATION"
+    assert any("structural roof allowance" in line for line in summary.rationale)
 
 
 def test_cost_and_schedule_impact():
