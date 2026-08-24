@@ -22,7 +22,7 @@
 
 <br/>
 
-[Quick Overview](#quick-overview) • [Problem & Solution](#problem--solution) • [Tech Stack & Libraries](#tech-stack--libraries) • [Agent Architecture](#agent-architecture) • [Key Features](#key-features) • [Decision Logic](#decision-precedence) • [Quick Start](#quick-start) • [REST API & Docs](#documentation)
+[Quick Overview](#quick-overview) • [Problem & Solution](#problem--solution) • [Tech Stack & Libraries](#tech-stack--libraries) • [Agent Architecture](#agent-architecture) • [Key Features](#key-features) • [Datasets & Actions](#datasets--dataset-actions) • [Decision Logic](#decision-precedence) • [Quick Start](#quick-start) • [REST API & Docs](#documentation)
 
 </div>
 
@@ -166,6 +166,44 @@ Evaluates candidate parcels across an 8-dimension deterministic matrix:
 6. **Natural Hazards:** FEMA 100-year and 500-year flood plain boundaries, wildfire risk indices.
 7. **Environmental & Climate:** ASHRAE 0.4% and 1.0% dry-bulb / coincident wet-bulb design conditions (StationFinder).
 8. **Zoning & Regulatory:** Heavy industrial zoning compatibility, local environmental permitting timelines.
+
+---
+
+## Datasets & Dataset Actions
+
+The platform integrates verified public datasets with strict provenance rules: every value serves its actual measurement with licensing and download dates, or stays an unassumed *Information Gap*.
+
+### Integrated Public Datasets
+
+| Source & Dataset | Module Provider | Serves Field(s) | Records / Coverage | Licence |
+| :--- | :--- | :--- | :--- | :--- |
+| **PeeringDB `/api/fac`** | `PeeringDBFacilities` | `distance_to_ix_km`, `ix_facility_carrier_count` | 1,353 US carrier hotel / IX facilities | CC-BY 4.0 |
+| **EPA / USGS Water Quality** | `WaterQualityPortal` | `water_quality_tds_mg_l` | Real lab TDS samples within 40 km radius | Public Domain |
+| **EIA Form EIA-861 (2023)** | `EIAReliability` | `grid_reliability_saidi_min` | 734 utilities across 2,840 US counties | Public Domain |
+| **USGS PAD-US 4.1** | `PADUSProtectedAreas` | `protected_area_distance_km` | 298,244 protected public land tracts | Public Domain |
+| **FEMA National Risk Index** | `FEMANationalRiskIndex` | `wildfire_risk_index` | 84,093 US census tracts | Public Domain |
+| **ASHRAE / StationFinder** | `ClimateStation` | Summer DB/WB & Winter extreme temperatures | Global WMO weather monitoring stations | WMO / ASHRAE |
+| **RacksDB & LBNL Catalog** | `equipment_reference_catalog` | Benchmark equipment physical & electrical ratings | 11 equipment categories | Open Benchmark |
+
+### Dataset Management & CLI Actions
+
+The backend provides explicit dataset lifecycle and caching actions via `app.datasets_cli`:
+
+```bash
+# 1. Inspect dataset status, availability, and served engineering fields
+python -m app.datasets_cli list
+
+# 2. Download or refresh national dataset tables into local DATA_DIR
+python -m app.datasets_cli download peeringdb
+python -m app.datasets_cli download all
+
+# 3. Pre-warm per-coordinate queries (e.g. Water Quality Portal) for all project sites
+python -m app.datasets_cli warm
+
+# 4. In-App Open Catalog Auto-Fill:
+# In the Web UI (Verification Tab), click "Auto-fill Missing Data from RacksDB"
+# to deterministically populate missing submittal fields from verified benchmarks.
+```
 
 ---
 
