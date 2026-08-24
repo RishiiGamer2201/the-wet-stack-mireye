@@ -22,7 +22,7 @@
 
 <br/>
 
-[Quick Overview](#quick-overview) • [Problem & Solution](#problem--solution) • [Tech Stack & Libraries](#tech-stack--libraries) • [Agent Architecture](#agent-architecture) • [Key Features](#key-features) • [Datasets & Actions](#datasets--dataset-actions) • [Decision Logic](#decision-precedence) • [Quick Start](#quick-start) • [REST API & Docs](#documentation)
+[Quick Overview](#quick-overview) • [Problem & Solution](#problem--solution) • [Tech Stack & Libraries](#tech-stack--libraries) • [Agent Architecture](#agent-architecture) • [Key Features](#key-features) • [Physical-World Datasets](#physical-world-datasets--lifecycle-actions) • [Decision Logic](#decision-precedence) • [Quick Start](#quick-start) • [REST API & Docs](#documentation)
 
 </div>
 
@@ -30,26 +30,27 @@
 
 ## Quick Overview
 
-**The Wet Stack: Mireye** is an engineering, procurement, and construction (EPC) intelligence platform designed for mission-critical data center developments. It connects early-stage parcel feasibility with real-time field change verification under a unified, evidence-backed architecture.
+**The Wet Stack** is an enterprise EPC intelligence platform powered by **Mireye Physical-World Intelligence APIs**. It bridges high-resolution geospatial, environmental, and infrastructure data directly into mission-critical data center feasibility and on-site construction change verification.
 
 ---
 
 ## Problem & Solution
 
 ### The Industry Problem
-* **Before Construction (Site Selection):** Developers spend months evaluating parcels using fragmented, unverified spreadsheets across power, water, climate, and soil, leading to expensive post-acquisition surprises.
+* **Before Construction (Site Selection):** Developers spend months evaluating parcels using fragmented, unverified spreadsheets across power, water, climate, and soil, leading to expensive post-acquisition surprises and delayed energization.
 * **During Construction (Equipment Substitutions):** When supply chain delays force equipment substitutions (e.g. chillers, transformers), contractors approve replacements based on superficial nameplate capacity without evaluating electrical MCA/MOCP headroom, structural slab loads, site ASHRAE extreme climate limits, or multi-equipment cascade loading.
 
-### Solution
+### Solution: Powered by Mireye Physical-World Intelligence
 
-The **Mireye Platform** eliminates data center construction and procurement risk through two unified workflows governed by a single core principle: **AI agents plan and orchestrate investigations, while deterministic Python engines execute all mathematical calculations, unit conversions, gate validations, and scoring.**
+Our solution leverages **Mireye's physical-world intelligence layer** as the ground-truth data engine. By uniting Mireye's multi-source environmental data with deterministic Python engineering engines, the platform guarantees that every feasibility ranking and field equipment change is evaluated against verified physical-world constraints:
 
-#### 1. Before Construction: Site Feasibility Intelligence
-* **Multi-Source Geospatial Ingestion:** Automatically cross-references parcel coordinates against verified public datasets (USGS 3DEP elevation, FEMA National Flood Hazard Layer, EIA-861 utility reliability, EPA Water Quality Portal, and NOAA/ASHRAE climate stations).
-* **Transparent Multi-Factor Scoring:** Scores parcels across 8 critical dimensions (Terrain, Water, Power, Fiber, Geotechnical, Natural Hazards, Climate, and Permitting) using an explainable mathematical formula rather than black-box AI ratings.
+#### 1. Before Construction: Site Feasibility Intelligence (via Mireye Data Layer)
+* **Mireye Multi-Layer Geospatial Ingestion:** Ingests 34+ physical-world parameters across terrain, water chemistry, utility grid reliability, flood zones, and extreme climate conditions directly through Mireye connectors (USGS 3DEP, FEMA NFHL, EIA-861, EPA WQP, NOAA/ASHRAE, NRCS, and FCC).
+* **Transparent Multi-Factor Scoring:** Scores parcels across 8 critical dimensions (Terrain, Water, Power, Fiber, Geotechnical, Natural Hazards, Climate, and Permitting) using an explainable mathematical formula rather than ungrounded AI predictions.
 * **Evidence Provenance & Gap Tracking:** Every metric retains its citation and relation type (Exact, Unit-Converted, Categorical-Normalized, Contextual Proxy). Missing or unevidenced attributes are explicitly tracked as blocking or non-blocking *Information Gaps* instead of being assumed or hallucinated.
 
-#### 2. During Construction: Change Intelligence & Verification Pipeline
+#### 2. During Construction: Change Intelligence & Boundary Verification
+* **Mireye Site Boundary Verification:** Directly links site-specific environmental baselines retrieved from Mireye (such as peak summer dry-bulb/wet-bulb temperatures and grid reliability) into the equipment verification pipeline.
 * **Submittal PDF & Spec Sheet Ingestion:** PyMuPDF OCR extracts structured mechanical, electrical, and dimensional parameters directly from manufacturer submittals.
 * **9 Deterministic Verification Gates:** Evaluates strict pre-comparison boundary criteria (Manufacturer Comparability, Voltage/Phase Matching, Refrigerant Compliance, Rated Ambient vs Site ASHRAE Climate Extremes, Physical Footprint Boundary, and Structural Floor Loading).
 * **13 Pint Unit-Checked Deltas:** Computes unit-safe physical and electrical deltas (Weight, Dimensions, FLA, MCA, MOCP, Power Input, Refrigerant Charge, Cooling Capacity, COP) with dimensional safety thresholds.
@@ -169,14 +170,15 @@ Evaluates candidate parcels across an 8-dimension deterministic matrix:
 
 ---
 
-## Datasets & Dataset Actions
+## Physical-World Datasets & Lifecycle Actions
 
-The platform integrates verified public datasets with strict provenance rules: every value serves its actual measurement with licensing and download dates, or stays an unassumed *Information Gap*.
+The platform uses **Mireye's Physical-World Intelligence Layer** as its primary spatial evidence backbone, complemented by verified public datasets with strict provenance rules: every value serves its actual measurement with licensing and download dates, or stays an unassumed *Information Gap*.
 
-### Integrated Public Datasets
+### Physical-World Intelligence & Dataset Sources
 
 | Source & Dataset | Module Provider | Serves Field(s) | Records / Coverage | Licence |
 | :--- | :--- | :--- | :--- | :--- |
+| **Mireye Physical-World API** | `LiveMireyeClient` / `MockMireyeClient` | 34 spatial, environmental, civil, and grid reliability fields | Live multi-source connectors (USGS, FEMA, EIA, EPA, NOAA, NREL, NRCS, FCC) | Commercial / Mireye API |
 | **PeeringDB `/api/fac`** | `PeeringDBFacilities` | `distance_to_ix_km`, `ix_facility_carrier_count` | 1,353 US carrier hotel / IX facilities | CC-BY 4.0 |
 | **EPA / USGS Water Quality** | `WaterQualityPortal` | `water_quality_tds_mg_l` | Real lab TDS samples within 40 km radius | Public Domain |
 | **EIA Form EIA-861 (2023)** | `EIAReliability` | `grid_reliability_saidi_min` | 734 utilities across 2,840 US counties | Public Domain |
