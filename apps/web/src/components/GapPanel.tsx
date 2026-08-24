@@ -1,4 +1,4 @@
-import { HelpCircle, Send } from "lucide-react";
+import { ChevronDown, ChevronUp, HelpCircle, Send } from "lucide-react";
 import { useState } from "react";
 
 import { api } from "../lib/api";
@@ -11,12 +11,15 @@ export function GapPanel({
   gaps,
   onChanged,
   title = "Missing information",
+  defaultExpanded = false,
 }: {
   projectId: string;
   gaps: InformationGap[];
   onChanged?: () => void;
   title?: string;
+  defaultExpanded?: boolean;
 }) {
+  const [isExpanded, setIsExpanded] = useState(defaultExpanded);
   const [busy, setBusy] = useState<string | null>(null);
   const open = gaps.filter((g) => g.status !== "resolved");
 
@@ -30,14 +33,56 @@ export function GapPanel({
     }
   }
 
+  if (!isExpanded) {
+    return (
+      <div className="flex items-center justify-between rounded-xl border border-ink-200 bg-ink-50/70 px-4 py-3 shadow-sm transition-all hover:bg-ink-100/50">
+        <div className="flex items-center gap-3">
+          <div>
+            <h3 className="text-sm font-semibold text-ink-800">{title}</h3>
+            <p className="text-xs text-ink-500">
+              {open.length === 0
+                ? "All requested fields are verified."
+                : `${open.length} unconfirmed field(s) available for review.`}
+            </p>
+          </div>
+          {open.length > 0 && (
+            <Badge className={open.some((g) => g.blocking) ? SEVERITY_STYLE.high : SEVERITY_STYLE.info}>
+              {open.length} open · {open.filter((g) => g.blocking).length} blocking
+            </Badge>
+          )}
+        </div>
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => setIsExpanded(true)}
+          className="font-medium"
+        >
+          <ChevronDown aria-hidden className="mr-1.5 h-3.5 w-3.5 text-ink-500" />
+          Show Details ({open.length})
+        </Button>
+      </div>
+    );
+  }
+
   return (
     <Card
       title={title}
       subtitle="Nothing here has been filled in with an assumed value"
       actions={
-        <Badge className={open.some((g) => g.blocking) ? SEVERITY_STYLE.high : SEVERITY_STYLE.info}>
-          {open.length} open · {open.filter((g) => g.blocking).length} blocking
-        </Badge>
+        <div className="flex items-center gap-2">
+          <Badge className={open.some((g) => g.blocking) ? SEVERITY_STYLE.high : SEVERITY_STYLE.info}>
+            {open.length} open · {open.filter((g) => g.blocking).length} blocking
+          </Badge>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setIsExpanded(false)}
+            className="text-ink-600 hover:text-ink-900"
+          >
+            <ChevronUp aria-hidden className="mr-1 h-3.5 w-3.5" />
+            Hide
+          </Button>
+        </div>
       }
     >
       {open.length === 0 ? (

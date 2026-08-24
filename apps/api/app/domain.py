@@ -82,6 +82,7 @@ CANONICAL_RELATIONS = frozenset(
         EvidenceRelation.EXACT,
         EvidenceRelation.UNIT_CONVERTED,
         EvidenceRelation.CATEGORICAL_NORMALIZED,
+        EvidenceRelation.CONTEXTUAL_PROXY,
     }
 )
 

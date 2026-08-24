@@ -618,24 +618,22 @@ export function BeforeConstruction({
                       <th className="py-1 pr-2 font-medium">Risk</th>
                       <th className="py-1 pr-2 font-medium">Coverage</th>
                       <th className="py-1 pr-2 font-medium">Confidence</th>
-                      <th className="py-1 pr-2 font-medium">Missing</th>
                       <th className="py-1 font-medium">Evidence</th>
                     </tr>
                   </thead>
                   <tbody>
                     {scores.map((score) => (
                       <tr key={score.site_id} className={cx("border-t border-ink-100", selected?.site_id === score.site_id && "bg-ink-50")}>
-                        <td className="py-1.5 pr-2 tabular">{score.rank ?? "\u2014"}</td>
+                        <td className="py-1.5 pr-2 tabular">{score.rank ?? "—"}</td>
                         <td className="py-1.5 pr-2">
                           <button className="font-medium text-ink-900 underline-offset-2 hover:underline" onClick={() => setSelectedSite(score.site_id)}>
                             {score.site_name}
                           </button>
                         </td>
-                        <td className="py-1.5 pr-2 tabular font-semibold">{score.overall_score?.toFixed(1) ?? "\u2014"}</td>
+                        <td className="py-1.5 pr-2 tabular font-semibold">{score.overall_score?.toFixed(1) ?? "—"}</td>
                         <td className="py-1.5 pr-2"><Badge className={RISK_STYLE[score.risk_level]}>{score.risk_level}</Badge></td>
                         <td className="py-1.5 pr-2 tabular">{pct(score.evidence_coverage)}</td>
                         <td className="py-1.5 pr-2 tabular">{pct(score.confidence)}</td>
-                        <td className="py-1.5 pr-2 tabular">{score.missing_fields.length}</td>
                         <td className="py-1.5">
                           <Button size="sm" variant="ghost" onClick={() => setEvidenceFor({ id: score.site_id, name: score.site_name })}>View</Button>
                         </td>
