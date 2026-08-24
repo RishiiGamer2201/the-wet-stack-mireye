@@ -1,0 +1,455 @@
+<title>The Wet Stack</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&display=swap">
+
+<style>
+  /* ---- tokens: light is the base, because this document is printed ------- */
+  :root {
+    --paper:      #ffffff;
+    --surface:    #f3f6f6;
+    --ink:        #14181b;
+    --ink-soft:   #4d585d;
+    --ink-faint:  #7b878c;
+    --rule:       #d5dcde;
+    --rule-soft:  #e7ecec;
+    --accent:     #0f6d78;   /* water: the subject's own material */
+    --accent-dim: #d9eaeb;
+    --caution:    #8a5a12;   /* proxy / contextual evidence */
+    --caution-dim:#f3e6cf;
+    --absent:     #8d3a3a;   /* missing, never zero */
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper:      #101416;
+      --surface:    #171d1f;
+      --ink:        #e8edee;
+      --ink-soft:   #a8b4b7;
+      --ink-faint:  #79868a;
+      --rule:       #2b3538;
+      --rule-soft:  #212a2c;
+      --accent:     #57bfc9;
+      --accent-dim: #13343a;
+      --caution:    #d6a44f;
+      --caution-dim:#33280f;
+      --absent:     #d97b7b;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper:      #101416;
+    --surface:    #171d1f;
+    --ink:        #e8edee;
+    --ink-soft:   #a8b4b7;
+    --ink-faint:  #79868a;
+    --rule:       #2b3538;
+    --rule-soft:  #212a2c;
+    --accent:     #57bfc9;
+    --accent-dim: #13343a;
+    --caution:    #d6a44f;
+    --caution-dim:#33280f;
+    --absent:     #d97b7b;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: "Source Serif 4", Georgia, "Times New Roman", serif;
+    font-size: 10.4pt;
+    line-height: 1.5;
+    margin: 0;
+    padding: 28px 20px 56px;
+  }
+
+  .sheet {
+    max-width: 47rem;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 1.35rem;
+  }
+
+  /* ---- masthead ---------------------------------------------------------- */
+  .masthead {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 1rem 1.5rem;
+    align-items: end;
+    border-bottom: 2px solid var(--ink);
+    padding-bottom: 0.7rem;
+  }
+  .wordmark {
+    font-family: Archivo, "Helvetica Neue", Arial, sans-serif;
+    font-weight: 700;
+    font-size: 1.95rem;
+    letter-spacing: -0.021em;
+    line-height: 1.02;
+    margin: 0;
+    text-wrap: balance;
+  }
+  .wordmark .qualifier { color: var(--accent); }
+  .standfirst {
+    font-size: 0.99rem;
+    color: var(--ink-soft);
+    margin: 0.3rem 0 0;
+    max-width: 34rem;
+  }
+  .docmeta {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 0.63rem;
+    line-height: 1.75;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: var(--ink-faint);
+    text-align: right;
+    white-space: nowrap;
+  }
+  .docmeta b { color: var(--ink-soft); font-weight: 500; }
+
+  /* ---- sections keyed by a spec-style rail ------------------------------- */
+  section {
+    display: grid;
+    grid-template-columns: 5.6rem 1fr;
+    gap: 0 1.5rem;
+    align-items: start;
+  }
+  .rail {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--ink-faint);
+    padding-top: 0.34rem;
+    border-top: 1px solid var(--rule);
+    line-height: 1.6;
+  }
+  .rail b {
+    display: block;
+    color: var(--accent);
+    font-weight: 600;
+    font-size: 0.72rem;
+    letter-spacing: 0.04em;
+  }
+  .body { border-top: 1px solid var(--rule); padding-top: 0.34rem; }
+  h2 {
+    font-family: Archivo, "Helvetica Neue", Arial, sans-serif;
+    font-size: 1.06rem;
+    font-weight: 600;
+    letter-spacing: -0.011em;
+    margin: 0 0 0.4rem;
+    text-wrap: balance;
+  }
+  p { margin: 0 0 0.62rem; max-width: 36rem; }
+  p:last-child { margin-bottom: 0; }
+  strong { font-weight: 600; }
+  em { font-style: italic; }
+
+  /* ---- the rule the whole product turns on -------------------------------- */
+  .thesis {
+    background: var(--accent-dim);
+    border-left: 3px solid var(--accent);
+    padding: 0.62rem 0.85rem;
+    margin: 0 0 0.7rem;
+    font-size: 1.01rem;
+    line-height: 1.4;
+    max-width: 36rem;
+  }
+  .thesis b { font-weight: 600; }
+
+  /* ---- enumerated principles: a real list, so numbers mean something ------ */
+  ol.principles { margin: 0; padding: 0; list-style: none; counter-reset: p; }
+  ol.principles > li {
+    counter-increment: p;
+    display: grid;
+    grid-template-columns: 1.35rem 1fr;
+    gap: 0 0.55rem;
+    margin-bottom: 0.55rem;
+  }
+  ol.principles > li::before {
+    content: counter(p);
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--accent);
+    padding-top: 0.16rem;
+  }
+  ol.principles p { margin: 0; }
+
+  /* ---- data ---------------------------------------------------------------- */
+  .stack { display: flex; flex-direction: column; gap: 0.55rem; }
+  .scroll { overflow-x: auto; }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: 0.86rem;
+    font-variant-numeric: tabular-nums;
+  }
+  th, td {
+    text-align: left;
+    vertical-align: top;
+    padding: 0.3rem 0.7rem 0.3rem 0;
+    border-bottom: 1px solid var(--rule-soft);
+  }
+  thead th {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--ink-faint);
+    font-weight: 500;
+    border-bottom: 1px solid var(--rule);
+  }
+  tbody th { font-weight: 600; white-space: nowrap; padding-right: 1.1rem; }
+  code, .mono {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 0.85em;
+  }
+  .val { font-family: "IBM Plex Mono", ui-monospace, monospace; font-weight: 600; }
+
+  /* provenance chips, using the app's own evidence language */
+  .chip {
+    display: inline-block;
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 0.57rem;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    padding: 0.08rem 0.34rem;
+    border-radius: 2px;
+    white-space: nowrap;
+  }
+  .chip.real    { background: var(--accent-dim); color: var(--accent); }
+  .chip.proxy   { background: var(--caution-dim); color: var(--caution); }
+  .chip.absent  { background: transparent; color: var(--absent); border: 1px solid currentColor; }
+
+  /* ---- findings ------------------------------------------------------------ */
+  .findings { display: flex; flex-direction: column; gap: 0.5rem; margin: 0; padding: 0; list-style: none; }
+  .findings li {
+    border-left: 2px solid var(--rule);
+    padding-left: 0.7rem;
+  }
+  .findings .where {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 0.66rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--ink-faint);
+    display: block;
+  }
+
+  /* ---- architecture line --------------------------------------------------- */
+  .pipeline {
+    background: var(--surface);
+    border: 1px solid var(--rule-soft);
+    padding: 0.55rem 0.7rem;
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 0.66rem;
+    line-height: 1.85;
+    white-space: pre;
+    overflow-x: auto;
+    color: var(--ink-soft);
+    margin: 0.25rem 0 0;
+  }
+  .pipeline b { color: var(--accent); font-weight: 600; }
+
+  /* ---- colophon ------------------------------------------------------------ */
+  .colophon {
+    border-top: 2px solid var(--ink);
+    padding-top: 0.55rem;
+    display: grid;
+    grid-template-columns: 5.6rem 1fr;
+    gap: 0 1.5rem;
+    font-size: 0.78rem;
+    color: var(--ink-soft);
+  }
+  .colophon .rail { border-top: none; padding-top: 0; }
+  .colophon p { margin: 0 0 0.28rem; max-width: none; }
+  .colophon .stackline { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 0.66rem; line-height: 1.7; }
+
+  a { color: var(--accent); text-underline-offset: 2px; }
+
+  /* ---- narrow screens ------------------------------------------------------ */
+  @media (max-width: 46rem) {
+    section, .colophon { grid-template-columns: 1fr; gap: 0.3rem; }
+    .rail { border-top: none; padding-top: 0; }
+    .body { border-top: none; padding-top: 0; }
+    .masthead { grid-template-columns: 1fr; align-items: start; }
+    .docmeta { text-align: left; }
+  }
+
+  /* ---- print: two A4 pages, deliberately ----------------------------------- */
+  @page { size: A4; margin: 14mm 15mm; }
+  @media print {
+    body { padding: 0; font-size: 9.5pt; background: #fff; color: #14181b; }
+    .sheet { max-width: none; gap: 1.05rem; }
+    .pagebreak { break-before: page; }
+    section, .colophon, .findings li, table { break-inside: avoid; }
+    .pipeline { background: #f6f8f8; }
+    a { color: inherit; text-decoration: none; }
+  }
+</style>
+
+<div class="sheet">
+
+  <header class="masthead">
+    <div>
+      <h1 class="wordmark">The Wet Stack <span class="qualifier">/ Mireye</span></h1>
+      <p class="standfirst">Physical-world intelligence for data-centre siting and EPC change control.</p>
+    </div>
+    <div class="docmeta">
+      Technical brief<br>
+      Round <b>1</b> submission<br>
+      <b>24 Aug 2026</b>
+    </div>
+  </header>
+
+  <section>
+    <div class="rail"><b>01</b>Problem</div>
+    <div class="body">
+      <h2>The number nobody can trace</h2>
+      <p>A hyperscale data centre is decided twice: when the site is chosen, and again every time equipment is substituted during construction. Both decisions turn on physical facts, and in practice both are made on numbers nobody can trace.</p>
+      <p>The failure mode is specific, and it is not "we lacked data". It is that <strong>absent data quietly becomes a number</strong>. A blank cell scores as zero. A nearby measurement gets used because it is the closest thing available. A supplier's figure is entered without its rating conditions. Each looks identical to a measurement, and by the time anyone notices it is inside a capital decision.</p>
+      <p>Mireye solves retrieval: it tells you what the physical world is doing at a coordinate. We went after what happens <strong>after</strong> retrieval, which is how a system reasons over physical data without inventing the parts it does not have.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="rail"><b>02</b>Idea</div>
+    <div class="body">
+      <h2>Absence is a finding, not a blank</h2>
+      <p class="thesis">A value nobody measured is <b>missing</b>. Missing never becomes zero, and a related measurement is never <em>the</em> measurement.</p>
+      <p>Obvious to say, structurally hard to hold, because the wrong answer is always the convenient one. Three mechanisms enforce it.</p>
+      <ol class="principles">
+        <li><p><strong>Every value carries how it relates to the question.</strong> Mireye publishes a 0.4% design <em>wet-bulb</em> temperature; our model needs <em>dry-bulb</em>. Both are temperatures in °C, so nothing breaks if you swap them. The score is just wrong. Instead the reading is stored as <code>CONTEXTUAL_PROXY</code> <span class="chip proxy">proxy</span>: real, cited, visible, and structurally unable to fill the field, close its gap or pass a gate. Applying that rule dropped evidence coverage from <span class="val">0.348</span> to <span class="val">0.259</span> and left the decision unchanged. That drop is the system telling the truth.</p></li>
+        <li><p><strong>A gap is an instruction.</strong> When nothing can answer a concept, the output is a named next action <span class="chip absent">missing</span>: <em>commission a geotechnical investigation</em>, <em>ask the utility for circuit-level outage history</em>. Eight concepts have no public source today and are deliberately kept, because each produces an action. Six others were deleted, because they produced only noise.</p></li>
+        <li><p><strong>The model explains; deterministic code calculates.</strong> Every number, unit conversion, threshold and decision state comes from tested Python. The language model plans investigations and writes the narrative. A regression test asserts that no LLM path can write a number.</p></li>
+      </ol>
+    </div>
+  </section>
+
+  <section>
+    <div class="rail"><b>03</b>System</div>
+    <div class="body">
+      <h2>Two workflows over one evidence model</h2>
+      <div class="stack">
+        <div class="scroll">
+          <table>
+            <thead>
+              <tr><th scope="col">Workflow</th><th scope="col">Question</th><th scope="col">Output</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th scope="row">Before construction</th>
+                <td>Which candidate site should we build on?</td>
+                <td>Ranked sites, per-dimension scores, coverage, open gaps</td>
+              </tr>
+              <tr>
+                <th scope="row">During construction</th>
+                <td>This equipment was substituted, what does it touch?</td>
+                <td>Deterministic checks, impact graph, decision state</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p>A seven-node LangGraph loop (Understand, Plan, Evidence, Signals, Replan, Impact, Action) runs over 30 concepts across 8 dimensions: water, power, connectivity, civil, hazards, terrain, environmental, regulatory.</p>
+<div class="pipeline">React + Vite  →  FastAPI  →  ├─ <b>Mireye API</b>            live physical data
+                             ├─ <b>5 public datasets</b>     bundled, offline
+                             ├─ <b>Scoring engine</b>        Pint-checked units
+                             ├─ <b>Ingestion + OCR</b>       PDF and scans
+                             └─ <b>Neo4j</b>                 impact graph</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="pagebreak">
+    <div class="rail"><b>04</b>Built</div>
+    <div class="body">
+      <h2>What exists, and how we know</h2>
+      <p>Not a mock. Every figure below is measured from the running system.</p>
+      <div class="scroll">
+        <table>
+          <tbody>
+            <tr>
+              <th scope="row">Live Mireye</th>
+              <td><span class="val">2,011</span> evidence records from USGS, FEMA, NREL, EIA, NOAA, EPA, NRCS and FCC, through the live API.</td>
+            </tr>
+            <tr>
+              <th scope="row">Contract work</th>
+              <td><span class="val">5</span> mismatches between the assumed and the real Mireye contract, found against the live service and fixed. Documented as a reference.</td>
+            </tr>
+            <tr>
+              <th scope="row">Public datasets</th>
+              <td>PeeringDB, EPA/USGS Water Quality Portal, USGS PAD-US, EIA-861, FEMA National Risk Index. <span class="val">6</span> concepts served, <span class="val">1</span> proxy retired.</td>
+            </tr>
+            <tr>
+              <th scope="row">Provenance</th>
+              <td><span class="val">2,098</span> of <span class="val">2,182</span> evidence records <span class="chip real">96% real</span>. The remaining 84 are labelled synthetic documents.</td>
+            </tr>
+            <tr>
+              <th scope="row">Ingestion</th>
+              <td>PDF text plus OCR for scans. A transcribed value is carried at half confidence and flagged for a human read, because a misread digit is a fabricated number with a citation on it.</td>
+            </tr>
+            <tr>
+              <th scope="row">Verification</th>
+              <td><span class="val">273</span> tests, lint and typecheck clean.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="rail"><b>05</b>Findings</div>
+    <div class="body">
+      <h2>Three things the system told us</h2>
+      <ul class="findings">
+        <li>
+          <span class="where">Harbour Point, VA</span>
+          Groundwater at <span class="val">6,610 mg/L</span> total dissolved solids. Brackish. That changes the cooling design, and it was invisible while the number was synthetic.
+        </li>
+        <li>
+          <span class="where">Rio Verde Mesa, AZ</span>
+          Sits <strong>inside Tonto National Forest</strong> and is rated <strong>Very High</strong> for wildfire. Two independent public datasets agree. An earlier version of our own code reported it as 4 km from a shooting range; we found and fixed the query bug that hid it.
+        </li>
+        <li>
+          <span class="where">A scale trap</span>
+          FEMA's wildfire index runs 0-100 and looks comparable to any other 0-100 index. It is not: the median tract FEMA calls <em>Very Low</em> scores <span class="val">43.6</span>. Evenly-spread thresholds would have penalised every safe site in the country by half its wildfire points. Thresholds are now anchored to FEMA's own published class boundaries, with a test that fails if a future release moves them.
+        </li>
+      </ul>
+    </div>
+  </section>
+
+  <section>
+    <div class="rail"><b>06</b>Impact</div>
+    <div class="body">
+      <h2>Why it matters</h2>
+      <p>A single hyperscale campus is a <strong>$1-3 bn</strong> commitment, and the siting decision is made in weeks on the thinnest evidence in the project's life.</p>
+      <p><strong>Before construction:</strong> the cost of choosing wrong is not the land. It is discovering brackish water, an unbuildable interconnection queue or a wildfire exposure after the option is signed. This surfaces them as tracked gaps with named owners, in hours rather than a six-week consultant study.</p>
+      <p><strong>During construction:</strong> substitutions are constant and each is a small coordination risk. The system flags where structural, electrical or mechanical review is <em>required</em>, and never claims adequacy. That distinction is what makes it usable by the engineer who carries the liability.</p>
+      <p><strong>For Mireye:</strong> a demonstration of what the API is worth when something reasons over it rather than displaying it. Every call is credit-metered, cached against the catalog's own TTLs and budget-capped, because a product built on a paid API has to respect what it costs.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="rail"><b>07</b>Next</div>
+    <div class="body">
+      <h2>What we do from here</h2>
+      <ol class="principles">
+        <li><p><strong>Replace the last synthetic data.</strong> 84 document records remain and the path is written up: AHRI certified ratings and manufacturer submittals, through the upload flow that already works.</p></li>
+        <li><p><strong>Four more public datasets.</strong> WRI Aqueduct, USGS 3DEP, USDA CropScape and NOAA ISD, each with its blocker and its procedure documented.</p></li>
+        <li><p><strong>Production architecture.</strong> Kafka, Redis, Postgres and a projection-based impact graph, designed with a migration order whose first four steps carry a real pilot on their own.</p></li>
+      </ol>
+    </div>
+  </section>
+
+  <div class="colophon">
+    <div class="rail">Colophon</div>
+    <div>
+      <p class="stackline">React 18 · TypeScript · Vite · Tailwind · FastAPI · Pydantic v2 · LangGraph · Pint · Neo4j AuraDB · SQLite / pgvector · Tesseract · OpenAI · Render (Docker) + Vercel</p>
+      <p style="margin-top:0.3rem">Repository <code>github.com/RishiiGamer2201/the-wet-stack-mireye</code>, 42 commits, ~21,000 lines, 15 documents including a verified Mireye contract reference, a public-dataset procedure guide and a production low-level design.</p>
+    </div>
+  </div>
+
+</div>
