@@ -1,5 +1,6 @@
 import {
   ArrowRight,
+  BookOpen,
   Check,
   CheckCheck,
   Clock,
@@ -20,6 +21,7 @@ import { EvidenceDrawer } from "../components/EvidencePanel";
 import { GapPanel } from "../components/GapPanel";
 import { DecisionCard, InvestigationTimeline, NextActionPreview } from "../components/Investigation";
 import { ImpactGraphView, ImpactList } from "../components/ImpactGraphView";
+import { ProjectKnowledgeAgent } from "./ProjectKnowledgeAgent";
 import {
   Badge,
   Button,
@@ -60,7 +62,7 @@ import type {
   StructuredRequirementSet,
 } from "../lib/types";
 
-export type DuringTab = "verification" | "recommendations" | "cascade" | "actions";
+export type DuringTab = "verification" | "recommendations" | "cascade" | "actions" | "knowledge";
 
 const COMPARE_ROWS: {
   key: keyof EquipmentConfiguration;
@@ -96,7 +98,13 @@ function cell(config: EquipmentConfiguration, key: keyof EquipmentConfiguration,
   return <span>{String(raw)}</span>;
 }
 
-export function DuringConstruction({ detail }: { detail: ProjectDetail }) {
+export function DuringConstruction({
+  detail,
+  onProjectChanged,
+}: {
+  detail: ProjectDetail;
+  onProjectChanged?: () => void;
+}) {
   const projectId = detail.project.id;
   const [tab, setTab] = useState<DuringTab>("verification");
   const [changes, setChanges] = useState<EquipmentChange[]>(detail.changes);
@@ -280,6 +288,17 @@ export function DuringConstruction({ detail }: { detail: ProjectDetail }) {
             )}
           >
             <FileText className="h-4 w-4" /> Action Packages &amp; RFIs
+          </button>
+          <button
+            onClick={() => setTab("knowledge")}
+            className={cx(
+              "flex items-center gap-2 px-3.5 py-2 text-xs font-semibold rounded-lg transition-all",
+              tab === "knowledge"
+                ? "bg-purple-700 text-white shadow-xs"
+                : "text-ink-600 hover:text-ink-900 hover:bg-ink-100",
+            )}
+          >
+            <BookOpen className="h-4 w-4" /> Project Knowledge &amp; Documents
           </button>
         </div>
 
@@ -631,6 +650,19 @@ export function DuringConstruction({ detail }: { detail: ProjectDetail }) {
           changeId={change.change.id}
           equipmentTag={change.change.equipment_tag}
           changeTitle={change.change.title}
+        />
+      )}
+
+      {/* ────────────────────────────────────────────────────────────────────────── */}
+      {/* TAB 5: PROJECT KNOWLEDGE & DOCUMENT AGENT                                  */}
+      {/* ────────────────────────────────────────────────────────────────────────── */}
+      {tab === "knowledge" && (
+        <ProjectKnowledgeAgent
+          detail={detail}
+          onProjectChanged={() => {
+            onProjectChanged?.();
+            refreshCascade();
+          }}
         />
       )}
 

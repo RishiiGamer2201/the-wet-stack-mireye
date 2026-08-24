@@ -20,11 +20,10 @@ import { ProjectCreatePage } from "./components/ProjectCreatePage";
 import { Badge, Button, ErrorState, Spinner, Tabs, cx } from "./components/ui";
 import { BeforeConstruction } from "./features/BeforeConstruction";
 import { DuringConstruction } from "./features/DuringConstruction";
-import { ProjectKnowledgeAgent } from "./features/ProjectKnowledgeAgent";
 import { api } from "./lib/api";
 import type { Meta, Project, ProjectDetail } from "./lib/types";
 
-export type ViewMode = "hero" | "setup" | "portal" | "before" | "during" | "knowledge";
+export type ViewMode = "hero" | "setup" | "portal" | "before" | "during";
 
 export default function App() {
   const [meta, setMeta] = useState<Meta | null>(null);
@@ -111,7 +110,7 @@ export default function App() {
     }
   }
 
-  function handleSelectWorkflow(target: "before" | "during" | "knowledge") {
+  function handleSelectWorkflow(target: "before" | "during") {
     setView(target);
   }
 
@@ -378,8 +377,8 @@ export default function App() {
                       <p className="text-[11px] text-ink-500">Upload project PDFs, search extracted specifications with page citations, or ask Mireye.</p>
                     </div>
                   </div>
-                  <Button size="sm" onClick={() => handleSelectWorkflow("knowledge")}>
-                    Open Knowledge Base <ArrowRight className="h-3.5 w-3.5 ml-1" />
+                  <Button size="sm" onClick={() => handleSelectWorkflow("during")}>
+                    Open in During Construction <ArrowRight className="h-3.5 w-3.5 ml-1" />
                   </Button>
                 </div>
 
@@ -456,14 +455,6 @@ export default function App() {
                           </Badge>
                         ),
                       },
-                      {
-                        id: "knowledge",
-                        label: (
-                          <span className="inline-flex items-center gap-1.5">
-                            <Search aria-hidden className="h-4 w-4" /> Project knowledge
-                          </span>
-                        ),
-                      },
                     ]}
                   />
                 </div>
@@ -484,10 +475,7 @@ export default function App() {
                     />
                   )}
                   {view === "during" && (
-                    <DuringConstruction key={detail.project.id} detail={detail} />
-                  )}
-                  {view === "knowledge" && (
-                    <ProjectKnowledgeAgent
+                    <DuringConstruction
                       key={detail.project.id}
                       detail={detail}
                       onProjectChanged={() => loadProject(detail.project.id)}
