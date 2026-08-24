@@ -289,3 +289,4 @@ Detailed architectural and engineering documentation is available in the [`docs/
 * [`docs/limitations.md`](docs/limitations.md): Assumptions, safety limits, and what would need hardening before production use.
 * [`docs/research-basis.md`](docs/research-basis.md): Sources behind the engineering rules, with citations checked.
 * [`docs/submission-technical-brief.md`](docs/submission-technical-brief.md): Two-page technical brief, also rendered as a PDF.
+* [`docs/demo-video-script.md`](docs/demo-video-script.md): Timed two-minute script for the demo video.
