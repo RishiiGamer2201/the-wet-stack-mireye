@@ -271,6 +271,48 @@ class SeedResponse(BaseModel):
     message: str
 
 
+class RequirementParseRequest(BaseModel):
+    prompt: str = Field(min_length=3, max_length=2000)
+    equipment_type: str | None = None
+
+
+class RecommendationSearchRequest(BaseModel):
+    equipment_type: str
+    constraints: list[dict[str, Any]] | None = None
+    weights: dict[str, float] | None = None
+    site_id: str | None = None
+
+
+class ApplyRecommendationRequest(BaseModel):
+    equipment_tag: str
+    candidate_product_id: str
+    title: str | None = None
+    reason: str | None = None
+    site_id: str | None = None
+    existing_change_id: str | None = None
+
+
+class CascadeAnalysisRequest(BaseModel):
+    change_ids: list[str] | None = None
+
+
+class ActionPackageRequest(BaseModel):
+    change_id: str
+    action_type: str = "rfi"  # "rfi" | "vendor_request" | "review_package"
+    recipient: str | None = None
+    notes: str | None = None
+
+
+class ActionPackageResponse(BaseModel):
+    action_type: str
+    title: str
+    recipient: str
+    body_markdown: str
+    requested_items: list[str] = Field(default_factory=list)
+    citations: list[dict[str, Any]] = Field(default_factory=list)
+    due_in_days: int = 5
+
+
 __all__ = [name for name in dir() if name[0].isupper()] + [
     "Evidence",
     "InformationGap",
@@ -279,3 +321,4 @@ __all__ = [name for name in dir() if name[0].isupper()] + [
     "DocumentChunk",
     "DocumentKind",
 ]
+

@@ -280,6 +280,13 @@ class Assumption(Base):
     basis_evidence_ids: list[str] = Field(default_factory=list)
     depends_on_fields: list[str] = Field(default_factory=list)
     equipment_tag: str | None = None
+    value: float | str | None = None
+    unit: str | None = None
+    source_document: str | None = None
+    revision: str | None = None
+    design_capacity: float | None = None
+    current_value: float | None = None
+    margin: float | None = None
     status: AssumptionStatus = AssumptionStatus.ACTIVE
     stale_reason: str | None = None
     updated_at: datetime = Field(default_factory=now)
@@ -809,3 +816,177 @@ class Investigation(Base):
     llm_mode: str = "deterministic"
     started_at: datetime = Field(default_factory=now)
     finished_at: datetime | None = None
+
+
+# ---------------------------------------------------------------------------
+# Design Margins & Facility Capacities
+# ---------------------------------------------------------------------------
+
+
+class MarginType(str, Enum):
+    STRUCTURAL = "structural_margin"
+    ELECTRICAL = "electrical_margin"
+    THERMAL = "thermal_margin"
+    COOLING = "cooling_margin"
+    WATER = "water_margin"
+    GENERATOR = "generator_margin"
+    TRANSFORMER = "transformer_margin"
+
+
+class MarginStatus(str, Enum):
+    WITHIN_MARGIN = "WITHIN_MARGIN"
+    CRITICAL_MARGIN = "CRITICAL_MARGIN"
+    EXCEEDED = "EXCEEDED"
+    NEEDS_INFORMATION = "NEEDS_INFORMATION"
+
+
+class DesignMargin(Base):
+    id: str = Field(default_factory=lambda: new_id("mrn"))
+    margin_type: MarginType
+    name: str
+    discipline: Discipline = Discipline.MECHANICAL
+    design_capacity: Quantity | None = None
+    proposed_demand: Quantity | None = None
+    remaining_margin: Quantity | None = None
+    margin_pct: float | None = None
+    status: MarginStatus = MarginStatus.NEEDS_INFORMATION
+    detail: str
+    evidence_ids: list[str] = Field(default_factory=list)
+
+
+class ProjectCapacities(Base):
+    structural_roof_capacity_kg: float | None = None
+    substation_capacity_mw: float | None = None
+    generator_capacity_kw: float | None = None
+    chilled_water_capacity_kw: float | None = None
+    water_allocation_m3_yr: float | None = None
+    transformer_capacity_kva: float | None = None
+
+
+# ---------------------------------------------------------------------------
+# Cascade Analysis (Multi-change cumulative impacts)
+# ---------------------------------------------------------------------------
+
+
+class CascadeChangeItem(Base):
+    change_id: str
+    equipment_tag: str
+    title: str
+    equipment_type: str
+    delta_power_kw: float = 0.0
+    delta_weight_kg: float = 0.0
+    delta_cooling_kw: float = 0.0
+    delta_water_m3_yr: float = 0.0
+
+
+class CascadeImpactSummary(Base):
+    project_id: str
+    evaluated_changes: list[CascadeChangeItem] = Field(default_factory=list)
+    cumulative_electrical_delta_kw: float = 0.0
+    cumulative_weight_delta_kg: float = 0.0
+    cumulative_cooling_delta_kw: float = 0.0
+    cumulative_water_delta_m3_yr: float = 0.0
+    transformer_headroom_pct: float | None = None
+    generator_headroom_pct: float | None = None
+    structural_headroom_pct: float | None = None
+    collective_status: Literal["WITHIN_FACILITY_LIMITS", "FACILITY_LIMITS_EXCEEDED", "NEEDS_INFORMATION"] = (
+        "WITHIN_FACILITY_LIMITS"
+    )
+    rationale: list[str] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# Structured Requirements & Product Recommendations
+# ---------------------------------------------------------------------------
+
+
+class StructuredConstraint(Base):
+    parameter: str
+    operator: Literal[">=", "<=", "==", "!=", ">", "<"]
+    value: float | str | int
+    unit: str | None = None
+    priority: Literal["mandatory", "preferred"] = "mandatory"
+
+
+class StructuredRequirementSet(Base):
+    id: str = Field(default_factory=lambda: new_id("reqset"))
+    project_id: str
+    equipment_type: str
+    constraints: list[StructuredConstraint] = Field(default_factory=list)
+    original_prompt: str | None = None
+    created_at: datetime = Field(default_factory=now)
+
+
+class CandidateProduct(Base):
+    id: str
+    model_number: str
+    manufacturer: str
+    equipment_type: str
+    specs: dict[str, Any] = Field(default_factory=dict)
+    score: float = 0.0  # 0 to 100
+    score_breakdown: dict[str, float] = Field(default_factory=dict)
+    passed_constraints: list[str] = Field(default_factory=list)
+    failed_constraints: list[str] = Field(default_factory=list)
+    compatibility_status: Literal["COMPATIBLE", "CONDITIONALLY_COMPATIBLE", "INCOMPATIBLE"] = "COMPATIBLE"
+    explanation: str
+    warnings: list[str] = Field(default_factory=list)
+    reference_source: str = "RacksDB / LBNL Open Catalog"
+
+
+class ProductRecommendationResult(Base):
+    id: str = Field(default_factory=lambda: new_id("recres"))
+    project_id: str
+    equipment_type: str
+    requirement_set: StructuredRequirementSet
+    candidates: list[CandidateProduct] = Field(default_factory=list)
+    top_recommendation: CandidateProduct | None = None
+    explanation_narrative: str
+    generated_at: datetime = Field(default_factory=now)
+
+
+# ---------------------------------------------------------------------------
+# Document Revision & Decision Lineage
+# ---------------------------------------------------------------------------
+
+
+class DocumentRevision(Base):
+    id: str = Field(default_factory=lambda: new_id("drev"))
+    project_id: str
+    document_id: str
+    document_name: str
+    revision_code: str
+    description: str
+    modified_requirements: list[str] = Field(default_factory=list)
+    created_at: datetime = Field(default_factory=now)
+
+
+class DecisionLineageRecord(Base):
+    id: str = Field(default_factory=lambda: new_id("dlin"))
+    project_id: str
+    change_id: str
+    decision_state: DecisionState
+    timestamp: datetime = Field(default_factory=now)
+    triggered_reasons: list[str] = Field(default_factory=list)
+    source_documents: list[str] = Field(default_factory=list)
+    affected_assumptions: list[str] = Field(default_factory=list)
+    engine_version: str = "Deterministic Delta & Gate Engine v1.2"
+
+
+# ---------------------------------------------------------------------------
+# Cost & Schedule Impact
+# ---------------------------------------------------------------------------
+
+
+class CostScheduleImpact(Base):
+    change_id: str
+    equipment_tag: str
+    capex_delta_usd: float | None = None
+    annual_energy_delta_usd: float | None = None
+    annual_water_delta_usd: float | None = None
+    total_annual_opex_delta_usd: float | None = None
+    schedule_delay_days: int = 0
+    on_critical_path: bool = False
+    lead_time_weeks: int | None = None
+    status: Literal["ESTIMATED", "NEEDS_INFORMATION"] = "ESTIMATED"
+    explanation: str = ""
+

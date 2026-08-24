@@ -86,8 +86,37 @@ class EquipmentSpecsAdapter:
         if equipment_tag_or_type in cat:
             return cat[equipment_tag_or_type]
         for item in cat.values():
-            if item.get("equipment_type") == equipment_tag_or_type:
+            if item.get("equipment_type") == equipment_tag_or_type or item.get("id") == equipment_tag_or_type:
                 return item
+        return None
+
+    def list_models_by_type(self, equipment_type: str | None = None) -> list[dict]:
+        """List equipment models from catalog, optionally filtered by type."""
+        cat = self._ensure_catalog().get("equipment_models", {})
+        results = []
+        for key, item in cat.items():
+            record = dict(item)
+            record.setdefault("id", key)
+            if equipment_type is None or equipment_type == "all":
+                results.append(record)
+            elif record.get("equipment_type", "").lower() == equipment_type.lower():
+                results.append(record)
+            elif equipment_type.lower() in record.get("equipment_type", "").lower():
+                results.append(record)
+        return results
+
+    def get_model_by_id(self, model_id: str) -> dict | None:
+        """Get model details by catalog id."""
+        cat = self._ensure_catalog().get("equipment_models", {})
+        if model_id in cat:
+            rec = dict(cat[model_id])
+            rec.setdefault("id", model_id)
+            return rec
+        for key, item in cat.items():
+            if item.get("id") == model_id or item.get("model_number") == model_id:
+                rec = dict(item)
+                rec.setdefault("id", key)
+                return rec
         return None
 
     def find_nearest_climate_station(self, latitude: float, longitude: float) -> ClimateStation | None:

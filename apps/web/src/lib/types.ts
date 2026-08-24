@@ -549,6 +549,7 @@ export interface ClimateStationInfo {
 }
 
 export interface ReferenceSpec {
+  id?: string;
   equipment_type: string;
   reference_model: string;
   manufacturer: string;
@@ -564,7 +565,130 @@ export interface ReferenceSpec {
   power_input_kw?: number;
   cop?: number;
   wue_l_per_kwh?: number;
+  cooling_capacity_kw?: number;
   description: string;
 }
+
+export type MarginStatus = "WITHIN_MARGIN" | "CRITICAL_MARGIN" | "EXCEEDED" | "NEEDS_INFORMATION";
+
+export interface DesignMargin {
+  id: string;
+  margin_type: string;
+  name: string;
+  discipline: string;
+  design_capacity?: Quantity | null;
+  proposed_demand?: Quantity | null;
+  remaining_margin?: Quantity | null;
+  margin_pct?: number | null;
+  status: MarginStatus;
+  detail: string;
+  evidence_ids: string[];
+}
+
+export interface StructuredConstraint {
+  parameter: string;
+  operator: ">=" | "<=" | "==" | "!=" | ">" | "<";
+  value: number | string;
+  unit?: string | null;
+  priority: "mandatory" | "preferred";
+}
+
+export interface StructuredRequirementSet {
+  id: string;
+  project_id: string;
+  equipment_type: string;
+  constraints: StructuredConstraint[];
+  original_prompt?: string | null;
+  created_at: string;
+}
+
+export interface CandidateProduct {
+  id: string;
+  model_number: string;
+  manufacturer: string;
+  equipment_type: string;
+  specs: Record<string, any>;
+  score: number;
+  score_breakdown: Record<string, number>;
+  passed_constraints: string[];
+  failed_constraints: string[];
+  compatibility_status: "COMPATIBLE" | "CONDITIONALLY_COMPATIBLE" | "INCOMPATIBLE";
+  explanation: string;
+  warnings: string[];
+  reference_source: string;
+}
+
+export interface ProductRecommendationResult {
+  id: string;
+  project_id: string;
+  equipment_type: string;
+  requirement_set: StructuredRequirementSet;
+  candidates: CandidateProduct[];
+  top_recommendation?: CandidateProduct | null;
+  explanation_narrative: string;
+  generated_at: string;
+}
+
+export interface CascadeChangeItem {
+  change_id: string;
+  equipment_tag: string;
+  title: string;
+  equipment_type: string;
+  delta_power_kw: number;
+  delta_weight_kg: number;
+  delta_cooling_kw: number;
+  delta_water_m3_yr: number;
+}
+
+export interface CascadeImpactSummary {
+  project_id: string;
+  evaluated_changes: CascadeChangeItem[];
+  cumulative_electrical_delta_kw: number;
+  cumulative_weight_delta_kg: number;
+  cumulative_cooling_delta_kw: number;
+  cumulative_water_delta_m3_yr: number;
+  transformer_headroom_pct?: number | null;
+  generator_headroom_pct?: number | null;
+  structural_headroom_pct?: number | null;
+  collective_status: "WITHIN_FACILITY_LIMITS" | "FACILITY_LIMITS_EXCEEDED" | "NEEDS_INFORMATION";
+  rationale: string[];
+}
+
+export interface DecisionLineageRecord {
+  id: string;
+  project_id: string;
+  change_id: string;
+  decision_state: DecisionState;
+  timestamp: string;
+  triggered_reasons: string[];
+  source_documents: string[];
+  affected_assumptions: string[];
+  engine_version: string;
+}
+
+export interface CostScheduleImpact {
+  change_id: string;
+  equipment_tag: string;
+  capex_delta_usd?: number | null;
+  annual_energy_delta_usd?: number | null;
+  annual_water_delta_usd?: number | null;
+  total_annual_opex_delta_usd?: number | null;
+  schedule_delay_days: number;
+  on_critical_path: boolean;
+  lead_time_weeks?: number | null;
+  status: "ESTIMATED" | "NEEDS_INFORMATION";
+  explanation: string;
+}
+
+export interface ActionPackageResponse {
+  action_type: string;
+  title: string;
+  recipient: string;
+  body_markdown: string;
+  requested_items: string[];
+  citations: any[];
+  due_in_days: number;
+}
+
 
 

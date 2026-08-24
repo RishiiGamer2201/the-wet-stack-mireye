@@ -279,4 +279,66 @@ export const api = {
       method,
       params,
     }),
+
+  // AI-Powered Change Intelligence Platform API
+  parseRequirements: (projectId: string, prompt: string, equipmentType?: string) =>
+    post<import("./types").StructuredRequirementSet>(`/projects/${projectId}/requirements/parse`, {
+      prompt,
+      equipment_type: equipmentType,
+    }),
+
+  searchRecommendations: (
+    projectId: string,
+    payload: {
+      equipment_type: string;
+      constraints?: any[];
+      weights?: Record<string, number>;
+      site_id?: string | null;
+    },
+  ) =>
+    post<import("./types").ProductRecommendationResult>(`/projects/${projectId}/recommendations/search`, payload),
+
+  applyRecommendation: (
+    projectId: string,
+    payload: {
+      equipment_tag: string;
+      candidate_product_id: string;
+      title?: string;
+      reason?: string;
+      site_id?: string | null;
+      existing_change_id?: string | null;
+    },
+  ) =>
+    post<import("./types").Investigation>(`/projects/${projectId}/recommendations/apply-change`, payload),
+
+  catalogModels: (equipmentType?: string) =>
+    request<import("./types").ReferenceSpec[]>(
+      equipmentType ? `/catalog/models?equipment_type=${encodeURIComponent(equipmentType)}` : "/catalog/models",
+    ),
+
+  changeMargins: (projectId: string, changeId: string) =>
+    request<import("./types").DesignMargin[]>(`/projects/${projectId}/changes/${changeId}/margins`),
+
+  changeLineage: (projectId: string, changeId: string) =>
+    request<import("./types").DecisionLineageRecord[]>(`/projects/${projectId}/changes/${changeId}/lineage`),
+
+  changeCostSchedule: (projectId: string, changeId: string) =>
+    request<import("./types").CostScheduleImpact>(`/projects/${projectId}/changes/${changeId}/cost-schedule`),
+
+  cascadeAnalysis: (projectId: string, changeIds?: string[]) =>
+    post<import("./types").CascadeImpactSummary>(`/projects/${projectId}/cascade-analysis`, {
+      change_ids: changeIds,
+    }),
+
+  generateActionPackage: (
+    projectId: string,
+    payload: {
+      change_id: string;
+      action_type: string;
+      recipient?: string;
+      notes?: string;
+    },
+  ) =>
+    post<import("./types").ActionPackageResponse>(`/projects/${projectId}/actions/generate`, payload),
 };
+
