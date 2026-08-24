@@ -45,7 +45,7 @@
 Our solution leverages **Mireye's physical-world intelligence layer** as the ground-truth data engine. By uniting Mireye's multi-source environmental data with deterministic Python engineering engines, the platform guarantees that every feasibility ranking and field equipment change is evaluated against verified physical-world constraints:
 
 #### 1. Before Construction: Site Feasibility Intelligence (via Mireye Data Layer)
-* **Mireye Multi-Layer Geospatial Ingestion:** Ingests 34+ physical-world parameters across terrain, water chemistry, utility grid reliability, flood zones, and extreme climate conditions directly through Mireye connectors (USGS 3DEP, FEMA NFHL, EIA-861, EPA WQP, NOAA/ASHRAE, NRCS, and FCC).
+* **Mireye Multi-Layer Geospatial Ingestion:** Ingests 30 physical-world parameters across terrain, water chemistry, utility grid reliability, flood zones, and extreme climate conditions directly through Mireye connectors (USGS 3DEP, FEMA NFHL, EIA-861, EPA WQP, NOAA/ASHRAE, NRCS, and FCC).
 * **Transparent Multi-Factor Scoring:** Scores parcels across 8 critical dimensions (Terrain, Water, Power, Fiber, Geotechnical, Natural Hazards, Climate, and Permitting) using an explainable mathematical formula rather than ungrounded AI predictions.
 * **Evidence Provenance & Gap Tracking:** Every metric retains its citation and relation type (Exact, Unit-Converted, Categorical-Normalized, Contextual Proxy). Missing or unevidenced attributes are explicitly tracked as blocking or non-blocking *Information Gaps* instead of being assumed or hallucinated.
 
@@ -53,7 +53,7 @@ Our solution leverages **Mireye's physical-world intelligence layer** as the gro
 * **Mireye Site Boundary Verification:** Directly links site-specific environmental baselines retrieved from Mireye (such as peak summer dry-bulb/wet-bulb temperatures and grid reliability) into the equipment verification pipeline.
 * **Submittal PDF & Spec Sheet Ingestion:** PyMuPDF OCR extracts structured mechanical, electrical, and dimensional parameters directly from manufacturer submittals.
 * **9 Deterministic Verification Gates:** Evaluates strict pre-comparison boundary criteria (Manufacturer Comparability, Voltage/Phase Matching, Refrigerant Compliance, Rated Ambient vs Site ASHRAE Climate Extremes, Physical Footprint Boundary, and Structural Floor Loading).
-* **13 Pint Unit-Checked Deltas:** Computes unit-safe physical and electrical deltas (Weight, Dimensions, FLA, MCA, MOCP, Power Input, Refrigerant Charge, Cooling Capacity, COP) with dimensional safety thresholds.
+* **15 Pint Unit-Checked Deltas:** Computes unit-safe physical and electrical deltas (weight, maximum support point load, length, width, height, footprint area, voltage, phases, FLA, MCA, MOCP, power input, refrigerant type, refrigerant charge, cooling capacity) with dimensional safety thresholds.
 * **Facility Design Margins & Headroom:** Tracks remaining substation transformer headroom, central chilled water duty, and structural slab capacities. Missing baseline capacities are explicitly flagged as `NEEDS_INFORMATION`.
 * **Cumulative Cascade Loading Analysis:** Evaluates the combined, facility-wide impact of multiple concurrent equipment substitutions across electrical infrastructure, standby generators, and structural steel.
 * **11-Category Recommendation Studio:** Uses NLP constraint extraction to query benchmark equipment catalogs and rank alternatives using deterministic multi-criteria scoring.
@@ -67,7 +67,7 @@ Our solution leverages **Mireye's physical-world intelligence layer** as the gro
 ### Backend Stack
 * **`fastapi` (`>=0.110`)**: Asynchronous API framework and typed OpenAPI contract generator.
 * **`uvicorn[standard]` (`>=0.29`)**: High-throughput ASGI production server.
-* **`pydantic` (`>=2.6`) & `pydantic-settings`**: Runtime schema validation and environment management across 19 domain models.
+* **`pydantic` (`>=2.6`) & `pydantic-settings`**: Runtime schema validation and environment management across 47 domain models.
 * **`pint` (`>=0.23`)**: Deterministic physical and electrical unit arithmetic and dimensional verification.
 * **`pymupdf` / fitz (`>=1.24`)**: PDF specification sheet ingestion, OCR, and table/text extraction.
 * **`langgraph` (`>=0.2`)**: Stateful graph orchestration for multi-step agent investigations.
@@ -108,7 +108,7 @@ flowchart LR
 
     subgraph Engines["Deterministic Engines"]
         E1["Spatial Scoring Engine"]
-        E2["9 Gates & 13 Pint Deltas"]
+        E2["9 Gates & 15 Pint Deltas"]
         E3["Catalog Matcher & Ranker"]
         E4["Stale Assumption Invalidation"]
     end
@@ -150,7 +150,7 @@ flowchart LR
 
 ### 1. Change Intelligence (During Construction)
 * **9 Deterministic Verification Gates:** Boundary checks verifying Manufacturer Comparability, Voltage/Phase Match, Refrigerant Environmental Suitability, Rated Ambient vs Site ASHRAE Climate Extremes, Physical Footprint Boundary, and Structural Floor Loading.
-* **13 Pint Unit-Checked Deltas:** Mathematical differences for Weight, Length, Width, Height, Voltage, Full Load Amps, MCA, MOCP, Power Input, Refrigerant Charge, Cooling Capacity, and COP.
+* **15 Pint Unit-Checked Deltas:** Mathematical differences for weight, maximum support point load, length, width, height, footprint area, voltage, phases, full load amps, MCA, MOCP, power input, refrigerant type, refrigerant charge and cooling capacity. COP is not among them: it is a ratio the catalog publishes, not a delta the engine computes.
 * **Facility Design Margins:** Computes remaining electrical substation capacity, central plant chilled water duty, and structural slab capacity. Missing baselines are flagged explicitly as `NEEDS_INFORMATION`.
 * **Cost, Energy & Schedule Impact:** Calculates annual OPEX deltas (energy and water utility costs) and flags critical-path lead-time schedule delay risks.
 * **Equipment Recommendation Studio:** Multi-category catalog covering 11 equipment types with deterministic multi-criteria scoring out of 100.
@@ -178,7 +178,7 @@ The platform uses **Mireye's Physical-World Intelligence Layer** as its primary 
 
 | Source & Dataset | Module Provider | Serves Field(s) | Records / Coverage | Licence |
 | :--- | :--- | :--- | :--- | :--- |
-| **Mireye Physical-World API** | `LiveMireyeClient` / `MockMireyeClient` | 34 spatial, environmental, civil, and grid reliability fields | Live multi-source connectors (USGS, FEMA, EIA, EPA, NOAA, NREL, NRCS, FCC) | Commercial / Mireye API |
+| **Mireye Physical-World API** | `LiveMireyeClient` / `MockMireyeClient` | 30 spatial, environmental, civil, and grid reliability fields | Live multi-source connectors (USGS, FEMA, EIA, EPA, NOAA, NREL, NRCS, FCC) | Commercial / Mireye API |
 | **PeeringDB `/api/fac`** | `PeeringDBFacilities` | `distance_to_ix_km`, `ix_facility_carrier_count` | 1,353 US carrier hotel / IX facilities | CC-BY 4.0 |
 | **EPA / USGS Water Quality** | `WaterQualityPortal` | `water_quality_tds_mg_l` | Real lab TDS samples within 40 km radius | Public Domain |
 | **EIA Form EIA-861 (2023)** | `EIAReliability` | `grid_reliability_saidi_min` | 734 utilities across 2,840 US counties | Public Domain |
@@ -281,3 +281,11 @@ Detailed architectural and engineering documentation is available in the [`docs/
 * [`docs/api.md`](docs/api.md): REST API endpoints and payload specifications.
 * [`docs/production-lld.md`](docs/production-lld.md): Production architecture design for PostgreSQL, Redis, Kafka, and Neo4j.
 * [`docs/live-vs-demo.md`](docs/live-vs-demo.md): Service adapter configuration for mock versus live cloud infrastructure.
+* [`docs/mireye-contract.md`](docs/mireye-contract.md): The Mireye request/response contract as verified against the live service, and the five mismatches that were corrected.
+* [`docs/datasets.md`](docs/datasets.md): Every public dataset in use, and step-by-step procedures for the data that still has to be sourced by hand.
+* [`docs/deployment.md`](docs/deployment.md): Render and Vercel deployment, OCR requirements, and what an ephemeral filesystem means for the demo.
+* [`docs/verification-report.md`](docs/verification-report.md): Requirement coverage, commands run, and defects found and fixed.
+* [`docs/demo-walkthrough.md`](docs/demo-walkthrough.md): A scripted run through both workflows.
+* [`docs/limitations.md`](docs/limitations.md): Assumptions, safety limits, and what would need hardening before production use.
+* [`docs/research-basis.md`](docs/research-basis.md): Sources behind the engineering rules, with citations checked.
+* [`docs/submission-technical-brief.md`](docs/submission-technical-brief.md): Two-page technical brief, also rendered as a PDF.
