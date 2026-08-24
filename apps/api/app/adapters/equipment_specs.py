@@ -16,11 +16,23 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ..config import get_settings
-from .datasets import _haversine_km
 
 log = logging.getLogger("equipment_specs")
 
 BUNDLED_DIR = Path(__file__).resolve().parent.parent / "data" / "datasets"
+
+
+def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Calculate the great-circle distance between two points in km."""
+    r = 6371.0  # Earth radius in kilometers
+    dlat = math.radians(lat2 - lat1)
+    dlon = math.radians(lon2 - lon1)
+    a = (
+        math.sin(dlat / 2.0) ** 2
+        + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon / 2.0) ** 2
+    )
+    c = 2.0 * math.atan2(math.sqrt(a), math.sqrt(1.0 - a))
+    return r * c
 
 
 @dataclass
