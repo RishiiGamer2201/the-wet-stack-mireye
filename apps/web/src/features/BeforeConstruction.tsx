@@ -624,13 +624,13 @@ export function BeforeConstruction({
                   <tbody>
                     {scores.map((score) => (
                       <tr key={score.site_id} className={cx("border-t border-ink-100", selected?.site_id === score.site_id && "bg-ink-50")}>
-                        <td className="py-1.5 pr-2 tabular">{score.rank ?? "—"}</td>
+                        <td className="py-1.5 pr-2 tabular">{score.rank ?? "-"}</td>
                         <td className="py-1.5 pr-2">
                           <button className="font-medium text-ink-900 underline-offset-2 hover:underline" onClick={() => setSelectedSite(score.site_id)}>
                             {score.site_name}
                           </button>
                         </td>
-                        <td className="py-1.5 pr-2 tabular font-semibold">{score.overall_score?.toFixed(1) ?? "—"}</td>
+                        <td className="py-1.5 pr-2 tabular font-semibold">{score.overall_score?.toFixed(1) ?? "-"}</td>
                         <td className="py-1.5 pr-2"><Badge className={RISK_STYLE[score.risk_level]}>{score.risk_level}</Badge></td>
                         <td className="py-1.5 pr-2 tabular">{pct(score.evidence_coverage)}</td>
                         <td className="py-1.5 pr-2 tabular">{pct(score.confidence)}</td>
@@ -725,7 +725,7 @@ export function BeforeConstruction({
                   <div key={dimension.dimension} className="rounded-lg border border-ink-200 p-3">
                     <div className="flex items-center justify-between gap-2">
                       <h3 className="text-xs font-semibold text-ink-800">{meta.dimension_labels[dimension.dimension] ?? dimension.dimension}</h3>
-                      <span className="tabular text-sm font-semibold text-ink-900">{dimension.score?.toFixed(0) ?? "—"}</span>
+                      <span className="tabular text-sm font-semibold text-ink-900">{dimension.score?.toFixed(0) ?? "-"}</span>
                     </div>
                     <Meter value={dimension.score ?? 0} className="mt-2 bg-signal-600" />
                     <p className="mt-1 text-[11px] text-ink-500">weight {dimension.weight.toFixed(1)} · coverage {pct(dimension.coverage)}</p>
@@ -735,7 +735,7 @@ export function BeforeConstruction({
                           <div className="flex items-center justify-between gap-1">
                             <span className="truncate text-ink-700 font-medium" title={metric.explanation}>{metric.label}</span>
                             <Badge className={EVIDENCE_STATUS_STYLE[metric.status]}>
-                              {metric.normalized?.toFixed(0) ?? "—"}
+                              {metric.normalized?.toFixed(0) ?? "-"}
                             </Badge>
                           </div>
                           <p className="text-ink-500">
@@ -762,7 +762,7 @@ export function BeforeConstruction({
                           flag.passed === null && "border-amber-200 bg-amber-50",
                         )}
                       >
-                        <span className="font-medium">{flag.requirement}</span> — {flag.explanation}
+                        <span className="font-medium">{flag.requirement}</span> - {flag.explanation}
                       </li>
                     ))}
                     {selected.requirement_flags.length === 0 && <li className="text-ink-500">No hard targets set on this project.</li>}

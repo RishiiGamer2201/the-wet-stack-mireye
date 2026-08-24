@@ -1,130 +1,164 @@
-# Two-minute video script
+# Two-minute demo script
 
-**329 words. About 132 seconds spoken at a normal pace, 120 at a brisk one.**
+**320 spoken words. 2:08 at a normal pace, 1:56 brisk.**
 
-The draft this came from ran 496 words, which is 3:18 spoken and 3:00 even
-rushed, against a hard 2:00 cap. Same voice and same structure, cut to fit.
+Every claim below was verified against the running frontend and API on
+2026-08-24, not taken from the README. The measured figures are in the appendix.
 
-What was cut and why is at the bottom, so you can put something back if you would
-rather trade it for something else.
-
-One correction carried in: the chiller delta is **440 kg**, not 450. The seeded
-case goes 4,850 kg to 5,290 kg. Say a number a judge can check, or say "over
-four hundred kilograms".
+**On covering "every feature":** the app has about twenty distinct panels. At two
+minutes that is six seconds each, which is a list, not a demo. So this script
+*narrates* one thread through the product and *shows* the rest passing under the
+cursor. The appendix marks which features are spoken and which are only seen, so
+you can swap them if you disagree with the choice.
 
 ---
 
-## The Problem
+## 0:00 - 0:18 · The problem (46 words)
 
 > A data center gets decided twice. When you choose the site, and again whenever
-> equipment gets changed during construction.
+> equipment gets substituted during construction.
 >
-> Both decisions depend on physical data. And when some of it is missing, it is
-> very easy to make assumptions without realising it. A missing value gets
-> treated like zero. A nearby measurement gets used because it is close enough.
->
-> Wet Stack exists to make sure that doesn't happen.
+> Both depend on physical data. And when part of that data is missing, it is
+> very easy to make an assumption without noticing. A blank scores as zero. A
+> nearby measurement gets used because it is close enough.
 
-*On screen: the ranked site table, still. Don't click yet.*
+**Screen:** Before construction, ranking table with all nine sites visible.
+Cursor still.
 
 ---
 
-## What We Built
+## 0:18 - 0:42 · Site intelligence (60 words)
 
-> An intelligence layer on top of Mireye. Site Intelligence evaluates a site
-> before construction; Change Intelligence checks equipment substitutions during
-> it. Both show you where the answer came from, not just the answer.
-
-*On screen: open the evidence drawer so citations are visible.*
-
----
-
-## How It Works
-
-> Our main design decision was to keep the AI separate from the engineering
-> calculations. The agents decide what to investigate, find the evidence, and
-> explain the result. Every calculation and unit conversion happens in
-> deterministic Python.
+> Site Intelligence scores every candidate on thirty physical parameters from
+> Mireye, across eight dimensions.
 >
-> So when I swap this chiller and the new unit is four hundred and forty
-> kilograms heavier, Python calculates that delta against the structural margin.
-> The agent explains whether it needs engineering review.
+> This is not a black box. Every metric shows its value, how it was normalised,
+> and the evidence behind it. Change the weight of any dimension and the backend
+> re-scores against the same evidence, so you can see what your priorities
+> actually cost you.
 
-*On screen: the CH-01 change, then the deltas table.*
+**Screen:** expand Cascade Flats, scroll the eight dimensions, then drag the
+Water weight slider and let the ranking reorder. Open the evidence drawer on one
+metric.
+
+*Shown, not narrated: site map, AI Site Scout, manual value override, the
+investigation timeline.*
 
 ---
 
-## Evidence Integrity
+## 0:42 - 1:04 · The rule (56 words)
 
-> The other half is missing data. If something hasn't been measured, we don't
-> fill it in. We mark it missing and give a next action, like commissioning a
-> geotechnical survey.
+> The important part is what happens when evidence is missing or only nearly
+> right.
 >
-> We also check that evidence is relevant. Two values sharing a unit doesn't make
-> them interchangeable. Wet-bulb and dry-bulb are both in Celsius, but they are
-> different things, so the system won't quietly substitute one for the other.
+> Mireye publishes a design wet-bulb temperature. Our model needs dry-bulb. Both
+> are Celsius, so nothing would break if we swapped them. The score would just be
+> wrong. So it is stored as contextual evidence: visible, cited, and unable to
+> fill that field or close its gap.
 
-*On screen: the wet-bulb proxy label and its note. Hold this one. It is the
-single most important shot in the video.*
+**Screen:** the wet-bulb row with its proxy label, then the gap panel showing
+two hundred open gaps, nine of them blocking, each with a next action.
+
+**Hold this one.** It is the whole pitch.
 
 ---
 
-## What We've Actually Built
+## 1:04 - 1:30 · Change intelligence (62 words)
 
-> This runs on real data. Over two thousand live Mireye records, hundreds of
-> tests passing, five public datasets connected.
+> Second workflow. A chiller substitution.
 >
-> In Virginia it found very high dissolved solids in the groundwater, which
-> changes the cooling design. In Arizona, very high wildfire risk, and it
-> corrected a classification error we had missed.
-
-*On screen: Harbour Point's water evidence, then Rio Verde's wildfire row. Two
-seconds each.*
-
----
-
-## What's Next
-
-> Certified manufacturer data in place of the last synthetic documents, more
-> public datasets, and a production architecture.
+> Nine gates run before any comparison is allowed. Then fifteen unit-checked
+> deltas, calculated in Python, not by the model. Design margins, cost and
+> schedule impact, and a full decision lineage for why anything was flagged.
 >
-> The idea is simple. When an engineering decision gets made, you should see the
-> evidence and the assumptions behind it, not just the answer.
+> Ask it across all three substitutions and it says needs information, and names
+> exactly which facility capacities it does not have.
 
-*On screen: the evidence panel, citations visible. Hold, then cut.*
+**Screen:** CH-01 change, gates passing, the deltas table, then scroll through
+margins and cost. Finish on cascade analysis showing NEEDS INFORMATION with the
+named missing capacities.
+
+*Shown, not narrated: the impact graph, thirty nodes and thirty-nine edges.*
 
 ---
 
-## What was cut, and what it would cost to restore
+## 1:30 - 1:48 · Knowledge and recommendation (48 words)
 
-| Cut | Words | Worth restoring if |
-|---|---|---|
-| The OCR paragraph (lower confidence, flag for manual check) | 45 | You would rather show document ingestion than the site table |
-| "compares the two units and calculates the change in weight, dimensions, electrical requirements, cooling capacity, and so on" | 22 | Never. The 440 kg example does this work better. |
-| "hundreds of automated tests passing" expanded to the real figure | 6 | You want the precise number: 277 |
+> Upload a submittal and it is parsed, indexed and searchable immediately. If the
+> page is a scan, OCR reads it, at half confidence, flagged for a human.
+>
+> And describe what you need in plain English. It extracts the physics
+> constraints and ranks real catalog equipment against them.
 
-The OCR point is the one genuinely worth missing. If you want it back, drop the
-"What We Built" section and open the demo on a document upload instead.
+**Screen:** drag `Aurora-DC1-Scanned-Field-Markup-SYNTHETIC.pdf` into the upload
+area, show the OCR badge appear. Then the recommendation studio: type the chiller
+requirement, show the constraints and the ranked candidates.
+
+*Shown, not narrated: the MCP tool registry, the knowledge agent chat, the
+EPC advisor.*
+
+---
+
+## 1:48 - 2:00 · Close (36 words)
+
+> Over three thousand evidence records, live from Mireye and five public
+> datasets. Two hundred and seventy-seven tests.
+>
+> When an engineering decision gets made, you should see the evidence and the
+> assumptions behind it, not just the answer.
+
+**Screen:** evidence panel with citations visible. Hold, then cut.
+
+---
+
+## Appendix: verified against the running system
+
+Measured on 2026-08-24 by calling every endpoint the frontend calls.
+
+| Claim in the script | Measured |
+|---|---|
+| thirty physical parameters | 30 fields |
+| eight dimensions | 8, 30 metrics on the leader |
+| nine sites | 9, all with coordinates |
+| two hundred open gaps, nine blocking | 200 open, 9 blocking |
+| contextual evidence exists | 268 proxy records, against 2,410 exact |
+| nine gates | 9 checks returned |
+| fifteen deltas | 15 returned |
+| cascade says needs information | `NEEDS_INFORMATION`, headroom `null`, capacities named |
+| impact graph | 30 nodes, 39 edges |
+| ranks real catalog equipment | 4 candidates, top: York YZ Magnetic Bearing |
+| three thousand evidence records | 3,296 |
+| 277 tests | 277 passed, 4 skipped |
+
+**Two things to know before you record.**
+
+The demo database has **four documents and none of them are OCR'd**, because it
+was seeded before OCR existed. The OCR badge only appears if you upload the
+scanned markup live. That upload is in the script for exactly this reason.
+
+The seeded project has **three change cases, not five**. GEN-01 and UPS-1 only
+appear in a freshly seeded database. If you want all five, hit *Clear Data* and
+let it re-seed before recording.
 
 ---
 
 ## Delivery notes
 
-**Say "missing", not "null" or "gap".** The judges are Mireye's team. "Missing"
-is the word that lands.
+**Say "missing", not "null" or "gap".** The judges are Mireye's team.
 
-**The wet-bulb shot is the pitch.** Everyone else's demo will show a full
-dashboard. Yours shows a system that declined to fill one in, and explains why.
-Give it the time.
+**The wet-bulb shot is the pitch.** Every other demo will show a full dashboard.
+Yours shows a system that declined to fill one in, and says why. Give it its
+twenty seconds even if something else has to go.
 
-**Demo in live mode.** With live Mireye, CH-01 lands on NEEDS INFORMATION rather
-than ENGINEER REVIEW, because real evidence has real gaps. That is the more
-honest demo and it matches the sentence you just said about missing data.
+**Demo in live mode.** CH-01 lands on NEEDS INFORMATION rather than ENGINEER
+REVIEW, because real evidence has real gaps. Less tidy, and it matches the
+sentence you just said about missing data.
 
-**Load both tabs before recording.** The first live Mireye investigation on a
-cold cache takes about seven seconds, which is a long time on camera.
+**Pre-load every tab.** A cold-cache Mireye investigation takes about seven
+seconds. Run one before you record so the caches are warm.
 
-**If you run over:** cut the Arizona half of the findings. Virginia carries it.
+**If you run over:** cut the recommendation studio sentence. It is the most
+impressive feature and the least central to the argument.
 
 **If you run short:** add *"and none of those numbers come from the language
 model. It plans and explains. It never writes a number."*

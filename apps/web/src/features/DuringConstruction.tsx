@@ -350,11 +350,11 @@ export function DuringConstruction({
             <>
               {/* SIDE BY SIDE SPEC COMPARISON */}
               <Card
-                title={`Old vs Proposed — ${change.change.equipment_tag}`}
+                title={`Old vs Proposed - ${change.change.equipment_tag}`}
                 subtitle={
                   change.site
                     ? `Linked site: ${change.site.name} (${change.site.geocode_resolution ?? "unresolved"})`
-                    : "No site linked — site-dependent checks will be skipped"
+                    : "No site linked - site-dependent checks will be skipped"
                 }
                 actions={
                   <div className="flex items-center gap-2">
@@ -381,10 +381,10 @@ export function DuringConstruction({
                       <tr>
                         <th className="py-1 pr-3 font-medium">Property</th>
                         <th className="py-1 pr-3 font-medium">
-                          Existing — {change.existing.configuration.model_number ?? "-"}
+                          Existing - {change.existing.configuration.model_number ?? "-"}
                         </th>
                         <th className="py-1 pr-3 font-medium">
-                          Proposed — {change.proposed.configuration.model_number ?? "-"}
+                          Proposed - {change.proposed.configuration.model_number ?? "-"}
                         </th>
                         <th className="py-1 font-medium">Delta</th>
                       </tr>
@@ -535,7 +535,7 @@ export function DuringConstruction({
                     </Card>
 
                     <Card
-                      title="13 Pint-Checked Deterministic Deltas"
+                      title="15 Pint-Checked Deterministic Deltas"
                       subtitle="Unit-safe physical & electrical differences"
                     >
                       <div className="overflow-x-auto">
@@ -671,7 +671,7 @@ export function DuringConstruction({
         onClose={() => setEvidenceFor(null)}
         projectId={projectId}
         subjectId={evidenceFor?.id}
-        title={`Evidence — ${evidenceFor?.name ?? ""}`}
+        title={`Evidence - ${evidenceFor?.name ?? ""}`}
       />
     </div>
   );
@@ -687,7 +687,7 @@ function DesignMarginsPanel({ margins }: { margins: DesignMargin[] }) {
   return (
     <Card
       title="Deterministic Design Margins & Remaining Facility Headroom"
-      subtitle="Evaluated against design capacities — unbacked capacities are flagged as NEEDS INFORMATION"
+      subtitle="Evaluated against design capacities - unbacked capacities are flagged as NEEDS INFORMATION"
     >
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         {margins.map((m) => {
@@ -1120,7 +1120,7 @@ function ActionPackageGenerator({
   return (
     <div className="flex flex-col gap-4">
       <Card
-        title={`Action Package & RFI Generator — ${equipmentTag}`}
+        title={`Action Package & RFI Generator - ${equipmentTag}`}
         subtitle={`Generate structured, evidence-backed engineering documentation for ${changeTitle}`}
       >
         <div className="flex flex-col gap-3">
