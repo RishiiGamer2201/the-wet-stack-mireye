@@ -3,6 +3,7 @@
 
 import type {
   ChangeDetail,
+  ClimateStationInfo,
   Evidence,
   ImpactGraph,
   InformationGap,
@@ -10,6 +11,7 @@ import type {
   Meta,
   Project,
   ProjectDetail,
+  ReferenceSpec,
   Requirement,
   RequirementTargets,
   SearchResponse,
@@ -109,6 +111,12 @@ export const api = {
   analyzeChange: (projectId: string, changeId: string) =>
     post<Investigation>(`/projects/${projectId}/changes/${changeId}/analyze`),
   impact: (changeId: string) => request<ImpactGraph>(`/impact/${changeId}`),
+  climateStation: (projectId: string, changeId: string) =>
+    request<ClimateStationInfo>(`/projects/${projectId}/changes/${changeId}/climate-station`),
+  referenceSpecs: (equipmentTag: string) =>
+    request<ReferenceSpec>(`/during/reference-specs/${encodeURIComponent(equipmentTag)}`),
+  autofillFromReference: (projectId: string, changeId: string) =>
+    post<Investigation>(`/projects/${projectId}/changes/${changeId}/autofill-from-reference`),
 
   // Shared knowledge
   investigations: (projectId: string, workflow?: string) =>

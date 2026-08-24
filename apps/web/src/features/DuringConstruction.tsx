@@ -1,4 +1,4 @@
-import { ArrowRight, CheckCheck, FileText, Play, Upload } from "lucide-react";
+import { ArrowRight, CheckCheck, CloudSun, Database, Droplet, FileText, Play, Sparkles, Upload } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 import { EvidenceDrawer } from "../components/EvidencePanel";
@@ -26,12 +26,14 @@ import {
 } from "../lib/format";
 import type {
   ChangeDetail,
+  ClimateStationInfo,
   EquipmentChange,
   EquipmentConfiguration,
   ImpactGraph,
   InformationGap,
   Investigation,
   ProjectDetail,
+  ReferenceSpec,
   Requirement,
 } from "../lib/types";
 
@@ -77,6 +79,9 @@ export function DuringConstruction({ detail }: { detail: ProjectDetail }) {
   const [investigation, setInvestigation] = useState<Investigation | null>(null);
   const [graph, setGraph] = useState<ImpactGraph | null>(null);
   const [gaps, setGaps] = useState<InformationGap[]>([]);
+  const [climateStation, setClimateStation] = useState<ClimateStationInfo | null>(null);
+  const [refSpec, setRefSpec] = useState<ReferenceSpec | null>(null);
+  const [autofilling, setAutofilling] = useState(false);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const [evidenceFor, setEvidenceFor] = useState<{ id: string; name: string } | null>(null);
@@ -86,6 +91,8 @@ export function DuringConstruction({ detail }: { detail: ProjectDetail }) {
       setError(null);
       setGraph(null);
       setInvestigation(null);
+      setClimateStation(null);
+      setRefSpec(null);
       try {
         const [changeDetail, allGaps] = await Promise.all([
           api.change(projectId, changeId),
@@ -93,6 +100,15 @@ export function DuringConstruction({ detail }: { detail: ProjectDetail }) {
         ]);
         setChange(changeDetail);
         setGaps(allGaps.filter((g) => g.subject_id === changeId));
+        
+        // Load climate station if site is linked
+        if (changeDetail.site?.latitude && changeDetail.site?.longitude) {
+          api.climateStation(projectId, changeId).then(setClimateStation).catch(() => setClimateStation(null));
+        }
+
+        // Load reference specs from RacksDB / LBNL
+        api.referenceSpecs(changeDetail.change.equipment_tag).then(setRefSpec).catch(() => setRefSpec(null));
+
         if (changeDetail.latest_investigation_id) {
           const found = await api.investigation(projectId, changeDetail.latest_investigation_id);
           setInvestigation(found);
@@ -132,6 +148,28 @@ export function DuringConstruction({ detail }: { detail: ProjectDetail }) {
       setError(e);
     } finally {
       setRunning(false);
+    }
+  }
+
+  async function handleAutofill() {
+    if (!selectedId) return;
+    setAutofilling(true);
+    setError(null);
+    try {
+      const updatedInv = await api.autofillFromReference(projectId, selectedId);
+      setInvestigation(updatedInv);
+      const [impactGraph, allGaps, changeDetail] = await Promise.all([
+        api.impact(selectedId).catch(() => null),
+        api.gaps(projectId),
+        api.change(projectId, selectedId),
+      ]);
+      setGraph(impactGraph);
+      setChange(changeDetail);
+      setGaps(allGaps.filter((g) => g.subject_id === selectedId));
+    } catch (e) {
+      setError(e);
+    } finally {
+      setAutofilling(false);
     }
   }
 
@@ -272,11 +310,113 @@ export function DuringConstruction({ detail }: { detail: ProjectDetail }) {
                 </tbody>
               </table>
             </div>
+            {/* Open-Source Dataset Auto-Fill (RacksDB / LBNL) */}
+            {refSpec && (
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-sky-200 bg-sky-50/70 p-3 text-xs">
+                <div className="flex items-start gap-2.5">
+                  <Database className="h-4 w-4 text-sky-600 shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-semibold text-sky-900">
+                      RacksDB &amp; LBNL Open Catalog Benchmark: {refSpec.reference_model}
+                    </span>
+                    <p className="text-sky-700 text-[11px] mt-0.5">
+                      {refSpec.description}
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  size="sm"
+                  variant="primary"
+                  loading={autofilling}
+                  onClick={handleAutofill}
+                  className="bg-sky-600 hover:bg-sky-700 text-white shrink-0 font-medium"
+                >
+                  <Sparkles aria-hidden className="h-3.5 w-3.5 mr-1" />
+                  Auto-fill Missing Data from RacksDB
+                </Button>
+              </div>
+            )}
+
             <p className="mt-2 text-[11px] text-amber-800">
               All equipment values in this demo are synthetic. Manufacturers and model numbers are
               invented for demonstration.
             </p>
           </Card>
+
+          {/* Site Climate Design Conditions (StationFinder & ASHRAE 2021) */}
+          {climateStation && (
+            <Card
+              title="Site Climate Design Conditions (StationFinder / ASHRAE)"
+              subtitle={`Nearest Weather Station: ${climateStation.name} (${climateStation.distance_km} km away, elevation ${climateStation.elevation_m}m)`}
+              actions={
+                <Badge className="border-sky-300 bg-sky-50 text-sky-800">
+                  <CloudSun className="h-3.5 w-3.5 mr-1 inline" /> StationFinder WMO #{climateStation.station_id}
+                </Badge>
+              }
+            >
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                <div className="rounded-lg border border-ink-200 bg-white p-2.5">
+                  <span className="text-ink-500 block text-[11px]">Extreme Summer Cooling (0.4%)</span>
+                  <span className="text-base font-bold text-ink-900 mt-1 block">
+                    {climateStation.cooling_db_0_4_pct_degc}°C DB
+                  </span>
+                  <span className="text-[10px] text-ink-400">Peak dry-bulb design</span>
+                </div>
+                <div className="rounded-lg border border-ink-200 bg-white p-2.5">
+                  <span className="text-ink-500 block text-[11px]">Coincident Wet-Bulb (0.4%)</span>
+                  <span className="text-base font-bold text-sky-700 mt-1 block">
+                    {climateStation.cooling_wb_0_4_pct_degc}°C WB
+                  </span>
+                  <span className="text-[10px] text-ink-400">Evaporative cooling limit</span>
+                </div>
+                <div className="rounded-lg border border-ink-200 bg-white p-2.5">
+                  <span className="text-ink-500 block text-[11px]">Standard Summer Cooling (1.0%)</span>
+                  <span className="text-base font-bold text-ink-800 mt-1 block">
+                    {climateStation.cooling_db_1_0_pct_degc}°C DB
+                  </span>
+                  <span className="text-[10px] text-ink-400">Annual 99.0% exceedance</span>
+                </div>
+                <div className="rounded-lg border border-ink-200 bg-white p-2.5">
+                  <span className="text-ink-500 block text-[11px]">Extreme Winter Heating (99.6%)</span>
+                  <span className="text-base font-bold text-rose-700 mt-1 block">
+                    {climateStation.heating_db_99_6_pct_degc}°C DB
+                  </span>
+                  <span className="text-[10px] text-ink-400">Lowest design temp</span>
+                </div>
+              </div>
+            </Card>
+          )}
+
+          {/* Water & Energy Benchmarks (LBNL / AI-WaterStress) */}
+          {change.change.equipment_tag.startsWith("CH-") && (
+            <Card
+              title="Water & Energy Efficiency Benchmarks (LBNL / AI-WaterStress)"
+              subtitle="Derived from LBNL Data Center Energy Efficiency Center & Water Usage Effectiveness (WUE) models"
+              actions={
+                <Badge className="border-teal-300 bg-teal-50 text-teal-800">
+                  <Droplet className="h-3.5 w-3.5 mr-1 inline" /> LBNL Chilled-Water Baseline
+                </Badge>
+              }
+            >
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                <div className="rounded-lg border border-teal-200 bg-teal-50/50 p-2.5">
+                  <span className="text-teal-800 font-semibold block text-[11px]">Target Chiller COP</span>
+                  <span className="text-base font-bold text-teal-900 mt-1 block">5.8 – 6.2 COP</span>
+                  <span className="text-[10px] text-teal-700">AHRI 550/590 efficiency tier</span>
+                </div>
+                <div className="rounded-lg border border-teal-200 bg-teal-50/50 p-2.5">
+                  <span className="text-teal-800 font-semibold block text-[11px]">Cooling Tower WUE Rate</span>
+                  <span className="text-base font-bold text-teal-900 mt-1 block">1.45 L/kWh</span>
+                  <span className="text-[10px] text-teal-700">Evaporative water demand</span>
+                </div>
+                <div className="rounded-lg border border-teal-200 bg-teal-50/50 p-2.5">
+                  <span className="text-teal-800 font-semibold block text-[11px]">Power Demand Intensity</span>
+                  <span className="text-base font-bold text-teal-900 mt-1 block">0.606 kW / ton</span>
+                  <span className="text-[10px] text-teal-700">Hyperscale standard baseline</span>
+                </div>
+              </div>
+            </Card>
+          )}
 
           <RequirementsPanel
             projectId={projectId}

@@ -1,0 +1,76 @@
+{
+  "version": "1.0.0",
+  "source": "RacksDB (github.com/rackslab/RacksDB) & LBNL Data Center Energy Efficiency Catalog (datacenters.lbl.gov)",
+  "licence": "Open Source (GPL / Public Domain)",
+  "equipment_models": {
+    "PDU-3": {
+      "equipment_type": "power_distribution_unit",
+      "reference_model": "RacksDB Standard 150kVA / 200kVA Floor PDU",
+      "manufacturer": "Industry Standard (RacksDB baseline)",
+      "weight_kg": 1850,
+      "length_mm": 1200,
+      "width_mm": 900,
+      "height_mm": 2000,
+      "voltage_v": 480,
+      "phases": 3,
+      "full_load_amps_a": 180,
+      "mca_a": 225,
+      "mocp_a": 250,
+      "power_input_kw": 150,
+      "efficiency_pct": 98.5,
+      "description": "Standard 480V 3-phase floor-mount power distribution unit baseline specs from RacksDB open equipment database."
+    },
+    "UPS-1": {
+      "equipment_type": "uninterruptible_power_supply",
+      "reference_model": "RacksDB Double-Conversion Hyperscale UPS 1200kW",
+      "manufacturer": "Industry Standard (RacksDB / LBNL baseline)",
+      "weight_kg": 7600,
+      "length_mm": 3800,
+      "width_mm": 1100,
+      "height_mm": 2000,
+      "voltage_v": 480,
+      "phases": 3,
+      "full_load_amps_a": 1520,
+      "mca_a": 1720,
+      "mocp_a": 2000,
+      "power_input_kw": 1260,
+      "efficiency_pct": 96.8,
+      "description": "1200kW transformerless modular UPS baseline with MOCP standard 1.25x sizing rule per NEC / RacksDB catalog."
+    },
+    "CH-01": {
+      "equipment_type": "chiller",
+      "reference_model": "LBNL 1000-1200kW Variable-Speed Chiller Baseline",
+      "manufacturer": "LBNL Energy Catalog Baseline",
+      "weight_kg": 5100,
+      "length_mm": 7000,
+      "width_mm": 2200,
+      "height_mm": 2550,
+      "cop": 5.8,
+      "kw_per_ton": 0.606,
+      "wue_l_per_kwh": 1.45,
+      "description": "LBNL high-efficiency centrifugal/screw chiller baseline with AHRI standard rating conditions and water consumption benchmarks."
+    },
+    "CH-02": {
+      "equipment_type": "fan_wall_cooling_unit",
+      "reference_model": "RacksDB High-Density Fan Wall 500kW",
+      "manufacturer": "RacksDB / LBNL CRAH Baseline",
+      "weight_kg": 2420,
+      "length_mm": 4200,
+      "width_mm": 1800,
+      "height_mm": 2100,
+      "cop": 6.2,
+      "description": "Modular chilled-water fan-wall cooling unit with EC fan array."
+    },
+    "GEN-01": {
+      "equipment_type": "standby_generator",
+      "reference_model": "RacksDB 2500-2750kW Medium Voltage Genset",
+      "manufacturer": "RacksDB Genset Reference",
+      "weight_kg": 29000,
+      "length_mm": 7400,
+      "width_mm": 2290,
+      "height_mm": 3000,
+      "derate_temp_threshold_degc": 40.0,
+      "description": "13.8kV standby diesel/gas generator package with ISO 8528 thermal derating profile."
+    }
+  }
+}

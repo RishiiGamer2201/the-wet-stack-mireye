@@ -532,3 +532,39 @@ export interface MCPTool {
   inputSchema: Record<string, any>;
 }
 
+export interface ClimateStationInfo {
+  station_id: string;
+  name: string;
+  state: string;
+  country: string;
+  latitude: number;
+  longitude: number;
+  elevation_m: number;
+  cooling_db_0_4_pct_degc: number;
+  cooling_wb_0_4_pct_degc: number;
+  cooling_db_1_0_pct_degc: number;
+  cooling_wb_1_0_pct_degc: number;
+  heating_db_99_6_pct_degc: number;
+  distance_km: number;
+}
+
+export interface ReferenceSpec {
+  equipment_type: string;
+  reference_model: string;
+  manufacturer: string;
+  weight_kg?: number;
+  length_mm?: number;
+  width_mm?: number;
+  height_mm?: number;
+  voltage_v?: number;
+  phases?: number;
+  full_load_amps_a?: number;
+  mca_a?: number;
+  mocp_a?: number;
+  power_input_kw?: number;
+  cop?: number;
+  wue_l_per_kwh?: number;
+  description: string;
+}
+
+
