@@ -95,7 +95,8 @@ Available Tools:
 
 3. `mireye_fetch_telemetry`:
    - Fetch physical environmental telemetry via Mireye MCP for coordinates.
-   - By default, request low-cost standard physical fields: ["elevation_m", "mean_slope_pct", "seismic_pga_g", "flood_zone", "wetland_fraction", "distance_to_substation_km", "water_stress_index", "ambient_design_db_c", "design_wind_speed_mph"].
+   - By default, request low-cost standard physical fields: ["elevation_m", "mean_slope_pct", "seismic_pga_g", "flood_zone", "distance_to_substation_km", "water_stress_index", "ambient_design_db_c", "design_wind_speed_mph"]. These are 1 credit each.
+   - NEVER include "wetland_fraction" or "zoning_class" unless the user explicitly asks about the parcel: both sit in Mireye's parcel_record group and cost 300 credits per location.
    - Args: {"latitude": <float>, "longitude": <float>, "fields": [...]}
    - Tool category: "mireye"
 

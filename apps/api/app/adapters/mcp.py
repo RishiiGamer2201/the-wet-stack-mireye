@@ -163,12 +163,17 @@ class MCPToolRegistry:
         self, latitude: float, longitude: float, fields: list[str] | None = None
     ) -> dict[str, Any]:
         client = get_mireye_client()
+        # One credit per field, except anything in Mireye's parcel_record group,
+        # which is 300 per location. `wetland_fraction` sat in this default list,
+        # so a deployment with MIREYE_INCLUDE_PARCEL_FIELDS=true paid 307 credits
+        # for every telemetry call instead of 7 - on the default path, not when
+        # anyone asked about a parcel. A default must never carry a billed field;
+        # a caller can still request one explicitly.
         default_fields = [
             "elevation_m",
             "mean_slope_pct",
             "seismic_pga_g",
             "flood_zone",
-            "wetland_fraction",
             "distance_to_substation_km",
             "water_stress_index",
             "ambient_design_db_c",

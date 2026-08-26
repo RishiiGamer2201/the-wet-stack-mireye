@@ -446,13 +446,16 @@ def ingest_pdf(
     chunks = chunk_pages(document, extracted.pages, set(extracted.ocr_pages))
     if not chunks:
         document.extraction_status = "failed"
-        document.extraction_error = extracted.ocr_note or (
-            "No extractable text found. OCR read every page and returned nothing, "
-            "so the pages are blank or the scan is unreadable."
-            if ocr_available()
-            else "No extractable text found. The PDF is probably a scan and OCR is "
-            "not enabled on this host."
-        )
+        if extracted.ocr_note:
+            document.extraction_error = f"No extractable text found. {extracted.ocr_note}"
+        else:
+            document.extraction_error = (
+                "No extractable text found. OCR read every page and returned nothing, "
+                "so the pages are blank or the scan is unreadable."
+                if ocr_available()
+                else "No extractable text found. The PDF is probably a scan and OCR is "
+                "not enabled on this host."
+            )
         store.put(C.DOCUMENTS, document, project_id=project_id)
         return document, [], []
 
