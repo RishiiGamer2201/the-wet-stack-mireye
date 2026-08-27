@@ -112,30 +112,63 @@ export function MapBoundaryDrawerModal({
     setPoints([]);
   }
 
-  function handleCitySearch(query: string) {
+  const [searchingLocation, setSearchingLocation] = useState(false);
+
+  async function handleCitySearch(query: string) {
     const term = query.trim().toLowerCase();
     if (!term) return;
 
-    // Search in known city coordinates table
-    const matchedKey = Object.keys(CITY_COORDINATES).find(
-      (k) => term.includes(k) || k.includes(term),
-    );
+    setError(null);
+    setSearchingLocation(true);
 
-    if (matchedKey) {
-      const coord = CITY_COORDINATES[matchedKey];
-      setMapCenter([coord.lat, coord.lon]);
-      setMapZoom(13);
-      setCityName(query.trim());
-      setError(null);
-    } else {
-      // Deterministic hash lookup for unlisted cities so map pings cleanly
-      const hash = term.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0);
-      const lat = 32.0 + ((hash % 150) / 10);
-      const lon = -118.0 + ((hash % 300) / 10);
-      setMapCenter([lat, lon]);
-      setMapZoom(12);
-      setCityName(query.trim());
-      setError(null);
+    try {
+      // 1. Check local presets for instant offline match
+      const matchedKey = Object.keys(CITY_COORDINATES).find(
+        (k) => term.includes(k) || k.includes(term),
+      );
+
+      if (matchedKey) {
+        const coord = CITY_COORDINATES[matchedKey];
+        setMapCenter([coord.lat, coord.lon]);
+        setMapZoom(13);
+        setCityName(query.trim());
+        setSearchingLocation(false);
+        return;
+      }
+
+      // 2. Query OpenStreetMap Nominatim for real-time worldwide geocoding
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query.trim())}&limit=1`,
+        {
+          headers: {
+            "Accept-Language": "en",
+          },
+        },
+      );
+
+      if (response.ok) {
+        const results = await response.json();
+        if (Array.isArray(results) && results.length > 0) {
+          const lat = parseFloat(results[0].lat);
+          const lon = parseFloat(results[0].lon);
+          if (!Number.isNaN(lat) && !Number.isNaN(lon)) {
+            setMapCenter([lat, lon]);
+            setMapZoom(13);
+            const displayName = results[0].display_name || query.trim();
+            const shortName = displayName.split(",")[0] || query.trim();
+            setCityName(shortName);
+            setSearchingLocation(false);
+            return;
+          }
+        }
+      }
+
+      // 3. Fallback warning if not found
+      setError(`Could not locate "${query}". Please verify spelling or try adding state/country (e.g. "Boston, MA" or "Tokyo, Japan").`);
+    } catch (err) {
+      setError(`Failed to geocode location "${query}". Please check your internet connection or click directly on the map.`);
+    } finally {
+      setSearchingLocation(false);
     }
   }
 
@@ -235,8 +268,13 @@ export function MapBoundaryDrawerModal({
                   className={`${inputClass} pl-9`}
                 />
               </div>
-              <Button type="submit" variant="secondary" className="border-ink-300 bg-ink-100 text-ink-800 hover:bg-ink-200">
-                Pan Map to City
+              <Button
+                type="submit"
+                variant="secondary"
+                disabled={searchingLocation}
+                className="border-ink-300 bg-ink-100 text-ink-800 hover:bg-ink-200 shrink-0"
+              >
+                {searchingLocation ? "Searching..." : "Pan Map to City"}
               </Button>
             </form>
 
