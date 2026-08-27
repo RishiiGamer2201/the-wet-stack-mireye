@@ -106,6 +106,19 @@ class PolygonSiteCreate(BaseModel):
     area_hectares: float | None = Field(default=None, gt=0)
     notes: str | None = None
 
+    @model_validator(mode="after")
+    def _valid_polygon(self):
+        points = [(coordinate.longitude, coordinate.latitude) for coordinate in self.coordinates]
+        if len(set(points)) < 3:
+            raise ValueError("boundary must contain at least three distinct coordinates")
+        twice_area = sum(
+            x1 * y2 - x2 * y1
+            for (x1, y1), (x2, y2) in zip(points, points[1:] + points[:1], strict=True)
+        )
+        if abs(twice_area) < 1e-12:
+            raise ValueError("boundary coordinates must form a non-zero area")
+        return self
+
 
 
 class RunSiteInvestigation(BaseModel):

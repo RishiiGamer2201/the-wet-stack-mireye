@@ -63,6 +63,48 @@ def test_site_creation_rejects_impossible_coordinates(api):
     assert response.status_code == 422
 
 
+def test_boundary_site_creation_calculates_location_and_area(api):
+    pid = project_id(api)
+    response = api.post(
+        f"/api/projects/{pid}/sites/from-boundary",
+        json={
+            "name": "Drawn parcel",
+            "city": "Quincy, WA",
+            "coordinates": [
+                {"latitude": 47.20, "longitude": -119.86},
+                {"latitude": 47.20, "longitude": -119.85},
+                {"latitude": 47.21, "longitude": -119.85},
+                {"latitude": 47.21, "longitude": -119.86},
+            ],
+        },
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["address"] == "Quincy, WA"
+    assert body["latitude"] == 47.205
+    assert body["longitude"] == -119.855
+    assert body["area_hectares"] > 0
+    assert body["geocode_resolution"] == "parcel"
+    assert body["synthetic"] is False
+
+
+def test_boundary_site_creation_rejects_a_degenerate_polygon(api):
+    response = api.post(
+        f"/api/projects/{project_id(api)}/sites/from-boundary",
+        json={
+            "name": "Flat boundary",
+            "coordinates": [
+                {"latitude": 47.20, "longitude": -119.86},
+                {"latitude": 47.20, "longitude": -119.85},
+                {"latitude": 47.20, "longitude": -119.84},
+            ],
+        },
+    )
+
+    assert response.status_code == 422
+
+
 def test_geocoding_fills_coordinates_from_an_address(api):
     response = api.post(
         f"/api/projects/{project_id(api)}/sites",
