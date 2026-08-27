@@ -95,6 +95,7 @@ def create_site_from_boundary(
         notes=notes,
         synthetic=False,
         geocode_resolution="parcel",
+        polygon_coordinates=[{"latitude": c.latitude, "longitude": c.longitude} for c in payload.coordinates],
     )
     store.put(C.SITES, site, project_id=project.id)
     return site

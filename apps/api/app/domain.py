@@ -366,6 +366,7 @@ class CandidateSite(Base):
     shortlisted: bool = False
     synthetic: bool = True
     notes: str | None = None
+    polygon_coordinates: list[dict[str, float]] | None = None
     created_at: datetime = Field(default_factory=now)
 
     @field_validator("latitude")

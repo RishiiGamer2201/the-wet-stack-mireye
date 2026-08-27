@@ -82,6 +82,7 @@ export interface CandidateSite {
   shortlisted: boolean;
   synthetic: boolean;
   notes?: string | null;
+  polygon_coordinates?: Array<{ latitude: number; longitude: number }> | null;
 }
 
 export interface EvidenceSource {

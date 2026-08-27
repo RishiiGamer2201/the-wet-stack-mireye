@@ -1,8 +1,21 @@
 import L from "leaflet";
-import { useEffect, useMemo, useRef } from "react";
+import { Fragment, useEffect, useMemo, useRef } from "react";
 import { MapContainer, Marker, Polygon, Polyline, Popup, TileLayer, useMap, useMapEvents } from "react-leaflet";
 
 import type { CandidateSite, SiteScore } from "../lib/types";
+
+function getSitePolygonCoords(site: CandidateSite): [number, number][] | null {
+  if (site.polygon_coordinates && site.polygon_coordinates.length >= 3) {
+    return site.polygon_coordinates.map((c) => [c.latitude, c.longitude]);
+  }
+  if (site.notes && site.notes.includes("Boundary Parcel")) {
+    const matches = Array.from(site.notes.matchAll(/\((-?\d+\.\d+),\s*(-?\d+\.\d+)\)/g));
+    if (matches.length >= 3) {
+      return matches.map((m) => [parseFloat(m[1]), parseFloat(m[2])]);
+    }
+  }
+  return null;
+}
 
 /** Div icons avoid Leaflet's bundled image assets, so markers render offline. */
 function pin(rank: number | null, risk: string | undefined, selected: boolean) {
@@ -220,29 +233,43 @@ export function SiteMap({
           />
         ) : null}
 
-        {/* Existing site markers */}
+        {/* Existing site markers & boundary polygons */}
         {!drawingMode &&
           located.map((site) => {
             const score = scoreOf(site.id);
+            const polygon = getSitePolygonCoords(site);
+            const isSelected = selectedId === site.id;
             return (
-              <Marker
-                key={site.id}
-                position={[site.latitude as number, site.longitude as number]}
-                icon={pin(score?.rank ?? null, score?.risk_level, selectedId === site.id)}
-                eventHandlers={{ click: () => onSelect?.(site.id) }}
-              >
-                <Popup>
-                  <strong>{site.name}</strong>
-                  <br />
-                  {site.address ?? "-"}
-                  <br />
-                  {score
-                    ? `Score ${score.overall_score ?? "-"} · ${score.risk_level} risk · ${(
-                        score.evidence_coverage * 100
-                      ).toFixed(0)}% coverage`
-                    : "Not yet investigated"}
-                </Popup>
-              </Marker>
+              <Fragment key={site.id}>
+                {polygon && (
+                  <Polygon
+                    positions={polygon}
+                    pathOptions={{
+                      color: isSelected ? "#059669" : "#0284c7",
+                      weight: isSelected ? 3 : 2,
+                      fillColor: isSelected ? "#10b981" : "#0284c7",
+                      fillOpacity: isSelected ? 0.45 : 0.25,
+                    }}
+                  />
+                )}
+                <Marker
+                  position={[site.latitude as number, site.longitude as number]}
+                  icon={pin(score?.rank ?? null, score?.risk_level, isSelected)}
+                  eventHandlers={{ click: () => onSelect?.(site.id) }}
+                >
+                  <Popup>
+                    <strong>{site.name}</strong>
+                    <br />
+                    {site.address ?? "-"}
+                    <br />
+                    {score
+                      ? `Score ${score.overall_score ?? "-"} · ${score.risk_level} risk · ${(
+                          score.evidence_coverage * 100
+                        ).toFixed(0)}% coverage`
+                      : "Not yet investigated"}
+                  </Popup>
+                </Marker>
+              </Fragment>
             );
           })}
       </MapContainer>

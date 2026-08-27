@@ -18,7 +18,7 @@ import { Badge, Button, Field, inputClass } from "./ui";
 interface MapBoundaryDrawerModalProps {
   projectId: string;
   onClose: () => void;
-  onSiteCreated: () => Promise<void>;
+  onSiteCreated: (siteId?: string) => Promise<void>;
 }
 
 const CITY_COORDINATES: Record<string, { lat: number; lon: number; label: string }> = {
@@ -196,7 +196,7 @@ export function MapBoundaryDrawerModal({
 
       await api.runSiteInvestigation(projectId, { site_ids: [site.id] }).catch(() => null);
 
-      await onSiteCreated();
+      await onSiteCreated(site.id);
       onClose();
     } catch (err: any) {
       setError(err?.message || "Failed to save and evaluate site boundary.");

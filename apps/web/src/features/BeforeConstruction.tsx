@@ -472,8 +472,11 @@ export function BeforeConstruction({
           <MapBoundaryDrawerModal
             projectId={projectId}
             onClose={() => setShowBoundaryModal(false)}
-            onSiteCreated={async () => {
+            onSiteCreated={async (newSiteId?: string) => {
               await refresh();
+              if (newSiteId) {
+                setSelectedSite(newSiteId);
+              }
               onProjectChanged();
             }}
           />
