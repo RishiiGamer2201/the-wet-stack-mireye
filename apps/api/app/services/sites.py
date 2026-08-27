@@ -30,6 +30,7 @@ from ..fields import (
     DEFAULT_DIMENSION_WEIGHTS,
     FIELD_INDEX,
     UnknownFieldError,
+    all_fields,
     broad_fields,
     deep_fields,
 )
@@ -340,7 +341,8 @@ def broad_pass(
     sites: list[CandidateSite],
     budget: LiveBudget | None = None,
 ):
-    return _pass(store, client, project, sites, broad_fields(), budget)
+    # Request ALL mapped Mireye fields (broad + deep + parcel record) for maximum data & credit utilization
+    return _pass(store, client, project, sites, all_fields(), budget)
 
 
 def deep_pass(

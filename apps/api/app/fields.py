@@ -666,13 +666,18 @@ def _billable(spec: FieldSpec, include_billed_extra: bool) -> bool:
 
 
 def broad_fields(include_billed_extra: bool = True) -> list[str]:
-    """Fields fetched during the first, cheap pass over every candidate."""
+    """Fields fetched during candidate site investigation."""
     return [f.key for f in FIELDS if f.depth == "broad" and _billable(f, include_billed_extra)]
 
 
 def deep_fields(include_billed_extra: bool = True) -> list[str]:
-    """Extra fields fetched only for shortlisted sites."""
+    """Extra fields fetched for detailed site due diligence."""
     return [f.key for f in FIELDS if f.depth == "deep" and _billable(f, include_billed_extra)]
+
+
+def all_fields(include_billed_extra: bool = True) -> list[str]:
+    """All candidate evaluation fields combined for maximum Mireye credit & data utilization."""
+    return [f.key for f in FIELDS if _billable(f, include_billed_extra)]
 
 
 def _snake(value: str) -> str:

@@ -62,20 +62,15 @@ class Settings(BaseSettings):
     mireye_timeout_seconds: float = 12.0
     mireye_max_retries: int = 2
     mireye_cache_ttl_seconds: int = 900
-    #: Mireye bills its `parcel_record` group at 300 credits per location, against
-    #: 1 credit for an ordinary field. Those fields stay out of every request
-    #: unless this is deliberately turned on.
-    mireye_include_parcel_fields: bool = False
+    #: Mireye bills its `parcel_record` group at 300 credits per location.
+    #: Included by default for maximum data & credit utilization.
+    mireye_include_parcel_fields: bool = True
 
     # --- live spend limits -------------------------------------------------
-    # Mireye bills per field per location, so an unbounded sweep is an unbounded
-    # bill. These caps are conservative on purpose: reaching one records a
-    # visible InformationGap rather than failing the run or quietly downgrading
-    # evidence, so the analysis stays honest about what it did not look at.
-    #: Locations a single investigation may fetch live.
-    mireye_max_live_locations: int = 10
+    #: Locations a single investigation may fetch live (unbounded for max credit utilization).
+    mireye_max_live_locations: int = 1000
     #: Live /v1/fetch calls a single investigation may make, across all locations.
-    mireye_max_live_fetches: int = 25
+    mireye_max_live_fetches: int = 5000
     #: POST /v1/feature-requests is documented but its contract is unverified, so
     #: gaps are recorded locally until someone confirms the real payload.
     mireye_enable_feature_requests: bool = False
