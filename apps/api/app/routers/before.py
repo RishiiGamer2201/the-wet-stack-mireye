@@ -12,6 +12,7 @@ from ..domain import CandidateSite, Investigation, Project, Workflow
 from ..fields import UnknownFieldError
 from ..schemas import (
     OverrideRequest,
+    PolygonSiteCreate,
     RankingRequest,
     RunSiteInvestigation,
     SiteCreate,
@@ -57,6 +58,47 @@ def create_site(
             ) from exc
     store.put(C.SITES, site, project_id=project.id)
     return site
+
+
+@router.post("/sites/from-boundary", response_model=CandidateSite, status_code=201)
+def create_site_from_boundary(
+    payload: PolygonSiteCreate,
+    project: Project = Depends(get_project),
+    store: Store = Depends(store_dep),
+):
+    lats = [c.latitude for c in payload.coordinates]
+    lons = [c.longitude for c in payload.coordinates]
+    avg_lat = sum(lats) / len(lats)
+    avg_lon = sum(lons) / len(lons)
+
+    area = payload.area_hectares
+    if area is None:
+        import math
+
+        scale_y = 111320.0
+        scale_x = scale_y * math.cos(math.radians(avg_lat))
+        pts = [((c.longitude - avg_lon) * scale_x, (c.latitude - avg_lat) * scale_y) for c in payload.coordinates]
+        n = len(pts)
+        area_m2 = abs(sum(pts[i][0] * pts[(i + 1) % n][1] - pts[(i + 1) % n][0] * pts[i][1] for i in range(n))) / 2.0
+        area = round(max(1.0, area_m2 / 10000.0), 2)
+
+    coords_str = ", ".join(f"({c.latitude:.4f}, {c.longitude:.4f})" for c in payload.coordinates[:5])
+    notes = f"Boundary Parcel ({len(payload.coordinates)} vertices: {coords_str}). {payload.notes or ''}".strip()
+
+    site = CandidateSite(
+        project_id=project.id,
+        name=payload.name,
+        address=payload.city or f"Custom Parcel ({avg_lat:.4f}, {avg_lon:.4f})",
+        latitude=round(avg_lat, 6),
+        longitude=round(avg_lon, 6),
+        area_hectares=area,
+        notes=notes,
+        synthetic=False,
+        geocode_resolution="parcel",
+    )
+    store.put(C.SITES, site, project_id=project.id)
+    return site
+
 
 
 @router.delete("/sites/{site_id}", status_code=204)

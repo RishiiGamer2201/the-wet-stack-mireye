@@ -95,6 +95,8 @@ export const api = {
 
   // Before Construction
   createSite: (projectId: string, body: unknown) => post(`/projects/${projectId}/sites`, body),
+  createSiteFromBoundary: (projectId: string, body: { name: string; coordinates: Array<{ latitude: number; longitude: number }>; city?: string; area_hectares?: number; notes?: string }) =>
+    post<import("./types").CandidateSite>(`/projects/${projectId}/sites/from-boundary`, body),
   deleteSite: (projectId: string, siteId: string) =>
     request<void>(`/projects/${projectId}/sites/${siteId}`, { method: "DELETE" }),
   runSiteInvestigation: (projectId: string, body: unknown) =>

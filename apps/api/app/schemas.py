@@ -94,6 +94,20 @@ class SiteCreate(BaseModel):
         return self
 
 
+class PolygonCoordinate(BaseModel):
+    latitude: float = Field(ge=-90, le=90)
+    longitude: float = Field(ge=-180, le=180)
+
+
+class PolygonSiteCreate(BaseModel):
+    name: str = Field(min_length=2, max_length=120)
+    coordinates: list[PolygonCoordinate] = Field(min_length=3)
+    city: str | None = None
+    area_hectares: float | None = Field(default=None, gt=0)
+    notes: str | None = None
+
+
+
 class RunSiteInvestigation(BaseModel):
     site_ids: list[str] | None = Field(
         default=None, description="Defaults to every candidate site on the project"

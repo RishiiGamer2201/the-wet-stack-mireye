@@ -1,4 +1,4 @@
-import { AlertTriangle, MapPin, Play, Plus, RotateCcw, Sparkles, Trash2, X } from "lucide-react";
+import { AlertTriangle, Compass, MapPin, Play, Plus, RotateCcw, Sparkles, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Bar,
@@ -18,6 +18,7 @@ import {
 import { EvidenceDrawer } from "../components/EvidencePanel";
 import { GapPanel } from "../components/GapPanel";
 import { DecisionCard, InvestigationTimeline, NextActionPreview } from "../components/Investigation";
+import { MapBoundaryDrawerModal } from "../components/MapBoundaryDrawerModal";
 import { SiteMap } from "../components/SiteMap";
 import { SiteScoutModal } from "../components/SiteScoutModal";
 import {
@@ -288,6 +289,7 @@ export function BeforeConstruction({
   const [busyOverride, setBusyOverride] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showScoutModal, setShowScoutModal] = useState(false);
+  const [showBoundaryModal, setShowBoundaryModal] = useState(false);
   const [savingSite, setSavingSite] = useState(false);
   const [saveError, setSaveError] = useState<unknown>(null);
   const weightSeq = useRef(0);
@@ -441,6 +443,14 @@ export function BeforeConstruction({
           <div className="flex items-center gap-2 flex-wrap">
             <Button
               variant="secondary"
+              onClick={() => setShowBoundaryModal(true)}
+              className="border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 font-semibold"
+            >
+              <Compass aria-hidden className="h-3.5 w-3.5 text-emerald-600 mr-1" />
+              Draw Map Boundary
+            </Button>
+            <Button
+              variant="secondary"
               onClick={() => setShowScoutModal(true)}
               className="border-signal-300 bg-signal-50 text-signal-800 hover:bg-signal-100 font-semibold"
             >
@@ -458,6 +468,16 @@ export function BeforeConstruction({
           </div>
         }
       >
+        {showBoundaryModal && (
+          <MapBoundaryDrawerModal
+            projectId={projectId}
+            onClose={() => setShowBoundaryModal(false)}
+            onSiteCreated={async () => {
+              await refresh();
+              onProjectChanged();
+            }}
+          />
+        )}
         {/* Synthetic fallback banner */}
         {showSyntheticFallback && (
           <div className={cx(
