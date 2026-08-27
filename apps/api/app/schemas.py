@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -148,6 +148,87 @@ class ChangeDetail(BaseModel):
     requirements: list[Requirement]
     assumptions: list[Assumption]
     latest_investigation_id: str | None = None
+
+
+class ConstructionPlanRequest(BaseModel):
+    """User-owned design basis for a first-pass construction equipment plan."""
+
+    site_id: str
+    it_load_mw: float = Field(gt=0, le=500)
+    redundancy: Literal["N", "N+1", "2N"] = "N+1"
+    target_pue: float = Field(default=1.35, ge=1.0, le=3.0)
+    utilization_pct: float = Field(default=70.0, gt=0, le=100)
+    annual_operating_hours: float = Field(default=8760.0, gt=0, le=8760)
+    electricity_rate_usd_kwh: float = Field(default=0.085, ge=0, le=5)
+    cooling_strategy: Literal["water_cooled", "hybrid_economizer"] = "water_cooled"
+    voltage_v: int = Field(default=480, ge=120, le=35_000)
+    budget_usd: float | None = Field(default=None, gt=0)
+    contingency_pct: float = Field(default=15.0, ge=0, le=50)
+    requirements_note: str | None = Field(default=None, max_length=2000)
+
+
+class ConstructionPlanItem(BaseModel):
+    category: str
+    label: str
+    model_id: str
+    model_number: str
+    manufacturer: str
+    quantity: int
+    duty_per_unit: float | None = None
+    duty_unit: str | None = None
+    power_input_per_unit_kw: float | None = None
+    connected_power_kw: float
+    estimated_cost_low_usd: float
+    estimated_cost_high_usd: float
+    cost_basis: str
+    lead_time_weeks: int
+    description: str
+    source: str
+    synthetic_cost: bool = True
+
+
+class ConstructionWorkPackage(BaseModel):
+    sequence: int
+    name: str
+    scope: str
+    depends_on: list[str] = Field(default_factory=list)
+
+
+class SitePlanningConstraint(BaseModel):
+    field_key: str
+    label: str
+    value: float | str
+    unit: str | None = None
+    status: str
+    source: str
+
+
+class ConstructionPlanTotals(BaseModel):
+    peak_facility_power_kw: float
+    it_power_kw: float
+    facility_overhead_kw: float
+    annual_energy_kwh: float
+    annual_energy_cost_usd: float
+    annual_water_m3: float | None = None
+    equipment_cost_low_usd: float
+    equipment_cost_high_usd: float
+    contingency_pct: float
+    plan_cost_low_usd: float
+    plan_cost_high_usd: float
+    budget_usd: float | None = None
+    budget_status: Literal["WITHIN_RANGE", "BELOW_RANGE", "NOT_PROVIDED"]
+
+
+class ConstructionPlanResponse(BaseModel):
+    project_id: str
+    site: CandidateSite
+    design_basis: dict[str, Any]
+    site_constraints: list[SitePlanningConstraint]
+    equipment_schedule: list[ConstructionPlanItem]
+    work_packages: list[ConstructionWorkPackage]
+    totals: ConstructionPlanTotals
+    warnings: list[str]
+    data_sources: list[str]
 
 
 class InvestigationSummary(BaseModel):

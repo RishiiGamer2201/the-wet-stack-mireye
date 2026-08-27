@@ -20,7 +20,7 @@ Counts from the live store (`apps/api/var/wetstack.db`, 1,585 evidence records):
 | `manufacturer_document` (equipment cut sheets) | 57 | **Yes** |
 | `project_document` (specs, submittals, RFIs) | 27 | **Yes** |
 
-Plus, as of this change, two public datasets shipped with the code:
+The repository also ships the following public and reference datasets:
 
 | Source | Serves | Records | Licence |
 |---|---|---:|---|
@@ -29,6 +29,8 @@ Plus, as of this change, two public datasets shipped with the code:
 | USGS PAD-US 4.1 | `protected_area_distance_km` | 298,244 areas | Public domain |
 | EIA Form EIA-861 (2023) | `grid_reliability_saidi_min` (as context) | 734 utilities, 2,840 counties | Public domain |
 | FEMA National Risk Index v1.20 | `wildfire_risk_index` | 84,093 census tracts | Public domain |
+| RacksDB / LBNL equipment catalog | Physical, electrical, capacity and efficiency reference ratings | 11 equipment categories | Open benchmark |
+| Construction cost benchmark | Installed-cost ranges and lead times for concept planning | 11 equipment categories | **Synthetic demo data** |
 
 So the **before-construction** side is now almost entirely real. The
 **after-construction** side — the 84 synthetic document records — is not, and
@@ -247,6 +249,19 @@ To rebuild for a newer NRI version: download *All Census tracts / Table Format*
 from <https://hazards.fema.gov/nri/data-resources> (605 MB CSV, 467 columns) and
 run `python scripts/build_fema_nri.py path/to/NRI_Table_CensusTracts.zip`. It
 keeps three columns and writes 2 MB.
+
+### 2.7 During-construction equipment and cost references
+
+`equipment_reference_catalog.json` contains the bundled RacksDB/LBNL equipment
+ratings used to size and compare chillers, CRAHs, power-distribution equipment,
+generators, transformers and related plant. The planner performs deterministic
+quantity and energy calculations from the user's selected site and requirements.
+
+`construction_cost_benchmarks.json` is intentionally **synthetic**. It supplies
+installed-equipment ranges and lead times so the prototype can demonstrate a
+budget plan when vendor quotations are unavailable. Every API item and UI table
+labels those costs as synthetic, and the plan warns that they must be replaced
+with vendor bids before procurement or approval.
 
 ### 2.3 Where the datasets live
 

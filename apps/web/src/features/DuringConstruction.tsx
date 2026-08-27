@@ -9,6 +9,7 @@ import {
   Database,
   FileText,
   Layers,
+  ListChecks,
   Play,
   Send,
   ShieldCheck,
@@ -22,6 +23,7 @@ import { GapPanel } from "../components/GapPanel";
 import { DecisionCard, InvestigationTimeline, NextActionPreview } from "../components/Investigation";
 import { ImpactGraphView, ImpactList } from "../components/ImpactGraphView";
 import { ProjectKnowledgeAgent } from "./ProjectKnowledgeAgent";
+import { ConstructionPlanner } from "./ConstructionPlanner";
 import {
   Badge,
   Button,
@@ -43,6 +45,7 @@ import {
 } from "../lib/format";
 import type {
   ActionPackageResponse,
+  CandidateSite,
   CandidateProduct,
   CascadeImpactSummary,
   ChangeDetail,
@@ -62,7 +65,7 @@ import type {
   StructuredRequirementSet,
 } from "../lib/types";
 
-export type DuringTab = "verification" | "recommendations" | "cascade" | "actions" | "knowledge";
+export type DuringTab = "planner" | "verification" | "recommendations" | "cascade" | "actions" | "knowledge";
 
 const COMPARE_ROWS: {
   key: keyof EquipmentConfiguration;
@@ -106,7 +109,7 @@ export function DuringConstruction({
   onProjectChanged?: () => void;
 }) {
   const projectId = detail.project.id;
-  const [tab, setTab] = useState<DuringTab>("verification");
+  const [tab, setTab] = useState<DuringTab>("planner");
   const [changes, setChanges] = useState<EquipmentChange[]>(detail.changes);
   const [selectedId, setSelectedId] = useState<string | null>(detail.changes[0]?.id ?? null);
   const [change, setChange] = useState<ChangeDetail | null>(null);
@@ -246,6 +249,17 @@ export function DuringConstruction({
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-ink-200 bg-white p-3 rounded-xl shadow-xs">
         <div className="flex items-center gap-1.5 overflow-x-auto">
           <button
+            onClick={() => setTab("planner")}
+            className={cx(
+              "flex items-center gap-2 px-3.5 py-2 text-xs font-semibold rounded-lg transition-all",
+              tab === "planner"
+                ? "bg-signal-600 text-white shadow-xs"
+                : "text-ink-600 hover:text-ink-900 hover:bg-ink-100",
+            )}
+          >
+            <ListChecks className="h-4 w-4" /> Site Equipment Plan
+          </button>
+          <button
             onClick={() => setTab("verification")}
             className={cx(
               "flex items-center gap-2 px-3.5 py-2 text-xs font-semibold rounded-lg transition-all",
@@ -254,7 +268,7 @@ export function DuringConstruction({
                 : "text-ink-600 hover:text-ink-900 hover:bg-ink-100",
             )}
           >
-            <ShieldCheck className="h-4 w-4" /> Change Intelligence &amp; Verification
+            <ShieldCheck className="h-4 w-4" /> Verify Existing Changes
           </button>
           <button
             onClick={() => setTab("recommendations")}
@@ -265,7 +279,7 @@ export function DuringConstruction({
                 : "text-ink-600 hover:text-ink-900 hover:bg-ink-100",
             )}
           >
-            <Sparkles className="h-4 w-4 text-amber-300" /> Recommendation Studio
+            <Sparkles className="h-4 w-4 text-amber-300" /> Replace Equipment
           </button>
           <button
             onClick={() => setTab("cascade")}
@@ -276,7 +290,7 @@ export function DuringConstruction({
                 : "text-ink-600 hover:text-ink-900 hover:bg-ink-100",
             )}
           >
-            <Layers className="h-4 w-4" /> Cumulative Cascade Loading
+            <Layers className="h-4 w-4" /> Combined Load Check
           </button>
           <button
             onClick={() => setTab("actions")}
@@ -287,7 +301,7 @@ export function DuringConstruction({
                 : "text-ink-600 hover:text-ink-900 hover:bg-ink-100",
             )}
           >
-            <FileText className="h-4 w-4" /> Action Packages &amp; RFIs
+            <FileText className="h-4 w-4" /> RFIs &amp; Actions
           </button>
           <button
             onClick={() => setTab("knowledge")}
@@ -298,7 +312,7 @@ export function DuringConstruction({
                 : "text-ink-600 hover:text-ink-900 hover:bg-ink-100",
             )}
           >
-            <BookOpen className="h-4 w-4" /> Project Knowledge &amp; Documents
+            <BookOpen className="h-4 w-4" /> Project Data
           </button>
         </div>
 
@@ -310,6 +324,14 @@ export function DuringConstruction({
       </div>
 
       {error ? <ErrorState error={error} onRetry={() => selectedId && load(selectedId)} /> : null}
+
+      {tab === "planner" && (
+        <ConstructionPlanner
+          projectId={projectId}
+          sites={detail.sites}
+          defaultItLoadMw={detail.project.targets.it_load_mw}
+        />
+      )}
 
       {/* ────────────────────────────────────────────────────────────────────────── */}
       {/* TAB 1: CHANGE INTELLIGENCE & VERIFICATION                                  */}
@@ -608,8 +630,9 @@ export function DuringConstruction({
       {tab === "recommendations" && (
         <RecommendationStudio
           projectId={projectId}
-          siteId={change?.site?.id ?? null}
-          onApplyProduct={async (product) => {
+          sites={detail.sites}
+          initialSiteId={change?.site?.id ?? detail.sites[0]?.id ?? null}
+          onApplyProduct={async (product, replacementSiteId) => {
             if (!selectedId) return;
             try {
               setRunning(true);
@@ -618,7 +641,7 @@ export function DuringConstruction({
                 candidate_product_id: product.id,
                 title: `Substitution: ${product.model_number}`,
                 reason: `Recommended selection (${product.score}/100 score) from ${product.manufacturer}`,
-                site_id: change?.site?.id,
+                site_id: replacementSiteId,
                 existing_change_id: selectedId,
               });
               setInvestigation(inv);
@@ -820,17 +843,20 @@ function DecisionLineageCard({ lineage }: { lineage: DecisionLineageRecord[] }) 
 
 function RecommendationStudio({
   projectId,
-  siteId,
+  sites,
+  initialSiteId,
   onApplyProduct,
 }: {
   projectId: string;
-  siteId?: string | null;
-  onApplyProduct: (product: CandidateProduct) => void;
+  sites: CandidateSite[];
+  initialSiteId?: string | null;
+  onApplyProduct: (product: CandidateProduct, siteId: string | null) => void;
 }) {
   const [prompt, setPrompt] = useState(
     "I need a water-cooled chiller with at least 1200 kW cooling capacity, COP above 5.8, 480V, footprint under 20 m2, and max ambient 45°C.",
   );
   const [equipmentType, setEquipmentType] = useState("chiller");
+  const [siteId, setSiteId] = useState(initialSiteId ?? "");
   const [searching, setSearching] = useState(false);
   const [reqSet, setReqSet] = useState<StructuredRequirementSet | null>(null);
   const [result, setResult] = useState<ProductRecommendationResult | null>(null);
@@ -859,11 +885,24 @@ function RecommendationStudio({
   return (
     <div className="flex flex-col gap-4">
       <Card
-        title="AI-Powered Equipment Requirement & Recommendation Studio"
-        subtitle="Extract structured physics constraints from natural language & query benchmark catalog across 11 equipment categories"
+        title="Equipment Replacement Finder"
+        subtitle="Read the stated requirements and rank open benchmark models across 11 equipment categories"
       >
         <div className="flex flex-col gap-3">
           <div className="flex flex-wrap items-center gap-3">
+            <Field label="Construction Site" htmlFor="replacement-site">
+              <select
+                id="replacement-site"
+                value={siteId}
+                onChange={(e) => setSiteId(e.target.value)}
+                className={cx(inputClass, "w-56 text-xs")}
+              >
+                <option value="">No site selected</option>
+                {sites.map((site) => (
+                  <option key={site.id} value={site.id}>{site.name}</option>
+                ))}
+              </select>
+            </Field>
             <Field label="Equipment Category" htmlFor="eq-category">
               <select
                 id="eq-category"
@@ -903,7 +942,7 @@ function RecommendationStudio({
             </span>
             <Button variant="primary" loading={searching} onClick={handleSearch}>
               <Sparkles aria-hidden className="h-3.5 w-3.5 mr-1 text-amber-300" />
-              Parse &amp; Find Best Candidates
+              Read Requirements &amp; Find Candidates
             </Button>
           </div>
         </div>
@@ -981,7 +1020,7 @@ function RecommendationStudio({
                     <Button
                       size="sm"
                       variant="primary"
-                      onClick={() => onApplyProduct(prod)}
+                      onClick={() => onApplyProduct(prod, siteId || null)}
                       className="bg-sky-600 hover:bg-sky-700 text-white font-medium"
                     >
                       <Play className="h-3 w-3 mr-1" /> Run Change Impact Analysis

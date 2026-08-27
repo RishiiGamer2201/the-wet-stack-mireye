@@ -26,6 +26,7 @@ from ..domain import (
     Project,
     Quantity,
     Requirement,
+    SiteObservation,
     SourceType,
     StructuredRequirementSet,
     VerificationStatus,
@@ -39,6 +40,8 @@ from ..schemas import (
     ApplyRecommendationRequest,
     CascadeAnalysisRequest,
     ChangeDetail,
+    ConstructionPlanRequest,
+    ConstructionPlanResponse,
     RecommendationSearchRequest,
     RequirementParseRequest,
 )
@@ -46,6 +49,36 @@ from ..store import C, Store
 from .deps import get_project, store_dep
 
 router = APIRouter(tags=["during-construction"])
+
+
+@router.post(
+    "/projects/{project_id}/construction-plan",
+    response_model=ConstructionPlanResponse,
+)
+def create_construction_plan(
+    payload: ConstructionPlanRequest,
+    project: Project = Depends(get_project),
+    store: Store = Depends(store_dep),
+):
+    """Build a deterministic equipment, power, water and cost plan for one site."""
+    from ..engine.construction_plan import build_construction_plan
+
+    site = store.get(C.SITES, payload.site_id, CandidateSite)
+    if site is None or site.project_id != project.id:
+        raise HTTPException(status_code=404, detail="site not found in this project")
+
+    observations = store.list(
+        C.OBSERVATIONS,
+        SiteObservation,
+        project_id=project.id,
+        parent_id=site.id,
+    )
+    station = None
+    if site.latitude is not None and site.longitude is not None:
+        station = get_equipment_specs_adapter().find_nearest_climate_station(
+            site.latitude, site.longitude
+        )
+    return build_construction_plan(project, site, payload, observations, station)
 
 
 @router.get("/projects/{project_id}/changes", response_model=list[EquipmentChange])

@@ -306,3 +306,58 @@ def test_during_construction_extended_api_endpoints(api):
     assert act_res.status_code == 200
     act_json = act_res.json()
     assert "Request for Information" in act_json["body_markdown"]
+
+
+def test_construction_plan_sizes_equipment_and_reports_power_costs(api):
+    """The simplified During Construction flow is site-scoped and fully deterministic."""
+    seed_res = api.post("/api/admin/seed")
+    project_id = seed_res.json()["project_id"]
+    site = api.get(f"/api/projects/{project_id}").json()["sites"][0]
+
+    response = api.post(
+        f"/api/projects/{project_id}/construction-plan",
+        json={
+            "site_id": site["id"],
+            "it_load_mw": 12,
+            "redundancy": "N+1",
+            "target_pue": 1.3,
+            "utilization_pct": 75,
+            "electricity_rate_usd_kwh": 0.10,
+            "budget_usd": 100_000_000,
+            "cooling_strategy": "hybrid_economizer",
+        },
+    )
+
+    assert response.status_code == 200
+    plan = response.json()
+    assert plan["site"]["id"] == site["id"]
+    assert plan["totals"]["peak_facility_power_kw"] == 15_600
+    assert plan["totals"]["annual_energy_kwh"] == 15_600 * 8760 * 0.75
+    assert plan["totals"]["annual_energy_cost_usd"] == 15_600 * 8760 * 0.75 * 0.10
+    assert plan["totals"]["plan_cost_low_usd"] > 0
+    assert plan["totals"]["plan_cost_high_usd"] > plan["totals"]["plan_cost_low_usd"]
+    assert plan["totals"]["budget_status"] == "WITHIN_RANGE"
+
+    schedule = {item["category"]: item for item in plan["equipment_schedule"]}
+    assert {"transformer", "ups", "generator", "chiller", "crah", "cooling_tower", "pdu"} <= set(schedule)
+    assert "heat_exchanger" in schedule
+    assert all(item["quantity"] >= 2 for item in schedule.values())
+    assert all(item["synthetic_cost"] is True for item in schedule.values())
+    assert len(plan["work_packages"]) == 5
+    assert any("synthetic planning ranges" in warning for warning in plan["warnings"])
+
+
+def test_construction_plan_rejects_a_site_from_another_project(api):
+    seed_res = api.post("/api/admin/seed")
+    project_id = seed_res.json()["project_id"]
+    other = api.post(
+        "/api/projects",
+        json={"name": "Other construction project"},
+    ).json()
+
+    site = api.get(f"/api/projects/{project_id}").json()["sites"][0]
+    response = api.post(
+        f"/api/projects/{other['id']}/construction-plan",
+        json={"site_id": site["id"], "it_load_mw": 5},
+    )
+    assert response.status_code == 404

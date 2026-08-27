@@ -1,0 +1,75 @@
+{
+  "version": "1.0.0",
+  "currency": "USD",
+  "price_year": 2026,
+  "synthetic": true,
+  "description": "Synthetic installed-equipment planning ranges for the Mireye prototype. Replace with project vendor quotations before procurement or approval.",
+  "equipment_types": {
+    "chiller": {
+      "installed_cost_low_usd": 450000,
+      "installed_cost_high_usd": 850000,
+      "lead_time_weeks": 28,
+      "basis": "Per packaged water-cooled chiller, including first-pass installation allowance"
+    },
+    "crah": {
+      "installed_cost_low_usd": 90000,
+      "installed_cost_high_usd": 180000,
+      "lead_time_weeks": 20,
+      "basis": "Per CRAH or fan-wall unit, including first-pass installation allowance"
+    },
+    "ahu": {
+      "installed_cost_low_usd": 120000,
+      "installed_cost_high_usd": 260000,
+      "lead_time_weeks": 20,
+      "basis": "Per air-handling unit, including controls and first-pass installation allowance"
+    },
+    "cooling_tower": {
+      "installed_cost_low_usd": 180000,
+      "installed_cost_high_usd": 350000,
+      "lead_time_weeks": 22,
+      "basis": "Per cooling-tower cell, including first-pass installation allowance"
+    },
+    "pump": {
+      "installed_cost_low_usd": 35000,
+      "installed_cost_high_usd": 80000,
+      "lead_time_weeks": 14,
+      "basis": "Per chilled/condenser-water pump with VFD and first-pass installation allowance"
+    },
+    "transformer": {
+      "installed_cost_low_usd": 400000,
+      "installed_cost_high_usd": 900000,
+      "lead_time_weeks": 40,
+      "basis": "Per medium-voltage substation transformer, including first-pass installation allowance"
+    },
+    "ups": {
+      "installed_cost_low_usd": 650000,
+      "installed_cost_high_usd": 1200000,
+      "lead_time_weeks": 32,
+      "basis": "Per modular UPS block, excluding long-duration battery augmentation"
+    },
+    "generator": {
+      "installed_cost_low_usd": 800000,
+      "installed_cost_high_usd": 1500000,
+      "lead_time_weeks": 44,
+      "basis": "Per standby generator package, including first-pass installation allowance"
+    },
+    "switchgear": {
+      "installed_cost_low_usd": 350000,
+      "installed_cost_high_usd": 750000,
+      "lead_time_weeks": 42,
+      "basis": "Per medium-voltage switchgear lineup, including protection and controls allowance"
+    },
+    "pdu": {
+      "installed_cost_low_usd": 70000,
+      "installed_cost_high_usd": 160000,
+      "lead_time_weeks": 18,
+      "basis": "Per floor PDU, including branch monitoring and first-pass installation allowance"
+    },
+    "heat_exchanger": {
+      "installed_cost_low_usd": 120000,
+      "installed_cost_high_usd": 280000,
+      "lead_time_weeks": 20,
+      "basis": "Per plate-and-frame economizer heat exchanger with first-pass installation allowance"
+    }
+  }
+}

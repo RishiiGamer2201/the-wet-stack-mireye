@@ -50,6 +50,7 @@ Our solution leverages **Mireye's physical-world intelligence layer** as the gro
 * **Evidence Provenance & Gap Tracking:** Every metric retains its citation and relation type (Exact, Unit-Converted, Categorical-Normalized, Contextual Proxy). Missing or unevidenced attributes are explicitly tracked as blocking or non-blocking *Information Gaps* instead of being assumed or hallucinated.
 
 #### 2. During Construction: Change Intelligence & Boundary Verification
+* **Site-to-Equipment Construction Planner:** Starts with a selected candidate site, captures IT load, redundancy, PUE, utilization, cooling strategy, tariff, budget, and project notes, then produces a deterministic equipment schedule, construction sequence, peak power, annual energy/water, and installed-cost range.
 * **Mireye Site Boundary Verification:** Directly links site-specific environmental baselines retrieved from Mireye (such as peak summer dry-bulb/wet-bulb temperatures and grid reliability) into the equipment verification pipeline.
 * **Submittal PDF & Spec Sheet Ingestion:** PyMuPDF OCR extracts structured mechanical, electrical, and dimensional parameters directly from manufacturer submittals.
 * **9 Deterministic Verification Gates:** Evaluates strict pre-comparison boundary criteria (Manufacturer Comparability, Voltage/Phase Matching, Refrigerant Compliance, Rated Ambient vs Site ASHRAE Climate Extremes, Physical Footprint Boundary, and Structural Floor Loading).
@@ -149,6 +150,7 @@ flowchart LR
 ## Key Features
 
 ### 1. Change Intelligence (During Construction)
+* **Simplified Site Equipment Plan:** Select a site, enter project requirements, and generate an equipment schedule with redundancy-aware quantities, site climate inputs, peak/annual power, cooling-water demand, lead times, and an optional budget check.
 * **9 Deterministic Verification Gates:** Boundary checks verifying Manufacturer Comparability, Voltage/Phase Match, Refrigerant Environmental Suitability, Rated Ambient vs Site ASHRAE Climate Extremes, Physical Footprint Boundary, and Structural Floor Loading.
 * **15 Pint Unit-Checked Deltas:** Mathematical differences for weight, maximum support point load, length, width, height, footprint area, voltage, phases, full load amps, MCA, MOCP, power input, refrigerant type, refrigerant charge and cooling capacity. COP is not among them: it is a ratio the catalog publishes, not a delta the engine computes.
 * **Facility Design Margins:** Computes remaining electrical substation capacity, central plant chilled water duty, and structural slab capacity. Missing baselines are flagged explicitly as `NEEDS_INFORMATION`.
@@ -186,6 +188,7 @@ The platform uses **Mireye's Physical-World Intelligence Layer** as its primary 
 | **FEMA National Risk Index** | `FEMANationalRiskIndex` | `wildfire_risk_index` | 84,093 US census tracts | Public Domain |
 | **ASHRAE / StationFinder** | `ClimateStation` | Summer DB/WB & Winter extreme temperatures | Global WMO weather monitoring stations | WMO / ASHRAE |
 | **RacksDB & LBNL Catalog** | `equipment_reference_catalog` | Benchmark equipment physical & electrical ratings | 11 equipment categories | Open Benchmark |
+| **Construction Cost Benchmarks** | `construction_cost_benchmarks` | Installed equipment cost ranges and lead-time planning values | 11 equipment categories; clearly labelled synthetic 2026 USD ranges | Synthetic demo data |
 
 ### Dataset Management & CLI Actions
 

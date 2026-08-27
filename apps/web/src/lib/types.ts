@@ -680,6 +680,70 @@ export interface CostScheduleImpact {
   explanation: string;
 }
 
+export interface ConstructionPlanItem {
+  category: string;
+  label: string;
+  model_id: string;
+  model_number: string;
+  manufacturer: string;
+  quantity: number;
+  duty_per_unit?: number | null;
+  duty_unit?: string | null;
+  power_input_per_unit_kw?: number | null;
+  connected_power_kw: number;
+  estimated_cost_low_usd: number;
+  estimated_cost_high_usd: number;
+  cost_basis: string;
+  lead_time_weeks: number;
+  description: string;
+  source: string;
+  synthetic_cost: boolean;
+}
+
+export interface ConstructionWorkPackage {
+  sequence: number;
+  name: string;
+  scope: string;
+  depends_on: string[];
+}
+
+export interface SitePlanningConstraint {
+  field_key: string;
+  label: string;
+  value: number | string;
+  unit?: string | null;
+  status: string;
+  source: string;
+}
+
+export interface ConstructionPlanTotals {
+  peak_facility_power_kw: number;
+  it_power_kw: number;
+  facility_overhead_kw: number;
+  annual_energy_kwh: number;
+  annual_energy_cost_usd: number;
+  annual_water_m3?: number | null;
+  equipment_cost_low_usd: number;
+  equipment_cost_high_usd: number;
+  contingency_pct: number;
+  plan_cost_low_usd: number;
+  plan_cost_high_usd: number;
+  budget_usd?: number | null;
+  budget_status: "WITHIN_RANGE" | "BELOW_RANGE" | "NOT_PROVIDED";
+}
+
+export interface ConstructionPlanResponse {
+  project_id: string;
+  site: CandidateSite;
+  design_basis: Record<string, any>;
+  site_constraints: SitePlanningConstraint[];
+  equipment_schedule: ConstructionPlanItem[];
+  work_packages: ConstructionWorkPackage[];
+  totals: ConstructionPlanTotals;
+  warnings: string[];
+  data_sources: string[];
+}
+
 export interface ActionPackageResponse {
   action_type: string;
   title: string;

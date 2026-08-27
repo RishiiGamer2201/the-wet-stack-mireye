@@ -281,6 +281,28 @@ export const api = {
     }),
 
   // AI-Powered Change Intelligence Platform API
+  constructionPlan: (
+    projectId: string,
+    payload: {
+      site_id: string;
+      it_load_mw: number;
+      redundancy: "N" | "N+1" | "2N";
+      target_pue: number;
+      utilization_pct: number;
+      annual_operating_hours: number;
+      electricity_rate_usd_kwh: number;
+      cooling_strategy: "water_cooled" | "hybrid_economizer";
+      voltage_v: number;
+      budget_usd?: number | null;
+      contingency_pct: number;
+      requirements_note?: string | null;
+    },
+  ) =>
+    post<import("./types").ConstructionPlanResponse>(
+      `/projects/${projectId}/construction-plan`,
+      payload,
+    ),
+
   parseRequirements: (projectId: string, prompt: string, equipmentType?: string) =>
     post<import("./types").StructuredRequirementSet>(`/projects/${projectId}/requirements/parse`, {
       prompt,
