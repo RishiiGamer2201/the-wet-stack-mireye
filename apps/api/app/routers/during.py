@@ -49,6 +49,7 @@ from ..store import C, Store
 from .deps import get_project, store_dep
 
 router = APIRouter(tags=["during-construction"])
+MAX_PROTOTYPE_CLIMATE_DISTANCE_KM = 150.0
 
 
 @router.post(
@@ -78,7 +79,14 @@ def create_construction_plan(
         station = get_equipment_specs_adapter().find_nearest_climate_station(
             site.latitude, site.longitude
         )
-    return build_construction_plan(project, site, payload, observations, station)
+        if station is not None and station.distance_km > MAX_PROTOTYPE_CLIMATE_DISTANCE_KM:
+            station = None
+    profile = get_equipment_specs_adapter().find_us_construction_profile(
+        site.address,
+        site.jurisdiction,
+        site.name,
+    )
+    return build_construction_plan(project, site, payload, observations, station, profile)
 
 
 @router.get("/projects/{project_id}/changes", response_model=list[EquipmentChange])
@@ -136,7 +144,7 @@ def analyze_change(
 
 @router.get("/during/reference-specs/{equipment_tag}")
 def get_reference_specs(equipment_tag: str):
-    """Fetch open-source benchmark specs from RacksDB / LBNL for the given equipment tag."""
+    """Fetch a clearly labelled synthetic prototype spec for the equipment tag."""
     adapter = get_equipment_specs_adapter()
     spec = adapter.get_reference_spec(equipment_tag)
     if not spec:
@@ -148,7 +156,7 @@ def get_reference_specs(equipment_tag: str):
 def get_change_climate_station(
     change_id: str, project: Project = Depends(get_project), store: Store = Depends(store_dep)
 ):
-    """Retrieve the nearest StationFinder / ASHRAE climate design conditions for the change's site."""
+    """Retrieve a nearby record from the bundled prototype climate snapshot."""
     change = store.get(C.CHANGES, change_id, EquipmentChange)
     if not change:
         raise HTTPException(status_code=404, detail="change not found")
@@ -157,8 +165,8 @@ def get_change_climate_station(
         raise HTTPException(status_code=404, detail="no resolved site coordinates linked to this change")
 
     station = get_equipment_specs_adapter().find_nearest_climate_station(site.latitude, site.longitude)
-    if not station:
-        raise HTTPException(status_code=404, detail="no climate station found")
+    if not station or station.distance_km > MAX_PROTOTYPE_CLIMATE_DISTANCE_KM:
+        raise HTTPException(status_code=404, detail="no nearby prototype climate station found")
     return station
 
 
@@ -166,7 +174,7 @@ def get_change_climate_station(
 def autofill_from_reference(
     change_id: str, project: Project = Depends(get_project), store: Store = Depends(store_dep)
 ):
-    """Auto-fill missing submittal properties using RacksDB & LBNL reference data, and re-analyze."""
+    """Auto-fill demo gaps from the synthetic prototype catalog and re-analyze."""
     change = store.get(C.CHANGES, change_id, EquipmentChange)
     if not change:
         raise HTTPException(status_code=404, detail="change not found")
@@ -180,6 +188,8 @@ def autofill_from_reference(
         raise HTTPException(status_code=404, detail=f"no open reference specs available for {change.equipment_tag}")
 
     cfg = proposed.configuration
+    cfg.synthetic = True
+    proposed.synthetic = True
     filled_fields: list[str] = []
 
     if cfg.weight is None and "weight_kg" in spec:
@@ -226,21 +236,24 @@ def autofill_from_reference(
         ev = Evidence(
             project_id=project.id,
             subject_id=change.equipment_tag,
-            claim=f"{field} for {change.equipment_tag} populated from RacksDB / LBNL reference data",
+            claim=f"{field} for {change.equipment_tag} populated from the synthetic prototype catalog",
             field_key=field,
             value=getattr(cfg, field).value if hasattr(getattr(cfg, field), "value") else getattr(cfg, field),
             unit=getattr(cfg, field).unit if hasattr(getattr(cfg, field), "unit") else None,
             source=EvidenceSource(
-                source_type=SourceType.EXTERNAL_DATASET,
-                source_id=f"racksdb-{change.equipment_tag}",
-                source_name="RacksDB / LBNL Open Catalog (github.com/rackslab/RacksDB)",
+                source_type=SourceType.SYNTHETIC_FIXTURE,
+                source_id=f"synthetic-equipment-{change.equipment_tag}",
+                source_name="Mireye synthetic USA prototype equipment catalog v3.0",
                 field_key=field,
-                synthetic=False,
-                notes=f"Auto-resolved missing vendor data using {spec.get('reference_model', 'standard baseline')}.",
+                synthetic=True,
+                notes=(
+                    "Prototype-only value. Replace with a certified manufacturer submittal "
+                    f"for {spec.get('model_number', spec.get('id', 'the selected model'))}."
+                ),
             ),
-            status=EvidenceStatus.USER_CONFIRMED,
-            verification=VerificationStatus.VERIFIED,
-            confidence=0.92,
+            status=EvidenceStatus.SYNTHETIC,
+            verification=VerificationStatus.NEEDS_REVIEW,
+            confidence=0.35,
             retrieved_at=now(),
         )
         store.put(C.EVIDENCE, ev, project_id=project.id, parent_id=change.id)
@@ -345,12 +358,14 @@ def search_recommendations(
     )
 
     # Determine site climate condition if linked
-    site_db_c = 35.0
+    site_db_c = None
     if req.site_id:
         site = store.get(C.SITES, req.site_id, CandidateSite)
-        if site and site.latitude is not None and site.longitude is not None:
+        if site is None or site.project_id != project.id:
+            raise HTTPException(status_code=404, detail="site not found in this project")
+        if site.latitude is not None and site.longitude is not None:
             station = get_equipment_specs_adapter().find_nearest_climate_station(site.latitude, site.longitude)
-            if station:
+            if station and station.distance_km <= MAX_PROTOTYPE_CLIMATE_DISTANCE_KM:
                 site_db_c = station.cooling_db_0_4_pct_degc
 
     return change_orchestrator.generate_product_recommendations(
@@ -359,6 +374,7 @@ def search_recommendations(
         requirement_set=req_set,
         custom_weights=req.weights,
         site_climate_db_c=site_db_c,
+        limit=req.limit,
     )
 
 
@@ -371,24 +387,54 @@ def apply_recommendation(
     """Instantiate a change case from a recommended product and execute full verification."""
     from ..agent import change_orchestrator
 
-    change = change_orchestrator.apply_recommendation_as_change(
-        project=project,
-        equipment_tag=req.equipment_tag,
-        candidate_product_id=req.candidate_product_id,
-        store=store,
-        title=req.title,
-        reason=req.reason,
-        site_id=req.site_id,
-        existing_change_id=req.existing_change_id,
-    )
+    if req.site_id:
+        site = store.get(C.SITES, req.site_id, CandidateSite)
+        if site is None or site.project_id != project.id:
+            raise HTTPException(status_code=404, detail="site not found in this project")
+    try:
+        change = change_orchestrator.apply_recommendation_as_change(
+            project=project,
+            equipment_tag=req.equipment_tag,
+            candidate_product_id=req.candidate_product_id,
+            store=store,
+            title=req.title,
+            reason=req.reason,
+            site_id=req.site_id,
+            existing_change_id=req.existing_change_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     return workflow.run_change_investigation(project, change, store)
 
 
 @router.get("/catalog/models")
 def list_catalog_models(equipment_type: str | None = None):
-    """List open reference equipment models across all 11 categories."""
+    """List clearly labelled synthetic prototype equipment across all 11 categories."""
     adapter = get_equipment_specs_adapter()
     return adapter.list_models_by_type(equipment_type)
+
+
+@router.get("/construction-data/coverage")
+def construction_data_coverage():
+    """Summarise USA profile, equipment, and prototype-scenario coverage."""
+    adapter = get_equipment_specs_adapter()
+    metadata = adapter.catalog_metadata()
+    profiles = adapter.list_us_construction_profiles()
+    scenarios = adapter.list_prototype_scenarios()
+    return {
+        "state_profile_count": len(profiles),
+        "equipment_model_count": len(adapter.list_models_by_type()),
+        "equipment_categories": metadata.get("categories", []),
+        "synthetic_equipment": metadata.get("synthetic", True),
+        "catalog_disclaimer": metadata.get("disclaimer"),
+        "prototype_scenarios": scenarios,
+        "real_data_sources": [
+            {
+                "name": "U.S. EIA 2024 Table 4 commercial electricity prices",
+                "url": "https://www.eia.gov/electricity/sales_revenue_price/index.php",
+            }
+        ],
+    }
 
 
 # ---------------------------------------------------------------------------

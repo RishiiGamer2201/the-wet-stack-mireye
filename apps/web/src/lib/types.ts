@@ -552,8 +552,12 @@ export interface ClimateStationInfo {
 export interface ReferenceSpec {
   id?: string;
   equipment_type: string;
-  reference_model: string;
+  reference_model?: string;
+  model_number?: string;
   manufacturer: string;
+  synthetic?: boolean;
+  source?: string;
+  provenance_note?: string;
   weight_kg?: number;
   length_mm?: number;
   width_mm?: number;
@@ -567,7 +571,7 @@ export interface ReferenceSpec {
   cop?: number;
   wue_l_per_kwh?: number;
   cooling_capacity_kw?: number;
-  description: string;
+  description?: string;
 }
 
 export type MarginStatus = "WITHIN_MARGIN" | "CRITICAL_MARGIN" | "EXCEEDED" | "NEEDS_INFORMATION";
@@ -743,6 +747,28 @@ export interface ConstructionPlanResponse {
   totals: ConstructionPlanTotals;
   warnings: string[];
   data_sources: string[];
+}
+
+export interface ConstructionPrototypeScenario {
+  name: string;
+  state_code: string;
+  latitude: number;
+  longitude: number;
+  it_load_mw: number;
+  redundancy: "N" | "N+1" | "2N";
+  target_pue: number;
+  electricity_rate_usd_kwh: number;
+  prototype_only: boolean;
+}
+
+export interface ConstructionDataCoverage {
+  state_profile_count: number;
+  equipment_model_count: number;
+  equipment_categories: string[];
+  synthetic_equipment: boolean;
+  catalog_disclaimer?: string | null;
+  prototype_scenarios: ConstructionPrototypeScenario[];
+  real_data_sources: Array<{ name: string; url: string }>;
 }
 
 export interface ActionPackageResponse {

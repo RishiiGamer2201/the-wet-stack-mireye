@@ -29,7 +29,8 @@ The repository also ships the following public and reference datasets:
 | USGS PAD-US 4.1 | `protected_area_distance_km` | 298,244 areas | Public domain |
 | EIA Form EIA-861 (2023) | `grid_reliability_saidi_min` (as context) | 734 utilities, 2,840 counties | Public domain |
 | FEMA National Risk Index v1.20 | `wildfire_risk_index` | 84,093 census tracts | Public domain |
-| RacksDB / LBNL equipment catalog | Physical, electrical, capacity and efficiency reference ratings | 11 equipment categories | Open benchmark |
+| Mireye synthetic equipment catalog | Prototype physical, electrical, capacity and efficiency ratings | 665 generated models in 11 categories | **Synthetic project data** |
+| U.S. EIA 2024 Table 4 | Commercial-sector average electricity price | 50 states + District of Columbia | U.S. Government |
 | Construction cost benchmark | Installed-cost ranges and lead times for concept planning | 11 equipment categories | **Synthetic demo data** |
 
 So the **before-construction** side is now almost entirely real. The
@@ -252,10 +253,25 @@ keeps three columns and writes 2 MB.
 
 ### 2.7 During-construction equipment and cost references
 
-`equipment_reference_catalog.json` contains the bundled RacksDB/LBNL equipment
-ratings used to size and compare chillers, CRAHs, power-distribution equipment,
-generators, transformers and related plant. The planner performs deterministic
-quantity and energy calculations from the user's selected site and requirements.
+`equipment_reference_catalog.json` contains 665 deterministic **synthetic**
+equipment models across 11 categories. They provide enough variety to exercise
+capacity, voltage, efficiency, ambient, physical-size, cost and lead-time
+filtering without impersonating manufacturer products. Every record carries a
+synthetic flag and a warning that certified submittals and quotations must
+replace it before approval or procurement.
+
+`us_construction_profiles.json` covers all 50 states plus the District of
+Columbia. Its commercial electricity prices are extracted from U.S. EIA 2024
+Table 4. Regional construction-cost indices, water prices, lead-time
+multipliers and the 12 market scenarios are generated prototype assumptions and
+are identified in `synthetic_fields`. The planner uses the EIA state average
+only when the user leaves the tariff override blank.
+
+The generator is `scripts/generate_us_construction_data.py`. Pass it a freshly
+downloaded official EIA Table 4 workbook to reproduce both files. DOE's
+Compliance Certification Database is the intended production source for
+covered equipment ratings; NOAA U.S. Climate Normals is the intended source for
+nationwide climate context. Neither is represented as already ingested.
 
 `construction_cost_benchmarks.json` is intentionally **synthetic**. It supplies
 installed-equipment ranges and lead times so the prototype can demonstrate a
@@ -278,6 +294,8 @@ apps/api/var/datasets/          # downloaded at runtime, wins when present
 | `wqp_tds_cache.json` | water-quality answers for the demo's sites |
 | `padus_cache.json` | nearest protected area for the demo's sites |
 | `county_cache.json` | coordinates → county *and tract*, from the Census geocoder |
+| `us_construction_profiles.json` | 51 EIA-backed state/DC electricity profiles plus labelled synthetic planning multipliers |
+| `equipment_reference_catalog.json` | 665 labelled synthetic equipment models across 11 categories |
 
 ```bash
 python -m app.datasets_cli list                  # what is present

@@ -7,14 +7,20 @@ import {
   Droplets,
   HardHat,
   MapPin,
+  Plus,
   Play,
   Zap,
 } from "lucide-react";
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { Badge, Button, Card, ErrorState, Field, cx, inputClass } from "../components/ui";
 import { api } from "../lib/api";
-import type { CandidateSite, ConstructionPlanResponse } from "../lib/types";
+import type {
+  CandidateSite,
+  ConstructionDataCoverage,
+  ConstructionPlanResponse,
+  ConstructionPrototypeScenario,
+} from "../lib/types";
 
 const money = new Intl.NumberFormat("en-US", {
   style: "currency",
@@ -33,11 +39,18 @@ export function ConstructionPlanner({
   projectId,
   sites,
   defaultItLoadMw,
+  onSiteCreated,
 }: {
   projectId: string;
   sites: CandidateSite[];
   defaultItLoadMw?: number | null;
+  onSiteCreated?: () => void;
 }) {
+  const [createdSites, setCreatedSites] = useState<CandidateSite[]>([]);
+  const allSites = useMemo(
+    () => [...sites, ...createdSites.filter((created) => !sites.some((site) => site.id === created.id))],
+    [createdSites, sites],
+  );
   const initialSite = useMemo(
     () => sites.find((site) => site.shortlisted) ?? sites[0] ?? null,
     [sites],
@@ -47,7 +60,7 @@ export function ConstructionPlanner({
   const [redundancy, setRedundancy] = useState<"N" | "N+1" | "2N">("N+1");
   const [targetPue, setTargetPue] = useState(1.35);
   const [utilizationPct, setUtilizationPct] = useState(70);
-  const [electricityRate, setElectricityRate] = useState(0.085);
+  const [electricityRate, setElectricityRate] = useState<number | "">("");
   const [budget, setBudget] = useState("");
   const [coolingStrategy, setCoolingStrategy] = useState<"water_cooled" | "hybrid_economizer">(
     "water_cooled",
@@ -56,6 +69,53 @@ export function ConstructionPlanner({
   const [plan, setPlan] = useState<ConstructionPlanResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<unknown>(null);
+  const [coverage, setCoverage] = useState<ConstructionDataCoverage | null>(null);
+  const [showSiteForm, setShowSiteForm] = useState(sites.length === 0);
+  const [creatingSite, setCreatingSite] = useState(false);
+  const [siteName, setSiteName] = useState("");
+  const [siteAddress, setSiteAddress] = useState("");
+  const [siteLatitude, setSiteLatitude] = useState("");
+  const [siteLongitude, setSiteLongitude] = useState("");
+
+  useEffect(() => {
+    api.constructionDataCoverage().then(setCoverage).catch(() => setCoverage(null));
+  }, []);
+
+  async function createSite() {
+    setCreatingSite(true);
+    setError(null);
+    try {
+      const latitude = siteLatitude === "" ? null : Number(siteLatitude);
+      const longitude = siteLongitude === "" ? null : Number(siteLongitude);
+      const created = await api.createSite(projectId, {
+        name: siteName.trim(),
+        address: siteAddress.trim() || null,
+        latitude,
+        longitude,
+      });
+      setCreatedSites((current) => [...current, created]);
+      setSiteId(created.id);
+      setPlan(null);
+      setShowSiteForm(false);
+      setSiteName("");
+      setSiteAddress("");
+      setSiteLatitude("");
+      setSiteLongitude("");
+      onSiteCreated?.();
+    } catch (caught) {
+      setError(caught);
+    } finally {
+      setCreatingSite(false);
+    }
+  }
+
+  function useScenario(scenario: ConstructionPrototypeScenario) {
+    setItLoadMw(scenario.it_load_mw);
+    setRedundancy(scenario.redundancy);
+    setTargetPue(scenario.target_pue);
+    setElectricityRate(scenario.electricity_rate_usd_kwh);
+    setPlan(null);
+  }
 
   async function generatePlan() {
     if (!siteId) return;
@@ -69,7 +129,7 @@ export function ConstructionPlanner({
         target_pue: targetPue,
         utilization_pct: utilizationPct,
         annual_operating_hours: 8760,
-        electricity_rate_usd_kwh: electricityRate,
+        electricity_rate_usd_kwh: electricityRate === "" ? null : electricityRate,
         cooling_strategy: coolingStrategy,
         voltage_v: 480,
         budget_usd: budget ? Number(budget) : null,
@@ -84,23 +144,7 @@ export function ConstructionPlanner({
     }
   }
 
-  if (sites.length === 0) {
-    return (
-      <Card title="Build the construction plan">
-        <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4">
-          <MapPin className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />
-          <div>
-            <p className="text-sm font-semibold text-amber-950">Add a candidate site first</p>
-            <p className="mt-1 text-xs text-amber-800">
-              The plan needs a site so climate, water and physical constraints can be attached to the equipment schedule.
-            </p>
-          </div>
-        </div>
-      </Card>
-    );
-  }
-
-  const selectedSite = sites.find((site) => site.id === siteId);
+  const selectedSite = allSites.find((site) => site.id === siteId);
 
   return (
     <div className="flex flex-col gap-4">
@@ -125,12 +169,82 @@ export function ConstructionPlanner({
 
       {error ? <ErrorState error={error} onRetry={generatePlan} /> : null}
 
+      {coverage ? (
+        <Card
+          title="USA prototype coverage"
+          subtitle="Real state electricity benchmarks plus clearly labeled synthetic planning inputs"
+          actions={<Badge className="border-sky-200 bg-sky-50 text-sky-800">nationwide prototype</Badge>}
+        >
+          <div className="grid gap-3 sm:grid-cols-3">
+            <SummaryMetric icon={<MapPin className="h-4 w-4" />} label="State + DC profiles" value={String(coverage.state_profile_count)} detail="EIA 2024 commercial electricity rates" />
+            <SummaryMetric icon={<Database className="h-4 w-4" />} label="Equipment models" value={number.format(coverage.equipment_model_count)} detail={`${coverage.equipment_categories.length} equipment categories`} />
+            <SummaryMetric icon={<ClipboardList className="h-4 w-4" />} label="Pitch scenarios" value={String(coverage.prototype_scenarios.length)} detail="Representative US data-center markets" />
+          </div>
+          <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
+            {coverage.prototype_scenarios.slice(0, 8).map((scenario) => (
+              <button
+                type="button"
+                key={scenario.name}
+                onClick={() => useScenario(scenario)}
+                className="shrink-0 rounded-lg border border-ink-200 bg-white px-3 py-2 text-left hover:border-signal-500"
+              >
+                <span className="block text-xs font-semibold text-ink-900">{scenario.name}</span>
+                <span className="mt-0.5 block text-[10px] text-ink-500">{scenario.it_load_mw} MW · {scenario.redundancy} · PUE {scenario.target_pue}</span>
+              </button>
+            ))}
+          </div>
+          <p className="mt-2 text-[10px] leading-relaxed text-ink-500">{coverage.catalog_disclaimer}</p>
+        </Card>
+      ) : null}
+
       <Card
         title="1. Select the construction site"
         subtitle="Site evidence and the nearest climate station will constrain the plan"
+        actions={
+          <Button size="sm" variant="ghost" onClick={() => setShowSiteForm((shown) => !shown)}>
+            <Plus className="h-3.5 w-3.5" /> Add site
+          </Button>
+        }
       >
+        {allSites.length === 0 ? (
+          <div className="mb-3 flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4">
+            <MapPin className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />
+            <div>
+              <p className="text-sm font-semibold text-amber-950">Add the construction site here</p>
+              <p className="mt-1 text-xs text-amber-800">Use an address for Mireye geocoding, or enter coordinates to avoid a lookup.</p>
+            </div>
+          </div>
+        ) : null}
+        {showSiteForm ? (
+          <div className="mb-4 grid gap-3 rounded-xl border border-signal-200 bg-emerald-50/40 p-4 md:grid-cols-2 xl:grid-cols-4">
+            <Field label="Site name" htmlFor="construction-site-name">
+              <input id="construction-site-name" className={inputClass} value={siteName} onChange={(event) => setSiteName(event.target.value)} placeholder="Phoenix construction site" />
+            </Field>
+            <Field label="Address" hint="Or provide both coordinates" htmlFor="construction-site-address">
+              <input id="construction-site-address" className={inputClass} value={siteAddress} onChange={(event) => setSiteAddress(event.target.value)} placeholder="City, state or street address" />
+            </Field>
+            <Field label="Latitude" htmlFor="construction-site-latitude">
+              <input id="construction-site-latitude" className={inputClass} type="number" min="-90" max="90" step="any" value={siteLatitude} onChange={(event) => setSiteLatitude(event.target.value)} placeholder="33.4484" />
+            </Field>
+            <Field label="Longitude" htmlFor="construction-site-longitude">
+              <input id="construction-site-longitude" className={inputClass} type="number" min="-180" max="180" step="any" value={siteLongitude} onChange={(event) => setSiteLongitude(event.target.value)} placeholder="-112.0740" />
+            </Field>
+            <div className="flex items-center gap-2 md:col-span-2 xl:col-span-4">
+              <Button
+                size="sm"
+                variant="primary"
+                loading={creatingSite}
+                disabled={siteName.trim().length < 2 || (!siteAddress.trim() && (siteLatitude === "" || siteLongitude === ""))}
+                onClick={createSite}
+              >
+                <Plus className="h-3.5 w-3.5" /> Save and select site
+              </Button>
+              {allSites.length > 0 ? <Button size="sm" variant="ghost" onClick={() => setShowSiteForm(false)}>Cancel</Button> : null}
+            </div>
+          </div>
+        ) : null}
         <div className="grid max-h-64 gap-2 overflow-y-auto pr-1 md:grid-cols-3">
-          {sites.map((site) => (
+          {allSites.map((site) => (
             <button
               type="button"
               key={site.id}
@@ -234,7 +348,7 @@ export function ConstructionPlanner({
               <option value="hybrid_economizer">Water-cooled + economizer</option>
             </select>
           </Field>
-          <Field label="Electricity tariff" hint="USD per kWh; replace the benchmark" htmlFor="plan-rate">
+          <Field label="Electricity tariff override" hint="Blank uses the EIA state average" htmlFor="plan-rate">
             <input
               id="plan-rate"
               className={inputClass}
@@ -243,7 +357,8 @@ export function ConstructionPlanner({
               max="5"
               step="0.001"
               value={electricityRate}
-              onChange={(event) => setElectricityRate(Number(event.target.value))}
+              onChange={(event) => setElectricityRate(event.target.value === "" ? "" : Number(event.target.value))}
+              placeholder="Automatic from site state"
             />
           </Field>
           <Field label="Equipment budget (optional)" hint="Compared with the planning range" htmlFor="plan-budget">
@@ -325,7 +440,7 @@ function PlanResults({ plan }: { plan: ConstructionPlanResponse }) {
             icon={<Droplets className="h-4 w-4" />}
             label="Annual cooling water"
             value={totals.annual_water_m3 != null ? metric(totals.annual_water_m3, "m³") : "Needs data"}
-            detail="LBNL first-pass benchmark"
+            detail="Synthetic concept-stage water factor"
           />
           <SummaryMetric
             icon={<HardHat className="h-4 w-4" />}
@@ -362,7 +477,7 @@ function PlanResults({ plan }: { plan: ConstructionPlanResponse }) {
 
       <Card
         title="Equipment schedule"
-        subtitle="Open reference models sized to the selected capacity and redundancy basis"
+        subtitle="Synthetic prototype models sized to the selected capacity and redundancy basis"
         actions={<Badge className="border-amber-200 bg-amber-100 text-amber-900">synthetic cost ranges</Badge>}
       >
         <div className="overflow-x-auto">

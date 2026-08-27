@@ -934,7 +934,7 @@ class CandidateProduct(Base):
     compatibility_status: Literal["COMPATIBLE", "CONDITIONALLY_COMPATIBLE", "INCOMPATIBLE"] = "COMPATIBLE"
     explanation: str
     warnings: list[str] = Field(default_factory=list)
-    reference_source: str = "RacksDB / LBNL Open Catalog"
+    reference_source: str = "Mireye synthetic prototype equipment catalog"
 
 
 class ProductRecommendationResult(Base):

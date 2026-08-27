@@ -186,7 +186,7 @@ class ConstructionPlanRequest(BaseModel):
     target_pue: float = Field(default=1.35, ge=1.0, le=3.0)
     utilization_pct: float = Field(default=70.0, gt=0, le=100)
     annual_operating_hours: float = Field(default=8760.0, gt=0, le=8760)
-    electricity_rate_usd_kwh: float = Field(default=0.085, ge=0, le=5)
+    electricity_rate_usd_kwh: float | None = Field(default=None, ge=0, le=5)
     cooling_strategy: Literal["water_cooled", "hybrid_economizer"] = "water_cooled"
     voltage_v: int = Field(default=480, ge=120, le=35_000)
     budget_usd: float | None = Field(default=None, gt=0)
@@ -389,6 +389,16 @@ class RecommendationSearchRequest(BaseModel):
     constraints: list[dict[str, Any]] | None = None
     weights: dict[str, float] | None = None
     site_id: str | None = None
+    limit: int = Field(default=20, ge=1, le=50)
+
+    @model_validator(mode="after")
+    def _valid_weights(self):
+        if self.weights is not None:
+            if any(value < 0 for value in self.weights.values()):
+                raise ValueError("recommendation weights cannot be negative")
+            if not any(value > 0 for value in self.weights.values()):
+                raise ValueError("at least one recommendation weight must be positive")
+        return self
 
 
 class ApplyRecommendationRequest(BaseModel):

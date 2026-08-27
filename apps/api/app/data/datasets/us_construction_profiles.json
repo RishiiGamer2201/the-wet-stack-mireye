@@ -1,0 +1,921 @@
+{
+  "version": "1.0.0",
+  "coverage": "50 U.S. states plus District of Columbia",
+  "real_data_fields": [
+    "commercial_electricity_rate_usd_kwh"
+  ],
+  "synthetic_data_fields": [
+    "construction_cost_index",
+    "lead_time_multiplier",
+    "planning_water_cost_usd_m3"
+  ],
+  "sources": [
+    {
+      "name": "U.S. EIA Electric Sales, Revenue, and Average Price 2024 Table 4",
+      "url": "https://www.eia.gov/electricity/sales_revenue_price/xls/table_4.xlsx",
+      "data_year": 2024
+    }
+  ],
+  "disclaimer": "State electricity prices are EIA averages, not utility tariffs. Other multipliers and all prototype scenarios are synthetic planning assumptions.",
+  "state_profiles": [
+    {
+      "state": "Alabama",
+      "state_code": "AL",
+      "region": "southeast",
+      "commercial_electricity_rate_usd_kwh": 0.1364,
+      "electricity_rate_source": "EIA 2024 Table 4, commercial sector state average",
+      "construction_cost_index": 0.912,
+      "lead_time_multiplier": 0.962,
+      "planning_water_cost_usd_m3": 4.48,
+      "synthetic_fields": [
+        "construction_cost_index",
+        "lead_time_multiplier",
+        "planning_water_cost_usd_m3"
+      ]
+    },
+    {
+      "state": "Alaska",
+      "state_code": "AK",
+      "region": "west",
+      "commercial_electricity_rate_usd_kwh": 0.21568,
+      "electricity_rate_source": "EIA 2024 Table 4, commercial sector state average",
+      "construction_cost_index": 1.152,
+      "lead_time_multiplier": 1.18,
+      "planning_water_cost_usd_m3": 2.75,
+      "synthetic_fields": [
+        "construction_cost_index",
+        "lead_time_multiplier",
+        "planning_water_cost_usd_m3"
+      ]
+    },
+    {
+      "state": "Arizona",
+      "state_code": "AZ",
+      "region": "southwest",
+      "commercial_electricity_rate_usd_kwh": 0.1223,
+      "electricity_rate_source": "EIA 2024 Table 4, commercial sector state average",
+      "construction_cost_index": 1.039,
+      "lead_time_multiplier": 0.984,
+      "planning_water_cost_usd_m3": 2.91,
+      "synthetic_fields": [
+        "construction_cost_index",
+        "lead_time_multiplier",
+        "planning_water_cost_usd_m3"
+      ]
+    },
+    {
+      "state": "Arkansas",
+      "state_code": "AR",
+      "region": "southeast",
+      "commercial_electricity_rate_usd_kwh": 0.10236,
+      "electricity_rate_source": "EIA 2024 Table 4, commercial sector state average",
+      "construction_cost_index": 0.976,
+      "lead_time_multiplier": 1.103,
+      "planning_water_cost_usd_m3": 4.27,
+      "synthetic_fields": [
+        "construction_cost_index",
+        "lead_time_multiplier",
+        "planning_water_cost_usd_m3"
+      ]
+    },
+    {
+      "state": "California",
+      "state_code": "CA",
+      "region": "west",
+      "commercial_electricity_rate_usd_kwh": 0.25537,
+      "electricity_rate_source": "EIA 2024 Table 4, commercial sector state average",
+      "construction_cost_index": 1.158,
+      "lead_time_multiplier": 1.035,
+      "planning_water_cost_usd_m3": 3.31,
+      "synthetic_fields": [
+        "construction_cost_index",
+        "lead_time_multiplier",
+        "planning_water_cost_usd_m3"
+      ]
+    },
+    {
+      "state": "Colorado",
+      "state_code": "CO",
+      "region": "west",
+      "commercial_electricity_rate_usd_kwh": 0.11712,
+      "electricity_rate_source": "EIA 2024 Table 4, commercial sector state average",
+      "construction_cost_index": 1.181,
+      "lead_time_multiplier": 1.132,
+      "planning_water_cost_usd_m3": 3.92,
+      "synthetic_fields": [
+        "construction_cost_index",
+        "lead_time_multiplier",
+        "planning_water_cost_usd_m3"
+      ]
+    },
+    {
+      "state": "Connecticut",
+      "state_code": "CT",
+      "region": "northeast",
+      "commercial_electricity_rate_usd_kwh": 0.2121,
+      "electricity_rate_source": "EIA 2024 Table 4, commercial sector state average",
+      "construction_cost_index": 1.219,
+      "lead_time_multiplier": 1.137,
+      "planning_water_cost_usd_m3": 4.32,
+      "synthetic_fields": [
+        "construction_cost_index",
+        "lead_time_multiplier",
+        "planning_water_cost_usd_m3"
+      ]
+    },
+    {
+      "state": "Delaware",
+      "state_code": "DE",
+      "region": "northeast",
+      "commercial_electricity_rate_usd_kwh": 0.12198,
+      "electricity_rate_source": "EIA 2024 Table 4, commercial sector state average",
+      "construction_cost_index": 1.208,
+      "lead_time_multiplier": 1.176,
+      "planning_water_cost_usd_m3": 4.16,
+      "synthetic_fields": [
+        "construction_cost_index",
+        "lead_time_multiplier",
+        "planning_water_cost_usd_m3"
+      ]
+    },
+    {
+      "state": "District of Columbia",
+      "state_code": "DC",
+      "region": "northeast",
+      "commercial_electricity_rate_usd_kwh": 0.17067,
+      "electricity_rate_source": "EIA 2024 Table 4, commercial sector state average",
+      "construction_cost_index": 1.195,
+      "lead_time_multiplier": 1.174,
+      "planning_water_cost_usd_m3": 3.45,
+      "synthetic_fields": [
+        "construction_cost_index",
+        "lead_time_multiplier",
+        "planning_water_cost_usd_m3"
+      ]
+    },
+    {
+      "state": "Florida",
+      "state_code": "FL",
+      "region": "southeast",
+      "commercial_electricity_rate_usd_kwh": 0.10991,
+      "electricity_rate_source": "EIA 2024 Table 4, commercial sector state average",
+      "construction_cost_index": 0.956,
+      "lead_time_multiplier": 1.157,
+      "planning_water_cost_usd_m3": 2.99,
+      "synthetic_fields": [
+        "construction_cost_index",
+        "lead_time_multiplier",
+        "planning_water_cost_usd_m3"
+      ]
+    },
+    {
+      "state": "Georgia",
+      "state_code": "GA",
+      "region": "southeast",
+      "commercial_electricity_rate_usd_kwh": 0.10866,
+      "electricity_rate_source": "EIA 2024 Table 4, commercial sector state average",
+      "construction_cost_index": 0.965,
+      "lead_time_multiplier": 1.165,
+      "planning_water_cost_usd_m3": 3.32,
+      "synthetic_fields": [
+        "construction_cost_index",
+        "lead_time_multiplier",
+        "planning_water_cost_usd_m3"
+      ]
+    },
+    {
+      "state": "Hawaii",
+      "state_code": "HI",
+      "region": "west",
+      "commercial_electricity_rate_usd_kwh": 0.38182,
+      "electricity_rate_source": "EIA 2024 Table 4, commercial sector state average",
+      "construction_cost_index": 1.128,
+      "lead_time_multiplier": 1.167,
+      "planning_water_cost_usd_m3": 1.42,
+      "synthetic_fields": [
+        "construction_cost_index",
+        "lead_time_multiplier",
+        "planning_water_cost_usd_m3"
+      ]
+    },
+    {
+      "state": "Idaho",
+      "state_code": "ID",
+      "region": "west",
+      "commercial_electricity_rate_usd_kwh": 0.09169,
+      "electricity_rate_source": "EIA 2024 Table 4, commercial sector state average",
+      "construction_cost_index": 1.121,
+      "lead_time_multiplier": 1.005,
+      "planning_water_cost_usd_m3": 3.22,
+      "synthetic_fields": [
+        "construction_cost_index",
+        "lead_time_multiplier",
+        "planning_water_cost_usd_m3"
+      ]
+    },
+    {
+      "state": "Illinois",
+      "state_code": "IL",
+      "region": "midwest",
+      "commercial_electricity_rate_usd_kwh": 0.11815,
+      "electricity_rate_source": "EIA 2024 Table 4, commercial sector state average",
+      "construction_cost_index": 1.028,
+      "lead_time_multiplier": 1.176,
+      "planning_water_cost_usd_m3": 4.51,
+      "synthetic_fields": [
+        "construction_cost_index",
+        "lead_time_multiplier",
+        "planning_water_cost_usd_m3"
+      ]
+    },
+    {
+      "state": "Indiana",
+      "state_code": "IN",
+      "region": "midwest",
+      "commercial_electricity_rate_usd_kwh": 0.12441,
+      "electricity_rate_source": "EIA 2024 Table 4, commercial sector state average",
+      "construction_cost_index": 1.032,
+      "lead_time_multiplier": 1.044,
+      "planning_water_cost_usd_m3": 3.49,
+      "synthetic_fields": [
+        "construction_cost_index",
+        "lead_time_multiplier",
+        "planning_water_cost_usd_m3"
+      ]
+    },
+    {
+      "state": "Iowa",
+      "state_code": "IA",
+      "region": "midwest",
+      "commercial_electricity_rate_usd_kwh": 0.10222,
+      "electricity_rate_source": "EIA 2024 Table 4, commercial sector state average",
+      "construction_cost_index": 1.006,
+      "lead_time_multiplier": 1.086,
+      "planning_water_cost_usd_m3": 4.64,
+      "synthetic_fields": [
+        "construction_cost_index",
+        "lead_time_multiplier",
+        "planning_water_cost_usd_m3"
+      ]
+    },
+    {
+      "state": "Kansas",
+      "state_code": "KS",
+      "region": "midwest",
+      "commercial_electricity_rate_usd_kwh": 0.11192,
+      "electricity_rate_source": "EIA 2024 Table 4, commercial sector state average",
+      "construction_cost_index": 0.969,
+      "lead_time_multiplier": 1.122,
+      "planning_water_cost_usd_m3": 3.52,
+      "synthetic_fields": [
+        "construction_cost_index",
+        "lead_time_multiplier",
+        "planning_water_cost_usd_m3"
+      ]
+    },
+    {
+      "state": "Kentucky",
+      "state_code": "KY",
+      "region": "southeast",
+      "commercial_electricity_rate_usd_kwh": 0.11495,
+      "electricity_rate_source": "EIA 2024 Table 4, commercial sector state average",
+      "construction_cost_index": 0.902,
+      "lead_time_multiplier": 1.096,
+      "planning_water_cost_usd_m3": 3.03,
+      "synthetic_fields": [
+        "construction_cost_index",
+        "lead_time_multiplier",
+        "planning_water_cost_usd_m3"
+      ]
+    },
+    {
+      "state": "Louisiana",
+      "state_code": "LA",
+      "region": "southeast",
+      "commercial_electricity_rate_usd_kwh": 0.10456,
+      "electricity_rate_source": "EIA 2024 Table 4, commercial sector state average",
+      "construction_cost_index": 0.955,
+      "lead_time_multiplier": 0.971,
+      "planning_water_cost_usd_m3": 3.62,
+      "synthetic_fields": [
+        "construction_cost_index",
+        "lead_time_multiplier",
+        "planning_water_cost_usd_m3"
+      ]
+    },
+    {
+      "state": "Maine",
+      "state_code": "ME",
+      "region": "northeast",
+      "commercial_electricity_rate_usd_kwh": 0.18217,
+      "electricity_rate_source": "EIA 2024 Table 4, commercial sector state average",
+      "construction_cost_index": 1.193,
+      "lead_time_multiplier": 0.961,
+      "planning_water_cost_usd_m3": 3.87,
+      "synthetic_fields": [
+        "construction_cost_index",
+        "lead_time_multiplier",
+        "planning_water_cost_usd_m3"
+      ]
+    },
+    {
+      "state": "Maryland",
+      "state_code": "MD",
+      "region": "northeast",
+      "commercial_electricity_rate_usd_kwh": 0.12964,
+      "electricity_rate_source": "EIA 2024 Table 4, commercial sector state average",
+      "construction_cost_index": 1.162,
+      "lead_time_multiplier": 1.144,
+      "planning_water_cost_usd_m3": 2.7,
+      "synthetic_fields": [
+        "construction_cost_index",
+        "lead_time_multiplier",
+        "planning_water_cost_usd_m3"
+      ]
+    },
+    {
+      "state": "Massachusetts",
+      "state_code": "MA",
+      "region": "northeast",
+      "commercial_electricity_rate_usd_kwh": 0.20895,
+      "electricity_rate_source": "EIA 2024 Table 4, commercial sector state average",
+      "construction_cost_index": 1.13,
+      "lead_time_multiplier": 1.024,
+      "planning_water_cost_usd_m3": 2.33,
+      "synthetic_fields": [
+        "construction_cost_index",
+        "lead_time_multiplier",
+        "planning_water_cost_usd_m3"
+      ]
+    },
+    {
+      "state": "Michigan",
+      "state_code": "MI",
+      "region": "midwest",
+      "commercial_electricity_rate_usd_kwh": 0.14009,
+      "electricity_rate_source": "EIA 2024 Table 4, commercial sector state average",
+      "construction_cost_index": 0.994,
+      "lead_time_multiplier": 0.932,
+      "planning_water_cost_usd_m3": 4.28,
+      "synthetic_fields": [
+        "construction_cost_index",
+        "lead_time_multiplier",
+        "planning_water_cost_usd_m3"
+      ]
+    },
+    {
+      "state": "Minnesota",
+      "state_code": "MN",
+      "region": "midwest",
+      "commercial_electricity_rate_usd_kwh": 0.12147,
+      "electricity_rate_source": "EIA 2024 Table 4, commercial sector state average",
+      "construction_cost_index": 0.986,
+      "lead_time_multiplier": 1.096,
+      "planning_water_cost_usd_m3": 2.56,
+      "synthetic_fields": [
+        "construction_cost_index",
+        "lead_time_multiplier",
+        "planning_water_cost_usd_m3"
+      ]
+    },
+    {
+      "state": "Mississippi",
+      "state_code": "MS",
+      "region": "southeast",
+      "commercial_electricity_rate_usd_kwh": 0.12321,
+      "electricity_rate_source": "EIA 2024 Table 4, commercial sector state average",
+      "construction_cost_index": 0.928,
+      "lead_time_multiplier": 1.046,
+      "planning_water_cost_usd_m3": 4.02,
+      "synthetic_fields": [
+        "construction_cost_index",
+        "lead_time_multiplier",
+        "planning_water_cost_usd_m3"
+      ]
+    },
+    {
+      "state": "Missouri",
+      "state_code": "MO",
+      "region": "midwest",
+      "commercial_electricity_rate_usd_kwh": 0.10262,
+      "electricity_rate_source": "EIA 2024 Table 4, commercial sector state average",
+      "construction_cost_index": 0.924,
+      "lead_time_multiplier": 1.125,
+      "planning_water_cost_usd_m3": 3.89,
+      "synthetic_fields": [
+        "construction_cost_index",
+        "lead_time_multiplier",
+        "planning_water_cost_usd_m3"
+      ]
+    },
+    {
+      "state": "Montana",
+      "state_code": "MT",
+      "region": "west",
+      "commercial_electricity_rate_usd_kwh": 0.11868,
+      "electricity_rate_source": "EIA 2024 Table 4, commercial sector state average",
+      "construction_cost_index": 1.189,
+      "lead_time_multiplier": 0.999,
+      "planning_water_cost_usd_m3": 2.53,
+      "synthetic_fields": [
+        "construction_cost_index",
+        "lead_time_multiplier",
+        "planning_water_cost_usd_m3"
+      ]
+    },
+    {
+      "state": "Nebraska",
+      "state_code": "NE",
+      "region": "midwest",
+      "commercial_electricity_rate_usd_kwh": 0.08393,
+      "electricity_rate_source": "EIA 2024 Table 4, commercial sector state average",
+      "construction_cost_index": 0.989,
+      "lead_time_multiplier": 0.971,
+      "planning_water_cost_usd_m3": 1.9,
+      "synthetic_fields": [
+        "construction_cost_index",
+        "lead_time_multiplier",
+        "planning_water_cost_usd_m3"
+      ]
+    },
+    {
+      "state": "Nevada",
+      "state_code": "NV",
+      "region": "southwest",
+      "commercial_electricity_rate_usd_kwh": 0.10191,
+      "electricity_rate_source": "EIA 2024 Table 4, commercial sector state average",
+      "construction_cost_index": 1.03,
+      "lead_time_multiplier": 1.037,
+      "planning_water_cost_usd_m3": 2.88,
+      "synthetic_fields": [
+        "construction_cost_index",
+        "lead_time_multiplier",
+        "planning_water_cost_usd_m3"
+      ]
+    },
+    {
+      "state": "New Hampshire",
+      "state_code": "NH",
+      "region": "northeast",
+      "commercial_electricity_rate_usd_kwh": 0.19399,
+      "electricity_rate_source": "EIA 2024 Table 4, commercial sector state average",
+      "construction_cost_index": 1.135,
+      "lead_time_multiplier": 1.105,
+      "planning_water_cost_usd_m3": 2.72,
+      "synthetic_fields": [
+        "construction_cost_index",
+        "lead_time_multiplier",
+        "planning_water_cost_usd_m3"
+      ]
+    },
+    {
+      "state": "New Jersey",
+      "state_code": "NJ",
+      "region": "northeast",
+      "commercial_electricity_rate_usd_kwh": 0.14645,
+      "electricity_rate_source": "EIA 2024 Table 4, commercial sector state average",
+      "construction_cost_index": 1.133,
+      "lead_time_multiplier": 1.099,
+      "planning_water_cost_usd_m3": 3.43,
+      "synthetic_fields": [
+        "construction_cost_index",
+        "lead_time_multiplier",
+        "planning_water_cost_usd_m3"
+      ]
+    },
+    {
+      "state": "New Mexico",
+      "state_code": "NM",
+      "region": "southwest",
+      "commercial_electricity_rate_usd_kwh": 0.10541,
+      "electricity_rate_source": "EIA 2024 Table 4, commercial sector state average",
+      "construction_cost_index": 0.964,
+      "lead_time_multiplier": 0.987,
+      "planning_water_cost_usd_m3": 2.34,
+      "synthetic_fields": [
+        "construction_cost_index",
+        "lead_time_multiplier",
+        "planning_water_cost_usd_m3"
+      ]
+    },
+    {
+      "state": "New York",
+      "state_code": "NY",
+      "region": "northeast",
+      "commercial_electricity_rate_usd_kwh": 0.18771,
+      "electricity_rate_source": "EIA 2024 Table 4, commercial sector state average",
+      "construction_cost_index": 1.112,
+      "lead_time_multiplier": 0.956,
+      "planning_water_cost_usd_m3": 3.85,
+      "synthetic_fields": [
+        "construction_cost_index",
+        "lead_time_multiplier",
+        "planning_water_cost_usd_m3"
+      ]
+    },
+    {
+      "state": "North Carolina",
+      "state_code": "NC",
+      "region": "southeast",
+      "commercial_electricity_rate_usd_kwh": 0.1056,
+      "electricity_rate_source": "EIA 2024 Table 4, commercial sector state average",
+      "construction_cost_index": 0.995,
+      "lead_time_multiplier": 0.928,
+      "planning_water_cost_usd_m3": 2.27,
+      "synthetic_fields": [
+        "construction_cost_index",
+        "lead_time_multiplier",
+        "planning_water_cost_usd_m3"
+      ]
+    },
+    {
+      "state": "North Dakota",
+      "state_code": "ND",
+      "region": "midwest",
+      "commercial_electricity_rate_usd_kwh": 0.07187,
+      "electricity_rate_source": "EIA 2024 Table 4, commercial sector state average",
+      "construction_cost_index": 0.974,
+      "lead_time_multiplier": 0.942,
+      "planning_water_cost_usd_m3": 1.66,
+      "synthetic_fields": [
+        "construction_cost_index",
+        "lead_time_multiplier",
+        "planning_water_cost_usd_m3"
+      ]
+    },
+    {
+      "state": "Ohio",
+      "state_code": "OH",
+      "region": "midwest",
+      "commercial_electricity_rate_usd_kwh": 0.10663,
+      "electricity_rate_source": "EIA 2024 Table 4, commercial sector state average",
+      "construction_cost_index": 1.018,
+      "lead_time_multiplier": 0.991,
+      "planning_water_cost_usd_m3": 3.8,
+      "synthetic_fields": [
+        "construction_cost_index",
+        "lead_time_multiplier",
+        "planning_water_cost_usd_m3"
+      ]
+    },
+    {
+      "state": "Oklahoma",
+      "state_code": "OK",
+      "region": "southwest",
+      "commercial_electricity_rate_usd_kwh": 0.08923,
+      "electricity_rate_source": "EIA 2024 Table 4, commercial sector state average",
+      "construction_cost_index": 1.023,
+      "lead_time_multiplier": 1.099,
+      "planning_water_cost_usd_m3": 1.96,
+      "synthetic_fields": [
+        "construction_cost_index",
+        "lead_time_multiplier",
+        "planning_water_cost_usd_m3"
+      ]
+    },
+    {
+      "state": "Oregon",
+      "state_code": "OR",
+      "region": "west",
+      "commercial_electricity_rate_usd_kwh": 0.10113,
+      "electricity_rate_source": "EIA 2024 Table 4, commercial sector state average",
+      "construction_cost_index": 1.109,
+      "lead_time_multiplier": 0.981,
+      "planning_water_cost_usd_m3": 2.05,
+      "synthetic_fields": [
+        "construction_cost_index",
+        "lead_time_multiplier",
+        "planning_water_cost_usd_m3"
+      ]
+    },
+    {
+      "state": "Pennsylvania",
+      "state_code": "PA",
+      "region": "northeast",
+      "commercial_electricity_rate_usd_kwh": 0.1103,
+      "electricity_rate_source": "EIA 2024 Table 4, commercial sector state average",
+      "construction_cost_index": 1.152,
+      "lead_time_multiplier": 1.022,
+      "planning_water_cost_usd_m3": 3.84,
+      "synthetic_fields": [
+        "construction_cost_index",
+        "lead_time_multiplier",
+        "planning_water_cost_usd_m3"
+      ]
+    },
+    {
+      "state": "Rhode Island",
+      "state_code": "RI",
+      "region": "northeast",
+      "commercial_electricity_rate_usd_kwh": 0.21093,
+      "electricity_rate_source": "EIA 2024 Table 4, commercial sector state average",
+      "construction_cost_index": 1.171,
+      "lead_time_multiplier": 1.005,
+      "planning_water_cost_usd_m3": 1.64,
+      "synthetic_fields": [
+        "construction_cost_index",
+        "lead_time_multiplier",
+        "planning_water_cost_usd_m3"
+      ]
+    },
+    {
+      "state": "South Carolina",
+      "state_code": "SC",
+      "region": "southeast",
+      "commercial_electricity_rate_usd_kwh": 0.10635,
+      "electricity_rate_source": "EIA 2024 Table 4, commercial sector state average",
+      "construction_cost_index": 0.944,
+      "lead_time_multiplier": 1.065,
+      "planning_water_cost_usd_m3": 3.99,
+      "synthetic_fields": [
+        "construction_cost_index",
+        "lead_time_multiplier",
+        "planning_water_cost_usd_m3"
+      ]
+    },
+    {
+      "state": "South Dakota",
+      "state_code": "SD",
+      "region": "midwest",
+      "commercial_electricity_rate_usd_kwh": 0.1055,
+      "electricity_rate_source": "EIA 2024 Table 4, commercial sector state average",
+      "construction_cost_index": 0.993,
+      "lead_time_multiplier": 1.009,
+      "planning_water_cost_usd_m3": 2.14,
+      "synthetic_fields": [
+        "construction_cost_index",
+        "lead_time_multiplier",
+        "planning_water_cost_usd_m3"
+      ]
+    },
+    {
+      "state": "Tennessee",
+      "state_code": "TN",
+      "region": "southeast",
+      "commercial_electricity_rate_usd_kwh": 0.12053,
+      "electricity_rate_source": "EIA 2024 Table 4, commercial sector state average",
+      "construction_cost_index": 0.983,
+      "lead_time_multiplier": 0.997,
+      "planning_water_cost_usd_m3": 1.86,
+      "synthetic_fields": [
+        "construction_cost_index",
+        "lead_time_multiplier",
+        "planning_water_cost_usd_m3"
+      ]
+    },
+    {
+      "state": "Texas",
+      "state_code": "TX",
+      "region": "southwest",
+      "commercial_electricity_rate_usd_kwh": 0.08553,
+      "electricity_rate_source": "EIA 2024 Table 4, commercial sector state average",
+      "construction_cost_index": 0.969,
+      "lead_time_multiplier": 1.164,
+      "planning_water_cost_usd_m3": 2.58,
+      "synthetic_fields": [
+        "construction_cost_index",
+        "lead_time_multiplier",
+        "planning_water_cost_usd_m3"
+      ]
+    },
+    {
+      "state": "Utah",
+      "state_code": "UT",
+      "region": "southwest",
+      "commercial_electricity_rate_usd_kwh": 0.09388,
+      "electricity_rate_source": "EIA 2024 Table 4, commercial sector state average",
+      "construction_cost_index": 1.067,
+      "lead_time_multiplier": 1.107,
+      "planning_water_cost_usd_m3": 2.35,
+      "synthetic_fields": [
+        "construction_cost_index",
+        "lead_time_multiplier",
+        "planning_water_cost_usd_m3"
+      ]
+    },
+    {
+      "state": "Vermont",
+      "state_code": "VT",
+      "region": "northeast",
+      "commercial_electricity_rate_usd_kwh": 0.1889,
+      "electricity_rate_source": "EIA 2024 Table 4, commercial sector state average",
+      "construction_cost_index": 1.126,
+      "lead_time_multiplier": 1.107,
+      "planning_water_cost_usd_m3": 4.28,
+      "synthetic_fields": [
+        "construction_cost_index",
+        "lead_time_multiplier",
+        "planning_water_cost_usd_m3"
+      ]
+    },
+    {
+      "state": "Virginia",
+      "state_code": "VA",
+      "region": "southeast",
+      "commercial_electricity_rate_usd_kwh": 0.08722,
+      "electricity_rate_source": "EIA 2024 Table 4, commercial sector state average",
+      "construction_cost_index": 0.897,
+      "lead_time_multiplier": 1.16,
+      "planning_water_cost_usd_m3": 1.74,
+      "synthetic_fields": [
+        "construction_cost_index",
+        "lead_time_multiplier",
+        "planning_water_cost_usd_m3"
+      ]
+    },
+    {
+      "state": "Washington",
+      "state_code": "WA",
+      "region": "west",
+      "commercial_electricity_rate_usd_kwh": 0.09991,
+      "electricity_rate_source": "EIA 2024 Table 4, commercial sector state average",
+      "construction_cost_index": 1.083,
+      "lead_time_multiplier": 1.072,
+      "planning_water_cost_usd_m3": 3.16,
+      "synthetic_fields": [
+        "construction_cost_index",
+        "lead_time_multiplier",
+        "planning_water_cost_usd_m3"
+      ]
+    },
+    {
+      "state": "West Virginia",
+      "state_code": "WV",
+      "region": "southeast",
+      "commercial_electricity_rate_usd_kwh": 0.1162,
+      "electricity_rate_source": "EIA 2024 Table 4, commercial sector state average",
+      "construction_cost_index": 0.924,
+      "lead_time_multiplier": 1.026,
+      "planning_water_cost_usd_m3": 2.58,
+      "synthetic_fields": [
+        "construction_cost_index",
+        "lead_time_multiplier",
+        "planning_water_cost_usd_m3"
+      ]
+    },
+    {
+      "state": "Wisconsin",
+      "state_code": "WI",
+      "region": "midwest",
+      "commercial_electricity_rate_usd_kwh": 0.12634,
+      "electricity_rate_source": "EIA 2024 Table 4, commercial sector state average",
+      "construction_cost_index": 0.994,
+      "lead_time_multiplier": 0.938,
+      "planning_water_cost_usd_m3": 2.72,
+      "synthetic_fields": [
+        "construction_cost_index",
+        "lead_time_multiplier",
+        "planning_water_cost_usd_m3"
+      ]
+    },
+    {
+      "state": "Wyoming",
+      "state_code": "WY",
+      "region": "west",
+      "commercial_electricity_rate_usd_kwh": 0.09272,
+      "electricity_rate_source": "EIA 2024 Table 4, commercial sector state average",
+      "construction_cost_index": 1.177,
+      "lead_time_multiplier": 0.973,
+      "planning_water_cost_usd_m3": 2.53,
+      "synthetic_fields": [
+        "construction_cost_index",
+        "lead_time_multiplier",
+        "planning_water_cost_usd_m3"
+      ]
+    }
+  ],
+  "prototype_scenarios": [
+    {
+      "name": "Ashburn hyperscale corridor",
+      "state_code": "VA",
+      "latitude": 38.9696,
+      "longitude": -77.3861,
+      "it_load_mw": 96.0,
+      "redundancy": "2N",
+      "target_pue": 1.38,
+      "electricity_rate_usd_kwh": 0.08722,
+      "prototype_only": true
+    },
+    {
+      "name": "Dallas-Fort Worth campus",
+      "state_code": "TX",
+      "latitude": 32.8998,
+      "longitude": -97.0403,
+      "it_load_mw": 72.0,
+      "redundancy": "N+1",
+      "target_pue": 1.38,
+      "electricity_rate_usd_kwh": 0.08553,
+      "prototype_only": true
+    },
+    {
+      "name": "Phoenix-Mesa campus",
+      "state_code": "AZ",
+      "latitude": 33.4152,
+      "longitude": -111.8315,
+      "it_load_mw": 64.0,
+      "redundancy": "N+1",
+      "target_pue": 1.38,
+      "electricity_rate_usd_kwh": 0.1223,
+      "prototype_only": true
+    },
+    {
+      "name": "Quincy hydro-powered campus",
+      "state_code": "WA",
+      "latitude": 47.2343,
+      "longitude": -119.8526,
+      "it_load_mw": 48.0,
+      "redundancy": "N+1",
+      "target_pue": 1.3,
+      "electricity_rate_usd_kwh": 0.09991,
+      "prototype_only": true
+    },
+    {
+      "name": "New Albany compute campus",
+      "state_code": "OH",
+      "latitude": 40.0812,
+      "longitude": -82.8088,
+      "it_load_mw": 48.0,
+      "redundancy": "N+1",
+      "target_pue": 1.3,
+      "electricity_rate_usd_kwh": 0.10663,
+      "prototype_only": true
+    },
+    {
+      "name": "Santa Clara infill facility",
+      "state_code": "CA",
+      "latitude": 37.3541,
+      "longitude": -121.9552,
+      "it_load_mw": 32.0,
+      "redundancy": "2N",
+      "target_pue": 1.38,
+      "electricity_rate_usd_kwh": 0.25537,
+      "prototype_only": true
+    },
+    {
+      "name": "Atlanta regional campus",
+      "state_code": "GA",
+      "latitude": 33.749,
+      "longitude": -84.388,
+      "it_load_mw": 48.0,
+      "redundancy": "N+1",
+      "target_pue": 1.38,
+      "electricity_rate_usd_kwh": 0.10866,
+      "prototype_only": true
+    },
+    {
+      "name": "Chicago metro campus",
+      "state_code": "IL",
+      "latitude": 41.8781,
+      "longitude": -87.6298,
+      "it_load_mw": 40.0,
+      "redundancy": "N+1",
+      "target_pue": 1.38,
+      "electricity_rate_usd_kwh": 0.11815,
+      "prototype_only": true
+    },
+    {
+      "name": "Salt Lake City campus",
+      "state_code": "UT",
+      "latitude": 40.7608,
+      "longitude": -111.891,
+      "it_load_mw": 36.0,
+      "redundancy": "N+1",
+      "target_pue": 1.3,
+      "electricity_rate_usd_kwh": 0.09388,
+      "prototype_only": true
+    },
+    {
+      "name": "Des Moines low-latency campus",
+      "state_code": "IA",
+      "latitude": 41.5868,
+      "longitude": -93.625,
+      "it_load_mw": 32.0,
+      "redundancy": "N+1",
+      "target_pue": 1.3,
+      "electricity_rate_usd_kwh": 0.10222,
+      "prototype_only": true
+    },
+    {
+      "name": "Portland edge campus",
+      "state_code": "OR",
+      "latitude": 45.5152,
+      "longitude": -122.6784,
+      "it_load_mw": 24.0,
+      "redundancy": "N+1",
+      "target_pue": 1.3,
+      "electricity_rate_usd_kwh": 0.10113,
+      "prototype_only": true
+    },
+    {
+      "name": "Northern New Jersey interconnect",
+      "state_code": "NJ",
+      "latitude": 40.7357,
+      "longitude": -74.1724,
+      "it_load_mw": 40.0,
+      "redundancy": "2N",
+      "target_pue": 1.38,
+      "electricity_rate_usd_kwh": 0.14645,
+      "prototype_only": true
+    }
+  ]
+}

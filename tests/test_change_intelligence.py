@@ -75,6 +75,47 @@ def test_catalog_search_and_deterministic_ranking():
     assert "climate_margin" in top.score_breakdown
 
 
+def test_llm_can_explain_but_not_change_the_deterministic_shortlist(monkeypatch):
+    class Explainer:
+        available = True
+
+        def complete(self, system, user, max_tokens=1000):
+            assert "Do not calculate" in system
+            assert '"ranked_candidates"' in user
+            assert max_tokens == 900
+            return "Review the fixed shortlist and obtain certified submittals."
+
+    monkeypatch.setattr(change_orchestrator, "get_llm", lambda: Explainer())
+    requirement_set = StructuredRequirementSet(
+        project_id="llm-explanation-test",
+        equipment_type="chiller",
+        constraints=[
+            StructuredConstraint(
+                parameter="cooling_capacity",
+                operator=">=",
+                value=1200,
+                unit="kW",
+                priority="mandatory",
+            )
+        ],
+    )
+    result = change_orchestrator.generate_product_recommendations(
+        project_id="llm-explanation-test",
+        equipment_type="chiller",
+        requirement_set=requirement_set,
+        limit=5,
+    )
+    deterministic_ids = [
+        candidate.id
+        for candidate in catalog_engine.search_and_rank_candidates(
+            "chiller", requirement_set, limit=5
+        )
+    ]
+    assert [candidate.id for candidate in result.candidates] == deterministic_ids
+    assert "LLM coordination note" in result.explanation_narrative
+    assert "certified submittals" in result.explanation_narrative
+
+
 def test_deterministic_design_margins():
     """Verify structural, electrical, and thermal design headroom calculations."""
     proposed_cfg = EquipmentConfiguration(
@@ -361,3 +402,153 @@ def test_construction_plan_rejects_a_site_from_another_project(api):
         json={"site_id": site["id"], "it_load_mw": 5},
     )
     assert response.status_code == 404
+
+
+def test_us_construction_dataset_has_nationwide_labelled_coverage(api):
+    coverage = api.get("/api/construction-data/coverage")
+    assert coverage.status_code == 200
+    body = coverage.json()
+    assert body["state_profile_count"] == 51
+    assert body["equipment_model_count"] >= 600
+    assert len(body["equipment_categories"]) == 11
+    assert body["synthetic_equipment"] is True
+    assert len(body["prototype_scenarios"]) >= 10
+    assert "certified manufacturer" in body["catalog_disclaimer"]
+    assert body["real_data_sources"][0]["name"].startswith("U.S. EIA")
+
+
+def test_construction_plan_uses_eia_state_rate_when_override_is_blank(api):
+    project = api.post("/api/projects", json={"name": "Virginia construction plan"}).json()
+    site_response = api.post(
+        f"/api/projects/{project['id']}/sites",
+        json={
+            "name": "Ashburn campus",
+            "address": "Ashburn, VA",
+            "latitude": 39.0438,
+            "longitude": -77.4874,
+        },
+    )
+    assert site_response.status_code == 201
+    plan_response = api.post(
+        f"/api/projects/{project['id']}/construction-plan",
+        json={"site_id": site_response.json()["id"], "it_load_mw": 24},
+    )
+    assert plan_response.status_code == 200
+    basis = plan_response.json()["design_basis"]
+    assert basis["state_code"] == "VA"
+    assert basis["electricity_rate_usd_kwh"] > 0
+    assert basis["electricity_rate_source"].startswith("U.S. EIA 2024")
+    assert basis["regional_cost_index"] != 1.0
+
+
+def test_construction_plan_does_not_use_a_distant_climate_station(api):
+    project = api.post("/api/projects", json={"name": "Remote climate test"}).json()
+    site = api.post(
+        f"/api/projects/{project['id']}/sites",
+        json={
+            "name": "Northern site",
+            "address": "New York",
+            "latitude": 42.761,
+            "longitude": -82.607,
+        },
+    ).json()
+    response = api.post(
+        f"/api/projects/{project['id']}/construction-plan",
+        json={"site_id": site["id"], "it_load_mw": 10},
+    )
+    assert response.status_code == 200
+    plan = response.json()
+    assert "ambient_design_db_c" not in {
+        constraint["field_key"] for constraint in plan["site_constraints"]
+    }
+    assert any("No nearby climate-station" in warning for warning in plan["warnings"])
+
+
+def test_catalog_rejects_missing_mandatory_values_and_unknown_categories():
+    model = {"id": "partial", "model_number": "PARTIAL", "equipment_type": "chiller"}
+    constraint = StructuredConstraint(
+        parameter="cooling_capacity",
+        operator=">=",
+        value=1200,
+        unit="kW",
+        priority="mandatory",
+    )
+    candidate = catalog_engine.evaluate_candidate_product(
+        model,
+        [constraint],
+        catalog_engine.DEFAULT_WEIGHTS,
+    )
+    assert candidate.compatibility_status == "INCOMPATIBLE"
+    assert any("not specified" in failure for failure in candidate.failed_constraints)
+    assert catalog_engine.search_and_rank_candidates("category-that-does-not-exist") == []
+
+
+@pytest.mark.parametrize(
+    ("prompt", "equipment_type", "parameter", "expected"),
+    [
+        ("Need a 2.5 MVA transformer", "transformer", "kva_rating", 2500),
+        ("Replace with a 1200 kW UPS", "ups", "power_capacity", 1200),
+        ("Need a pump rated for 90 L/s", "pump", "flow_rate", 90),
+        ("Use 4000 amp switchgear", "switchgear", "bus_current", 4000),
+    ],
+)
+def test_requirement_parser_handles_multiple_equipment_categories(
+    prompt, equipment_type, parameter, expected
+):
+    parsed = change_orchestrator.parse_natural_language_requirements(
+        prompt,
+        equipment_type=equipment_type,
+    )
+    matching = [item for item in parsed.constraints if item.parameter == parameter]
+    assert matching
+    assert matching[0].value == expected
+
+
+def test_recommendation_can_create_a_new_change_and_blocks_cross_project_update(api, store):
+    seeded = api.post("/api/admin/seed").json()
+    project_id = seeded["project_id"]
+    search = api.post(
+        f"/api/projects/{project_id}/recommendations/search",
+        json={
+            "equipment_type": "transformer",
+            "constraints": [
+                {
+                    "parameter": "kva_rating",
+                    "operator": ">=",
+                    "value": 2500,
+                    "unit": "kVA",
+                    "priority": "mandatory",
+                }
+            ],
+        },
+    )
+    assert search.status_code == 200
+    candidate = search.json()["top_recommendation"]
+    assert candidate is not None
+
+    applied = api.post(
+        f"/api/projects/{project_id}/recommendations/apply-change",
+        json={
+            "equipment_tag": "TX-NEW",
+            "candidate_product_id": candidate["id"],
+        },
+    )
+    assert applied.status_code == 200
+    change_id = applied.json()["subject_id"]
+    change = store.get(C.CHANGES, change_id, EquipmentChange)
+    proposed = store.get(C.EQUIPMENT, change.proposed_equipment_id, Equipment)
+    assert change.synthetic is True
+    assert proposed.synthetic is True
+    assert proposed.discipline == Discipline.ELECTRICAL
+
+    other = api.post("/api/projects", json={"name": "Unrelated project"}).json()
+    blocked = api.post(
+        f"/api/projects/{other['id']}/recommendations/apply-change",
+        json={
+            "equipment_tag": "TX-NEW",
+            "candidate_product_id": candidate["id"],
+            "existing_change_id": change_id,
+        },
+    )
+    assert blocked.status_code == 422
+    assert "this project" in blocked.json()["detail"]

@@ -94,7 +94,8 @@ export const api = {
   reset: () => post<{ project_id: string; project_name: string; message: string }>("/admin/reset"),
 
   // Before Construction
-  createSite: (projectId: string, body: unknown) => post(`/projects/${projectId}/sites`, body),
+  createSite: (projectId: string, body: unknown) =>
+    post<import("./types").CandidateSite>(`/projects/${projectId}/sites`, body),
   createSiteFromBoundary: (projectId: string, body: { name: string; coordinates: Array<{ latitude: number; longitude: number }>; city?: string; area_hectares?: number; notes?: string }) =>
     post<import("./types").CandidateSite>(`/projects/${projectId}/sites/from-boundary`, body),
   deleteSite: (projectId: string, siteId: string) =>
@@ -292,7 +293,7 @@ export const api = {
       target_pue: number;
       utilization_pct: number;
       annual_operating_hours: number;
-      electricity_rate_usd_kwh: number;
+      electricity_rate_usd_kwh?: number | null;
       cooling_strategy: "water_cooled" | "hybrid_economizer";
       voltage_v: number;
       budget_usd?: number | null;
@@ -318,6 +319,7 @@ export const api = {
       constraints?: any[];
       weights?: Record<string, number>;
       site_id?: string | null;
+      limit?: number;
     },
   ) =>
     post<import("./types").ProductRecommendationResult>(`/projects/${projectId}/recommendations/search`, payload),
@@ -339,6 +341,9 @@ export const api = {
     request<import("./types").ReferenceSpec[]>(
       equipmentType ? `/catalog/models?equipment_type=${encodeURIComponent(equipmentType)}` : "/catalog/models",
     ),
+
+  constructionDataCoverage: () =>
+    request<import("./types").ConstructionDataCoverage>("/construction-data/coverage"),
 
   changeMargins: (projectId: string, changeId: string) =>
     request<import("./types").DesignMargin[]>(`/projects/${projectId}/changes/${changeId}/margins`),

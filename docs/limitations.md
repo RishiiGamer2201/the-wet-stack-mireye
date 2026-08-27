@@ -6,9 +6,11 @@
   where structural, electrical or mechanical coordination is *required*; it never asserts structural
   adequacy, code compliance or fitness for purpose. Every recommendation carries this caveat, and
   `FIRST-PASS CHECKS CLOSED` still requires a human sign-off action.
-* **All demo data is synthetic.** Sites, observations, manufacturers, model numbers, performance
-  data and documents are invented. Manufacturer names are fictional so no real vendor's data is
-  misrepresented. Nothing here may be used for a real engineering decision.
+* **Most demo data is synthetic.** The generated equipment catalog, costs, regional multipliers,
+  scenarios, seeded sites and documents are synthetic and visibly labelled. State commercial
+  electricity averages come from U.S. EIA 2024 Table 4, while several before-construction adapters
+  use cited public datasets. None of this replaces a project tariff, certified vendor submittal,
+  site survey, or engineer-approved design criterion.
 * **The LLM cannot compute anything that matters.** Scores, deltas, thresholds, unit conversions and
   decision states come from `app/engine/`. The LLM plans investigations and explains findings.
 * **Thresholds are illustrative.** The 5 % weight / 2 % dimension / 10 % refrigerant coordination
@@ -43,6 +45,9 @@
   streaming progress (the data model already supports incremental step/event updates).
 * No authentication, authorisation or multi-tenancy. Every project is world-readable.
 * Rate limiting, request quotas and upload virus scanning are absent.
+* The current high-utilization Mireye defaults can request broad field coverage, including the
+  separately metered parcel group, across many sites. Use explicit limits and disable parcel fields
+  outside a controlled demo budget; the test suite never performs paid calls by default.
 
 **Frontend**
 

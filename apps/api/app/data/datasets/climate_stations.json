@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
-  "source": "StationFinder (klimaat.github.io/StationFinder) & ASHRAE Fundamentals 2021 Climatic Design Data",
-  "licence": "Public Domain / NOAA / WMO Open Data",
+  "source": "Bundled Mireye prototype climate-station snapshot; verify values against NOAA or project design criteria before use",
+  "licence": "Prototype reference data; source and redistribution rights require production review",
   "stations": [
     {
       "station_id": "727970-24243",

@@ -131,7 +131,9 @@ def _quantity_for(
 
 
 def _site_constraints(
-    observations: list[SiteObservation], station: ClimateStation | None
+    observations: list[SiteObservation],
+    station: ClimateStation | None,
+    us_profile: dict[str, Any] | None,
 ) -> list[SitePlanningConstraint]:
     by_field = {obs.field_key: obs for obs in observations if obs.value is not None}
     constraints: list[SitePlanningConstraint] = []
@@ -143,7 +145,18 @@ def _site_constraints(
                 value=station.cooling_db_0_4_pct_degc,
                 unit="degC",
                 status="external_dataset",
-                source=f"StationFinder / ASHRAE station {station.name}, {station.distance_km:.1f} km away",
+                source=f"Bundled prototype climate-station snapshot: {station.name}, {station.distance_km:.1f} km away",
+            )
+        )
+    if us_profile is not None:
+        constraints.append(
+            SitePlanningConstraint(
+                field_key="commercial_electricity_rate_usd_kwh",
+                label="State commercial electricity price",
+                value=us_profile["commercial_electricity_rate_usd_kwh"],
+                unit="USD/kWh",
+                status="external_dataset",
+                source="U.S. EIA 2024 Table 4 state commercial-sector average",
             )
         )
     for field_key, label in _SITE_FIELDS.items():
@@ -171,10 +184,22 @@ def build_construction_plan(
     request: ConstructionPlanRequest,
     observations: list[SiteObservation],
     station: ClimateStation | None,
+    us_profile: dict[str, Any] | None = None,
 ) -> ConstructionPlanResponse:
     """Size a site equipment schedule and calculate first-pass energy and cost ranges."""
     cost_data = _load_cost_benchmarks()
     cost_rows = cost_data["equipment_types"]
+    regional_cost_index = float(us_profile.get("construction_cost_index", 1.0)) if us_profile else 1.0
+    lead_time_multiplier = float(us_profile.get("lead_time_multiplier", 1.0)) if us_profile else 1.0
+    if request.electricity_rate_usd_kwh is not None:
+        electricity_rate = request.electricity_rate_usd_kwh
+        electricity_rate_source = "User-supplied tariff"
+    elif us_profile is not None:
+        electricity_rate = float(us_profile["commercial_electricity_rate_usd_kwh"])
+        electricity_rate_source = "U.S. EIA 2024 state commercial-sector average"
+    else:
+        electricity_rate = 0.085
+        electricity_rate_source = "Synthetic fallback planning assumption"
 
     it_power_kw = request.it_load_mw * 1000.0
     facility_power_kw = it_power_kw * request.target_pue
@@ -213,7 +238,14 @@ def build_construction_plan(
         )
         cost = cost_rows[equipment_type]
         duty, duty_unit = _rated_duty(model)
-        input_kw = float(model["power_input_kw"]) if model.get("power_input_kw") is not None else None
+        # Power-train catalog records describe throughput/rating, not an
+        # additional site load. Only plant auxiliaries are summed here.
+        input_kw = (
+            float(model["power_input_kw"])
+            if model.get("power_input_kw") is not None
+            and equipment_type not in {"transformer", "switchgear", "ups", "pdu", "generator"}
+            else None
+        )
         schedule.append(
             ConstructionPlanItem(
                 category=equipment_type,
@@ -226,12 +258,12 @@ def build_construction_plan(
                 duty_unit=duty_unit,
                 power_input_per_unit_kw=input_kw,
                 connected_power_kw=round((input_kw or 0.0) * quantity, 1),
-                estimated_cost_low_usd=round(float(cost["installed_cost_low_usd"]) * quantity, 2),
-                estimated_cost_high_usd=round(float(cost["installed_cost_high_usd"]) * quantity, 2),
-                cost_basis=cost["basis"],
-                lead_time_weeks=int(cost["lead_time_weeks"]),
+                estimated_cost_low_usd=round(float(cost["installed_cost_low_usd"]) * quantity * regional_cost_index, 2),
+                estimated_cost_high_usd=round(float(cost["installed_cost_high_usd"]) * quantity * regional_cost_index, 2),
+                cost_basis=f"{cost['basis']}; regional prototype index {regional_cost_index:.3f}",
+                lead_time_weeks=max(1, round(int(cost["lead_time_weeks"]) * lead_time_multiplier)),
                 description=model.get("description", "Bundled open equipment reference model."),
-                source="RacksDB / LBNL / DOE open reference catalog",
+                source=model.get("source", "Mireye synthetic USA prototype equipment catalog"),
                 synthetic_cost=True,
             )
         )
@@ -248,10 +280,10 @@ def build_construction_plan(
         * request.utilization_pct
         / 100.0
     )
-    annual_energy_cost = annual_energy_kwh * request.electricity_rate_usd_kwh
+    annual_energy_cost = annual_energy_kwh * electricity_rate
     water = get_equipment_specs_adapter().calculate_water_consumption_estimate(
         cooling_capacity_kw=cooling_duty_kw,
-        cooling_type="water_cooled",
+        cooling_type=request.cooling_strategy,
         cop=float(chiller_model.get("cop", 5.5)),
     )
     annual_water_m3 = (
@@ -270,7 +302,7 @@ def build_construction_plan(
     else:
         budget_status = "BELOW_RANGE"
 
-    constraints = _site_constraints(observations, station)
+    constraints = _site_constraints(observations, station, us_profile)
     warnings = [
         "Equipment prices are synthetic planning ranges, not quotations. Replace them with vendor bids before procurement.",
         "The cost range covers the listed installed equipment plus contingency; it excludes land, utility interconnection, shell, taxes, financing, and owner costs.",
@@ -279,6 +311,10 @@ def build_construction_plan(
     ]
     if station is None:
         warnings.append("No nearby climate-station record was available; climate derating requires engineer confirmation.")
+    if request.electricity_rate_usd_kwh is None and us_profile is None:
+        warnings.append(
+            "The site could not be matched to a U.S. state, so annual energy cost uses a synthetic $0.085/kWh fallback. Enter the project tariff before comparison."
+        )
     if not constraints:
         warnings.append("No stored site measurements were available. Run the site investigation before using this plan for comparison.")
     if request.requirements_note:
@@ -325,7 +361,11 @@ def build_construction_plan(
             "target_pue": request.target_pue,
             "utilization_pct": request.utilization_pct,
             "annual_operating_hours": request.annual_operating_hours,
-            "electricity_rate_usd_kwh": request.electricity_rate_usd_kwh,
+            "electricity_rate_usd_kwh": electricity_rate,
+            "electricity_rate_source": electricity_rate_source,
+            "state_code": us_profile.get("state_code") if us_profile else None,
+            "regional_cost_index": regional_cost_index,
+            "lead_time_multiplier": lead_time_multiplier,
             "cooling_strategy": request.cooling_strategy,
             "voltage_v": request.voltage_v,
             "cooling_duty_kw": round(cooling_duty_kw, 1),
@@ -351,9 +391,13 @@ def build_construction_plan(
         ),
         warnings=warnings,
         data_sources=[
-            "RacksDB open equipment metadata",
-            "LBNL data-center energy and water benchmarks",
-            "StationFinder / ASHRAE climate-station design conditions",
+            "Mireye synthetic USA prototype equipment catalog v3.0 (generated, not manufacturer-certified)",
+            "Bundled 7-station prototype climate snapshot (verify against NOAA or project design criteria)",
             f"Mireye synthetic construction-cost benchmark v{cost_data['version']} ({cost_data['price_year']} USD)",
+            *(
+                ["U.S. EIA 2024 Table 4 commercial electricity price; synthetic regional cost and lead-time multipliers"]
+                if us_profile
+                else []
+            ),
         ],
     )

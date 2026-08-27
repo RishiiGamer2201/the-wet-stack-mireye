@@ -50,14 +50,14 @@ Our solution leverages **Mireye's physical-world intelligence layer** as the gro
 * **Evidence Provenance & Gap Tracking:** Every metric retains its citation and relation type (Exact, Unit-Converted, Categorical-Normalized, Contextual Proxy). Missing or unevidenced attributes are explicitly tracked as blocking or non-blocking *Information Gaps* instead of being assumed or hallucinated.
 
 #### 2. During Construction: Change Intelligence & Boundary Verification
-* **Site-to-Equipment Construction Planner:** Starts with a selected candidate site, captures IT load, redundancy, PUE, utilization, cooling strategy, tariff, budget, and project notes, then produces a deterministic equipment schedule, construction sequence, peak power, annual energy/water, and installed-cost range.
+* **Site-to-Equipment Construction Planner:** Adds or selects a site, captures IT load, redundancy, PUE, utilization, cooling strategy, tariff, budget, and project notes, then produces a deterministic equipment schedule, construction sequence, peak power, annual energy/water, and installed-cost range. State matching can use EIA's 2024 commercial electricity average when no tariff is entered.
 * **Mireye Site Boundary Verification:** Directly links site-specific environmental baselines retrieved from Mireye (such as peak summer dry-bulb/wet-bulb temperatures and grid reliability) into the equipment verification pipeline.
 * **Submittal PDF & Spec Sheet Ingestion:** PyMuPDF OCR extracts structured mechanical, electrical, and dimensional parameters directly from manufacturer submittals.
 * **9 Deterministic Verification Gates:** Evaluates strict pre-comparison boundary criteria (Manufacturer Comparability, Voltage/Phase Matching, Refrigerant Compliance, Rated Ambient vs Site ASHRAE Climate Extremes, Physical Footprint Boundary, and Structural Floor Loading).
 * **15 Pint Unit-Checked Deltas:** Computes unit-safe physical and electrical deltas (weight, maximum support point load, length, width, height, footprint area, voltage, phases, FLA, MCA, MOCP, power input, refrigerant type, refrigerant charge, cooling capacity) with dimensional safety thresholds.
 * **Facility Design Margins & Headroom:** Tracks remaining substation transformer headroom, central chilled water duty, and structural slab capacities. Missing baseline capacities are explicitly flagged as `NEEDS_INFORMATION`.
 * **Cumulative Cascade Loading Analysis:** Evaluates the combined, facility-wide impact of multiple concurrent equipment substitutions across electrical infrastructure, standby generators, and structural steel.
-* **11-Category Recommendation Studio:** Uses NLP constraint extraction to query benchmark equipment catalogs and rank alternatives using deterministic multi-criteria scoring.
+* **11-Category Recommendation Studio:** Uses deterministic constraint extraction to rank 665 clearly labelled synthetic alternatives. An optional LLM explains the fixed shortlist but cannot alter specifications, scores, or engineering decisions.
 * **Automated Action Packages & RFIs:** Generates formal engineering drafts (RFIs to Engineers of Record, vendor clarification requests, engineering review packages) complete with calculated delta tables and source citations.
 * **Project Knowledge MCP Agent:** Interactive engineering copilot equipped with hybrid vector RAG and automatic detection of stale project assumptions invalidated by field modifications.
 
@@ -155,7 +155,7 @@ flowchart LR
 * **15 Pint Unit-Checked Deltas:** Mathematical differences for weight, maximum support point load, length, width, height, footprint area, voltage, phases, full load amps, MCA, MOCP, power input, refrigerant type, refrigerant charge and cooling capacity. COP is not among them: it is a ratio the catalog publishes, not a delta the engine computes.
 * **Facility Design Margins:** Computes remaining electrical substation capacity, central plant chilled water duty, and structural slab capacity. Missing baselines are flagged explicitly as `NEEDS_INFORMATION`.
 * **Cost, Energy & Schedule Impact:** Calculates annual OPEX deltas (energy and water utility costs) and flags critical-path lead-time schedule delay risks.
-* **Equipment Recommendation Studio:** Multi-category catalog covering 11 equipment types with deterministic multi-criteria scoring out of 100.
+* **Equipment Recommendation Studio:** A 665-model synthetic prototype catalog covering 11 equipment types with deterministic multi-criteria scoring out of 100. Certified manufacturer data is still required before design approval or procurement.
 * **Cumulative Cascade Loading Analysis:** Assesses facility-wide cumulative impacts of simultaneous changes against substation transformer, backup generator, and structural steel limits.
 * **Action Package & RFI Generator:** Generates structured drafts for RFIs to Engineers of Record (EOR), vendor clarification requests, and engineering change sign-off packages.
 
@@ -186,8 +186,9 @@ The platform uses **Mireye's Physical-World Intelligence Layer** as its primary 
 | **EIA Form EIA-861 (2023)** | `EIAReliability` | `grid_reliability_saidi_min` | 734 utilities across 2,840 US counties | Public Domain |
 | **USGS PAD-US 4.1** | `PADUSProtectedAreas` | `protected_area_distance_km` | 298,244 protected public land tracts | Public Domain |
 | **FEMA National Risk Index** | `FEMANationalRiskIndex` | `wildfire_risk_index` | 84,093 US census tracts | Public Domain |
-| **ASHRAE / StationFinder** | `ClimateStation` | Summer DB/WB & Winter extreme temperatures | Global WMO weather monitoring stations | WMO / ASHRAE |
-| **RacksDB & LBNL Catalog** | `equipment_reference_catalog` | Benchmark equipment physical & electrical ratings | 11 equipment categories | Open Benchmark |
+| **Bundled Climate Snapshot** | `ClimateStation` | Prototype summer DB/WB and winter design context | 7 US station records; verify before design use | Prototype snapshot |
+| **U.S. EIA 2024 Table 4** | `us_construction_profiles` | State commercial-sector average electricity price | 50 states + District of Columbia | U.S. Government |
+| **Mireye Synthetic Equipment Catalog** | `equipment_reference_catalog` | Prototype physical, electrical, capacity and efficiency ratings | 665 generated models in 11 categories | Synthetic project data |
 | **Construction Cost Benchmarks** | `construction_cost_benchmarks` | Installed equipment cost ranges and lead-time planning values | 11 equipment categories; clearly labelled synthetic 2026 USD ranges | Synthetic demo data |
 
 ### Dataset Management & CLI Actions
@@ -205,9 +206,10 @@ python -m app.datasets_cli download all
 # 3. Pre-warm per-coordinate queries (e.g. Water Quality Portal) for all project sites
 python -m app.datasets_cli warm
 
-# 4. In-App Open Catalog Auto-Fill:
-# In the Web UI (Verification Tab), click "Auto-fill Missing Data from RacksDB"
-# to deterministically populate missing submittal fields from verified benchmarks.
+# 4. In-App Prototype Catalog Auto-Fill:
+# In the Web UI (Verification Tab), use the auto-fill action to populate
+# missing demo fields. These values remain synthetic until replaced by a
+# certified manufacturer submittal.
 ```
 
 ---

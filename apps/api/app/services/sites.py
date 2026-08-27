@@ -31,7 +31,6 @@ from ..fields import (
     FIELD_INDEX,
     UnknownFieldError,
     all_fields,
-    broad_fields,
     deep_fields,
 )
 from ..store import C, Store

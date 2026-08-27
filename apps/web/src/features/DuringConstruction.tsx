@@ -330,6 +330,7 @@ export function DuringConstruction({
           projectId={projectId}
           sites={detail.sites}
           defaultItLoadMw={detail.project.targets.it_load_mw}
+          onSiteCreated={onProjectChanged}
         />
       )}
 
@@ -453,10 +454,10 @@ export function DuringConstruction({
                       <Database className="h-4 w-4 text-sky-600 shrink-0 mt-0.5" />
                       <div>
                         <span className="font-semibold text-sky-900">
-                          RacksDB &amp; LBNL Open Catalog Benchmark: {refSpec.reference_model}
+                          Synthetic Prototype Benchmark: {refSpec.model_number ?? refSpec.reference_model ?? refSpec.id}
                         </span>
                         <p className="text-sky-700 text-[11px] mt-0.5">
-                          {refSpec.description}
+                          {refSpec.description} Replace every auto-filled value with a certified manufacturer submittal before review.
                         </p>
                       </div>
                     </div>
@@ -468,7 +469,7 @@ export function DuringConstruction({
                       className="bg-sky-600 hover:bg-sky-700 text-white shrink-0 font-medium"
                     >
                       <Sparkles aria-hidden className="h-3.5 w-3.5 mr-1" />
-                      Auto-fill Missing Data from RacksDB
+                      Auto-fill Synthetic Demo Gaps
                     </Button>
                   </div>
                 )}
@@ -477,11 +478,11 @@ export function DuringConstruction({
               {/* SITE CLIMATE CARD */}
               {climateStation && (
                 <Card
-                  title="Site Climate Design Conditions (StationFinder / ASHRAE)"
-                  subtitle={`Nearest Weather Station: ${climateStation.name} (${climateStation.distance_km} km away, elevation ${climateStation.elevation_m}m)`}
+                  title="Prototype Climate Design Context"
+                  subtitle={`Nearest bundled station: ${climateStation.name} (${climateStation.distance_km} km away, elevation ${climateStation.elevation_m}m)`}
                   actions={
                     <Badge className="border-sky-300 bg-sky-50 text-sky-800">
-                      <CloudSun className="h-3.5 w-3.5 mr-1 inline" /> StationFinder WMO #{climateStation.station_id}
+                      <CloudSun className="h-3.5 w-3.5 mr-1 inline" /> verify source #{climateStation.station_id}
                     </Badge>
                   }
                 >
@@ -632,21 +633,29 @@ export function DuringConstruction({
           projectId={projectId}
           sites={detail.sites}
           initialSiteId={change?.site?.id ?? detail.sites[0]?.id ?? null}
-          onApplyProduct={async (product, replacementSiteId) => {
-            if (!selectedId) return;
+          onApplyProduct={async (product, replacementSiteId, equipmentTag) => {
             try {
               setRunning(true);
+              setError(null);
               const inv = await api.applyRecommendation(projectId, {
-                equipment_tag: change?.change.equipment_tag || "EQ-01",
+                equipment_tag: equipmentTag,
                 candidate_product_id: product.id,
                 title: `Substitution: ${product.model_number}`,
                 reason: `Recommended selection (${product.score}/100 score) from ${product.manufacturer}`,
                 site_id: replacementSiteId,
-                existing_change_id: selectedId,
+                existing_change_id: selectedId || null,
               });
               setInvestigation(inv);
-              await load(selectedId);
+              const appliedChangeId = inv.subject_id;
+              if (!appliedChangeId) throw new Error("The recommendation was applied without a change identifier.");
+              setSelectedId(appliedChangeId);
+              setChanges(await api.changes(projectId));
+              await load(appliedChangeId);
+              onProjectChanged?.();
               setTab("verification");
+            } catch (caught) {
+              setError(caught);
+              throw caught;
             } finally {
               setRunning(false);
             }
@@ -850,19 +859,24 @@ function RecommendationStudio({
   projectId: string;
   sites: CandidateSite[];
   initialSiteId?: string | null;
-  onApplyProduct: (product: CandidateProduct, siteId: string | null) => void;
+  onApplyProduct: (product: CandidateProduct, siteId: string | null, equipmentTag: string) => Promise<void>;
 }) {
   const [prompt, setPrompt] = useState(
     "I need a water-cooled chiller with at least 1200 kW cooling capacity, COP above 5.8, 480V, footprint under 20 m2, and max ambient 45°C.",
   );
   const [equipmentType, setEquipmentType] = useState("chiller");
+  const [equipmentTag, setEquipmentTag] = useState("CH-NEW");
   const [siteId, setSiteId] = useState(initialSiteId ?? "");
   const [searching, setSearching] = useState(false);
+  const [applyingId, setApplyingId] = useState<string | null>(null);
   const [reqSet, setReqSet] = useState<StructuredRequirementSet | null>(null);
   const [result, setResult] = useState<ProductRecommendationResult | null>(null);
+  const [studioError, setStudioError] = useState<unknown>(null);
 
   async function handleSearch() {
     setSearching(true);
+    setStudioError(null);
+    setResult(null);
     try {
       // 1. Parse prompt
       const parsed = await api.parseRequirements(projectId, prompt, equipmentType);
@@ -872,13 +886,26 @@ function RecommendationStudio({
       const res = await api.searchRecommendations(projectId, {
         equipment_type: equipmentType,
         constraints: parsed.constraints,
-        site_id: siteId,
+        site_id: siteId || null,
+        limit: 20,
       });
       setResult(res);
     } catch (e) {
-      console.error(e);
+      setStudioError(e);
     } finally {
       setSearching(false);
+    }
+  }
+
+  async function applyProduct(product: CandidateProduct) {
+    setApplyingId(product.id);
+    setStudioError(null);
+    try {
+      await onApplyProduct(product, siteId || null, equipmentTag.trim());
+    } catch (caught) {
+      setStudioError(caught);
+    } finally {
+      setApplyingId(null);
     }
   }
 
@@ -886,7 +913,7 @@ function RecommendationStudio({
     <div className="flex flex-col gap-4">
       <Card
         title="Equipment Replacement Finder"
-        subtitle="Read the stated requirements and rank open benchmark models across 11 equipment categories"
+        subtitle="Coordinate stated requirements and rank benchmark models across 11 equipment categories"
       >
         <div className="flex flex-col gap-3">
           <div className="flex flex-wrap items-center gap-3">
@@ -907,7 +934,13 @@ function RecommendationStudio({
               <select
                 id="eq-category"
                 value={equipmentType}
-                onChange={(e) => setEquipmentType(e.target.value)}
+                onChange={(e) => {
+                  const category = e.target.value;
+                  setEquipmentType(category);
+                  setEquipmentTag(`${category.toUpperCase().replaceAll("_", "-")}-NEW`);
+                  setResult(null);
+                  setReqSet(null);
+                }}
                 className={cx(inputClass, "w-48 text-xs")}
               >
                 <option value="chiller">Chiller</option>
@@ -922,6 +955,15 @@ function RecommendationStudio({
                 <option value="pdu">Power Distribution Unit (PDU)</option>
                 <option value="heat_exchanger">Heat Exchanger (Economizer)</option>
               </select>
+            </Field>
+            <Field label="Equipment Tag" hint="Creates a new change if none is selected" htmlFor="eq-tag">
+              <input
+                id="eq-tag"
+                value={equipmentTag}
+                onChange={(e) => setEquipmentTag(e.target.value)}
+                className={cx(inputClass, "w-48 text-xs")}
+                placeholder="CH-NEW"
+              />
             </Field>
           </div>
 
@@ -940,7 +982,7 @@ function RecommendationStudio({
             <span className="text-[11px] text-ink-500">
               Deterministic ranking: Capacity (25%) · Efficiency (20%) · Electrical (15%) · Climate (10%) · Footprint (10%)
             </span>
-            <Button variant="primary" loading={searching} onClick={handleSearch}>
+            <Button variant="primary" loading={searching} disabled={!prompt.trim()} onClick={handleSearch}>
               <Sparkles aria-hidden className="h-3.5 w-3.5 mr-1 text-amber-300" />
               Read Requirements &amp; Find Candidates
             </Button>
@@ -948,12 +990,19 @@ function RecommendationStudio({
         </div>
       </Card>
 
+      {studioError ? <ErrorState error={studioError} onRetry={handleSearch} /> : null}
+
       {/* STRUCTURED CONSTRAINTS PREVIEW */}
       {reqSet && (
         <Card
           title="Extracted Structured Engineering Constraints"
           subtitle="Physics and electrical rules extracted deterministically from your inquiry"
         >
+          {reqSet.constraints.length === 0 ? (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+              No numeric engineering constraints were detected. Add capacity, efficiency, voltage, ambient, flow, footprint or cost requirements before treating the ranking as a design decision.
+            </div>
+          ) : null}
           <div className="flex flex-wrap gap-2">
             {reqSet.constraints.map((c, i) => (
               <Badge key={i} className="border-sky-300 bg-sky-50 text-sky-900 text-xs py-1 px-2.5">
@@ -973,6 +1022,11 @@ function RecommendationStudio({
           title={`Top Catalog Recommendations (${result.candidates.length} Found)`}
           subtitle={result.explanation_narrative.split("\n")[0]}
         >
+          {result.candidates.length === 0 ? (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+              No catalog models match this equipment category. Check the category or add models to the catalog.
+            </div>
+          ) : null}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {result.candidates.map((prod) => {
               const isTop = result.top_recommendation?.id === prod.id;
@@ -994,6 +1048,19 @@ function RecommendationStudio({
                               #1 TOP PICK
                             </Badge>
                           )}
+                          {prod.specs.synthetic === true ? (
+                            <Badge className="border-violet-200 bg-violet-50 text-violet-800 text-[10px]">synthetic prototype</Badge>
+                          ) : null}
+                          <Badge
+                            className={cx(
+                              "text-[10px]",
+                              prod.compatibility_status === "COMPATIBLE" && "border-emerald-200 bg-emerald-50 text-emerald-800",
+                              prod.compatibility_status === "CONDITIONALLY_COMPATIBLE" && "border-amber-200 bg-amber-50 text-amber-800",
+                              prod.compatibility_status === "INCOMPATIBLE" && "border-rose-200 bg-rose-50 text-rose-800",
+                            )}
+                          >
+                            {prod.compatibility_status.replaceAll("_", " ").toLowerCase()}
+                          </Badge>
                         </div>
                         <p className="text-xs text-ink-500 mt-0.5">{prod.manufacturer}</p>
                       </div>
@@ -1013,6 +1080,11 @@ function RecommendationStudio({
                         </span>
                       ))}
                     </div>
+                    {prod.failed_constraints.length > 0 ? (
+                      <div className="mt-2 rounded-lg border border-rose-100 bg-rose-50/60 p-2 text-[10px] leading-relaxed text-rose-800">
+                        {prod.failed_constraints.slice(0, 2).map((failure) => <p key={failure}>× {failure}</p>)}
+                      </div>
+                    ) : null}
                   </div>
 
                   <div className="mt-4 pt-3 border-t border-ink-100 flex items-center justify-between">
@@ -1020,10 +1092,13 @@ function RecommendationStudio({
                     <Button
                       size="sm"
                       variant="primary"
-                      onClick={() => onApplyProduct(prod, siteId || null)}
+                      loading={applyingId === prod.id}
+                      disabled={!equipmentTag.trim() || applyingId !== null || prod.compatibility_status === "INCOMPATIBLE"}
+                      onClick={() => applyProduct(prod)}
                       className="bg-sky-600 hover:bg-sky-700 text-white font-medium"
                     >
-                      <Play className="h-3 w-3 mr-1" /> Run Change Impact Analysis
+                      <Play className="h-3 w-3 mr-1" />
+                      {prod.compatibility_status === "INCOMPATIBLE" ? "Mandatory Criteria Failed" : "Run Change Impact Analysis"}
                     </Button>
                   </div>
                 </div>

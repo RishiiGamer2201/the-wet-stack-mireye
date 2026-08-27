@@ -9,6 +9,7 @@ Executes:
 from __future__ import annotations
 
 import logging
+import math
 from typing import Any
 
 from ..adapters.equipment_specs import get_equipment_specs_adapter
@@ -37,14 +38,14 @@ def search_and_rank_candidates(
     equipment_type: str,
     requirement_set: StructuredRequirementSet | None = None,
     custom_weights: dict[str, float] | None = None,
-    site_climate_db_c: float | None = 35.0,
+    site_climate_db_c: float | None = None,
+    limit: int = 20,
 ) -> list[CandidateProduct]:
     """Retrieve catalog models, filter by hard constraints, score, and rank."""
     adapter = get_equipment_specs_adapter()
     raw_models = adapter.list_models_by_type(equipment_type)
     if not raw_models:
-        # Fallback to all models if type has no exact matches
-        raw_models = adapter.list_models_by_type("all")
+        return []
 
     weights = dict(DEFAULT_WEIGHTS)
     if custom_weights:
@@ -70,14 +71,14 @@ def search_and_rank_candidates(
         ),
         reverse=True,
     )
-    return candidates
+    return candidates[:limit]
 
 
 def evaluate_candidate_product(
     model: dict[str, Any],
     constraints: list[StructuredConstraint],
     weights: dict[str, float],
-    site_climate_db_c: float | None = 35.0,
+    site_climate_db_c: float | None = None,
 ) -> CandidateProduct:
     """Evaluate one model against constraints and score across 9 dimensions."""
     passed: list[str] = []
@@ -95,8 +96,11 @@ def evaluate_candidate_product(
                 warnings.append(f"Failed mandatory constraint: {c.parameter} {c.operator} {c.value}")
 
     # Check site climate compatibility if available
-    max_ambient = model.get("max_ambient_degc", 45.0)
-    if site_climate_db_c and max_ambient < site_climate_db_c:
+    max_ambient = model.get("max_ambient_degc")
+    if site_climate_db_c is not None and max_ambient is None:
+        failed.append("Catalog record does not state a maximum ambient rating")
+        warnings.append("Site climate compatibility remains unverified because the model has no ambient rating")
+    elif site_climate_db_c is not None and float(max_ambient) < site_climate_db_c:
         failed.append(f"Rated max ambient ({max_ambient}°C) is below site design condition ({site_climate_db_c}°C)")
         warnings.append(f"Thermal derate risk: Max ambient {max_ambient}°C < Site design {site_climate_db_c}°C")
 
@@ -117,10 +121,22 @@ def evaluate_candidate_product(
     cooling_kw = (
         model.get("cooling_capacity_kw")
         or model.get("thermal_capacity_kw")
+        or model.get("power_capacity_kw")
         or model.get("standby_rating_kw")
+        or model.get("kva_rating")
     )
     req_cap = _find_constraint_val(
-        constraints, ["cooling_capacity", "capacity", "power_capacity_kw"], default=None
+        constraints,
+        [
+            "cooling_capacity",
+            "capacity",
+            "power_capacity",
+            "power_capacity_kw",
+            "standby_rating",
+            "standby_rating_kw",
+            "kva_rating",
+        ],
+        default=None,
     )
     if cooling_kw and req_cap:
         cap_ratio = cooling_kw / max(req_cap, 1.0)
@@ -139,41 +155,49 @@ def evaluate_candidate_product(
     elif eff_pct:
         scores["energy_efficiency"] = min(100.0, max(50.0, eff_pct))
     else:
-        scores["energy_efficiency"] = 75.0
+        warnings.append("No published efficiency or COP; energy efficiency was not scored")
 
     # Electrical Compatibility (15%)
-    req_volt = _find_constraint_val(constraints, ["voltage", "voltage_v"], default=480)
-    mod_volt = model.get("voltage_v") or 480
-    scores["electrical_compatibility"] = 100.0 if mod_volt == req_volt else 0.0
+    req_volt = _find_constraint_val(constraints, ["voltage", "voltage_v"], default=None)
+    mod_volt = model.get("voltage_v")
+    if req_volt is not None and mod_volt is not None:
+        scores["electrical_compatibility"] = 100.0 if float(mod_volt) == req_volt else 0.0
+    elif req_volt is not None:
+        warnings.append("No catalog voltage; electrical compatibility was not scored")
 
     # Climate Margin (10%). The site's ambient design dry-bulb is a measurement
     # of the user's site. Substituting a plausible one moves every candidate's
     # ranking on a number nobody supplied.
-    if site_climate_db_c is not None:
-        amb_margin = max_ambient - site_climate_db_c
+    if site_climate_db_c is not None and max_ambient is not None:
+        amb_margin = float(max_ambient) - site_climate_db_c
         scores["climate_margin"] = min(100.0, max(0.0, 50.0 + amb_margin * 5.0))
-    else:
+    elif site_climate_db_c is None:
         warnings.append(
             "Site ambient design dry-bulb is not known, so climate margin was not "
             "scored. Supply it to rank candidates on high-ambient derating."
         )
 
     # Physical Compatibility / Weight / Footprint (10%)
-    length = model.get("length_mm", 4000) / 1000.0
-    width = model.get("width_mm", 2000) / 1000.0
-    area = length * width
-    req_area = _find_constraint_val(constraints, ["footprint", "area", "footprint_area"], default=20.0)
-    scores["physical_compatibility"] = 100.0 if area <= req_area else max(0.0, 100.0 - (area - req_area) * 10.0)
+    length = model.get("length_mm")
+    width = model.get("width_mm")
+    req_area = _find_constraint_val(constraints, ["footprint", "area", "footprint_area"], default=None)
+    if length is not None and width is not None and req_area is not None:
+        area = float(length) * float(width) / 1_000_000.0
+        scores["physical_compatibility"] = 100.0 if area <= req_area else max(0.0, 100.0 - (area - req_area) * 10.0)
 
     # Water Efficiency (5%)
-    wue = model.get("wue_l_per_kwh", 1.45)
-    scores["water_efficiency"] = min(100.0, max(50.0, (1.8 - wue) * 100.0 + 50.0))
+    wue = model.get("wue_l_per_kwh")
+    if wue is not None:
+        scores["water_efficiency"] = min(100.0, max(0.0, (1.8 - float(wue)) * 100.0 + 50.0))
 
     # Cost / OPEX (5%)
-    scores["cost"] = 85.0
+    installed_cost = model.get("installed_cost_low_usd")
+    if installed_cost is not None:
+        scores["cost"] = min(100.0, max(0.0, 110.0 - math.log10(max(float(installed_cost), 1.0)) * 12.0))
 
     # Maintenance (5%)
-    scores["maintenance"] = 90.0 if "Magnetic Bearing" in model.get("model_number", "") or "EC fan" in model.get("description", "") else 80.0
+    if model.get("maintenance_score") is not None:
+        scores["maintenance"] = min(100.0, max(0.0, float(model["maintenance_score"])))
 
     # Project Compatibility (5%)
     scores["project_compatibility"] = 95.0 if status == "COMPATIBLE" else (65.0 if status == "CONDITIONALLY_COMPATIBLE" else 20.0)
@@ -211,7 +235,7 @@ def evaluate_candidate_product(
         compatibility_status=status,
         explanation=" ".join(explanation_parts),
         warnings=warnings,
-        reference_source=model.get("source", "RacksDB & LBNL Open Equipment Benchmark"),
+        reference_source=model.get("source", "Unspecified equipment catalog source"),
     )
 
 
@@ -219,6 +243,11 @@ def _check_constraint(model: dict[str, Any], c: StructuredConstraint) -> tuple[b
     """Check single constraint against model dictionary."""
     field_aliases = {
         "cooling_capacity": ["cooling_capacity_kw", "thermal_capacity_kw", "capacity_kw"],
+        "power_capacity": ["power_capacity_kw", "standby_rating_kw", "capacity_kw"],
+        "standby_rating": ["standby_rating_kw", "power_capacity_kw"],
+        "kva_rating": ["kva_rating"],
+        "bus_current": ["bus_continuous_amps"],
+        "flow_rate": ["flow_rate_l_s"],
         "cop": ["cop", "efficiency_cop"],
         "voltage": ["voltage_v", "voltage"],
         "weight": ["weight_kg", "weight"],
@@ -240,7 +269,7 @@ def _check_constraint(model: dict[str, Any], c: StructuredConstraint) -> tuple[b
                 model_val = (model["length_mm"] * model["width_mm"]) / 1_000_000.0
 
     if model_val is None:
-        return True, "Value not specified in catalog (unconstrained)"
+        return False, "Required value is not specified in the catalog record"
 
     try:
         req_val = float(c.value)

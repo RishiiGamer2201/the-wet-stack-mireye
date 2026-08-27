@@ -1,10 +1,9 @@
-"""Equipment specification, climate station and data center benchmarks adapters.
+"""Adapters for bundled prototype equipment, climate, and US planning data.
 
-Integrates open source datasets:
-- RacksDB (github.com/rackslab/RacksDB) for equipment metadata and baseline sizing.
-- LBNL Center of Expertise (datacenters.lbl.gov/resources) for energy benchmarks and COP baselines.
-- StationFinder (klimaat.github.io/StationFinder) for nearest weather station and ASHRAE design conditions.
-- Chelsea Bann & LBNL AI Water Stress datasets for WUE and cooling water consumption modeling.
+The equipment records and water factors are generated prototype benchmarks.
+State commercial electricity prices come from the cited EIA table. Climate
+records are a small bundled station snapshot and require source verification
+before design use.
 """
 
 from __future__ import annotations
@@ -12,6 +11,7 @@ from __future__ import annotations
 import json
 import logging
 import math
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -51,13 +51,20 @@ class ClimateStation:
 
 
 class EquipmentSpecsAdapter:
-    """Provides RacksDB & LBNL reference data for data-center equipment substitutions."""
+    """Provides labelled prototype references for equipment substitution workflows."""
 
-    def __init__(self, catalog_path: Path | None = None, stations_path: Path | None = None) -> None:
+    def __init__(
+        self,
+        catalog_path: Path | None = None,
+        stations_path: Path | None = None,
+        profiles_path: Path | None = None,
+    ) -> None:
         self._catalog_path = catalog_path or (BUNDLED_DIR / "equipment_reference_catalog.json")
         self._stations_path = stations_path or (BUNDLED_DIR / "climate_stations.json")
+        self._profiles_path = profiles_path or (BUNDLED_DIR / "us_construction_profiles.json")
         self._catalog: dict | None = None
         self._stations: list[dict] | None = None
+        self._profiles: dict | None = None
 
     def _ensure_catalog(self) -> dict:
         if self._catalog is None:
@@ -77,6 +84,19 @@ class EquipmentSpecsAdapter:
             else:
                 self._stations = []
         return self._stations
+
+    def _ensure_profiles(self) -> dict:
+        if self._profiles is None:
+            if self._profiles_path.exists():
+                with open(self._profiles_path, encoding="utf-8") as f:
+                    self._profiles = json.load(f)
+            else:
+                self._profiles = {"state_profiles": [], "prototype_scenarios": []}
+        return self._profiles
+
+    def catalog_metadata(self) -> dict:
+        catalog = self._ensure_catalog()
+        return {key: value for key, value in catalog.items() if key != "equipment_models"}
 
     def get_reference_spec(self, equipment_tag_or_type: str) -> dict | None:
         """Find baseline reference model by tag (e.g. 'PDU-3') or equipment type."""
@@ -99,8 +119,6 @@ class EquipmentSpecsAdapter:
                 results.append(record)
             elif record.get("equipment_type", "").lower() == equipment_type.lower():
                 results.append(record)
-            elif equipment_type.lower() in record.get("equipment_type", "").lower():
-                results.append(record)
         return results
 
     def get_model_by_id(self, model_id: str) -> dict | None:
@@ -117,8 +135,29 @@ class EquipmentSpecsAdapter:
                 return rec
         return None
 
+    def find_us_construction_profile(self, *location_parts: str | None) -> dict | None:
+        """Resolve a state profile from an address, jurisdiction, name, or code."""
+        text = " ".join(part for part in location_parts if part).casefold()
+        if not text:
+            return None
+        profiles = self._ensure_profiles().get("state_profiles", [])
+        for profile in profiles:
+            state = str(profile.get("state", "")).casefold()
+            code = str(profile.get("state_code", "")).casefold()
+            if state and state in text:
+                return dict(profile)
+            if code and re.search(rf"(?<![a-z]){re.escape(code)}(?![a-z])", text):
+                return dict(profile)
+        return None
+
+    def list_us_construction_profiles(self) -> list[dict]:
+        return [dict(item) for item in self._ensure_profiles().get("state_profiles", [])]
+
+    def list_prototype_scenarios(self) -> list[dict]:
+        return [dict(item) for item in self._ensure_profiles().get("prototype_scenarios", [])]
+
     def find_nearest_climate_station(self, latitude: float, longitude: float) -> ClimateStation | None:
-        """Find the closest ASHRAE / NOAA climate station from StationFinder catalog."""
+        """Find the closest station in the small bundled prototype snapshot."""
         stations = self._ensure_stations()
         if not stations:
             return None
@@ -157,12 +196,13 @@ class EquipmentSpecsAdapter:
         cooling_type: str = "water_cooled",
         cop: float = 5.5,
     ) -> dict[str, float]:
-        """Estimate annual water consumption (m3/year) based on LBNL / WaterStress models.
-
-        Water-cooled systems: ~1.4 - 1.8 L/kWh of cooling thermal energy for evaporative tower.
-        Air-cooled systems: ~0.0 - 0.2 L/kWh (closed loop / adiabatic trim only).
-        """
-        wue_liters_per_kwh_thermal = 1.45 if "water" in cooling_type.lower() else 0.15
+        """Return a clearly synthetic concept-stage cooling water estimate."""
+        if cooling_type == "water_cooled":
+            wue_liters_per_kwh_thermal = 1.45
+        elif cooling_type == "hybrid_economizer":
+            wue_liters_per_kwh_thermal = 0.95
+        else:
+            wue_liters_per_kwh_thermal = 0.15
         hours_per_year = 8760.0
         annual_thermal_kwh = cooling_capacity_kw * hours_per_year * 0.70  # 70% average load factor
         annual_water_liters = annual_thermal_kwh * wue_liters_per_kwh_thermal

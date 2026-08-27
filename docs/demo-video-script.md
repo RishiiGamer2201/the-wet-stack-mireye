@@ -88,7 +88,8 @@ named missing capacities.
 > page is a scan, OCR reads it, at half confidence, flagged for a human.
 >
 > And describe what you need in plain English. It extracts the physics
-> constraints and ranks real catalog equipment against them.
+> constraints and ranks a broad synthetic prototype catalog against them,
+> clearly marking what must be replaced by certified vendor data.
 
 **Screen:** drag `Aurora-DC1-Scanned-Field-Markup-SYNTHETIC.pdf` into the upload
 area, show the OCR badge appear. Then the recommendation studio: type the chiller
@@ -126,7 +127,7 @@ Measured on 2026-08-24 by calling every endpoint the frontend calls.
 | fifteen deltas | 15 returned |
 | cascade says needs information | `NEEDS_INFORMATION`, headroom `null`, capacities named |
 | impact graph | 30 nodes, 39 edges |
-| ranks real catalog equipment | 4 candidates, top: York YZ Magnetic Bearing |
+| ranks prototype catalog equipment | 665 clearly labelled synthetic models across 11 categories |
 | three thousand evidence records | 3,296 |
 | 277 tests | 277 passed, 4 skipped |
 

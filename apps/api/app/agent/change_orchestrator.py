@@ -10,10 +10,12 @@ Coordinates:
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 
 from ..adapters.equipment_specs import get_equipment_specs_adapter
+from ..adapters.llm import get_llm
 from ..domain import (
     DecisionState,
     Discipline,
@@ -82,19 +84,58 @@ def parse_natural_language_requirements(
         detected_type = "heat_exchanger"
 
     # Capacity / Power
-    cap_match = re.search(r"(?:at least|min|minimum|>=)?\s*(\d+(?:,\d+)*(?:\.\d+)?)\s*(kw|mw|tons?|kva)", p_lower)
+    cap_match = re.search(r"(?:at least|min|minimum|>=)?\s*(\d+(?:,\d+)*(?:\.\d+)?)\s*(kw|mw|tons?|kva|mva)", p_lower)
     if cap_match:
         val = float(cap_match.group(1).replace(",", ""))
         unit = cap_match.group(2)
         if "mw" in unit:
             val *= 1000.0
             unit = "kW"
+        elif "mva" in unit:
+            val *= 1000.0
+            unit = "kVA"
+        elif "kva" in unit:
+            unit = "kVA"
         elif "ton" in unit:
             val *= 3.517
             unit = "kW"
+        if "kva" in unit.lower() or detected_type == "transformer":
+            parameter = "kva_rating"
+        elif detected_type == "generator":
+            parameter = "standby_rating"
+        elif detected_type in {"ups", "pdu"}:
+            parameter = "power_capacity"
+        else:
+            parameter = "cooling_capacity"
         constraints.append(
-            StructuredConstraint(parameter="cooling_capacity", operator=">=", value=val, unit=unit, priority="mandatory")
+            StructuredConstraint(parameter=parameter, operator=">=", value=val, unit=unit, priority="mandatory")
         )
+
+    if detected_type == "switchgear":
+        amps_match = re.search(r"(\d+(?:,\d+)?)\s*(?:a|amps?|amperes?)\b", p_lower)
+        if amps_match:
+            constraints.append(
+                StructuredConstraint(
+                    parameter="bus_current",
+                    operator=">=",
+                    value=float(amps_match.group(1).replace(",", "")),
+                    unit="A",
+                    priority="mandatory",
+                )
+            )
+
+    if detected_type == "pump":
+        flow_match = re.search(r"(\d+(?:\.\d+)?)\s*(?:l/s|lps|litres? per second)", p_lower)
+        if flow_match:
+            constraints.append(
+                StructuredConstraint(
+                    parameter="flow_rate",
+                    operator=">=",
+                    value=float(flow_match.group(1)),
+                    unit="L/s",
+                    priority="mandatory",
+                )
+            )
 
     # COP
     cop_match = re.search(r"cop\s*(?:above|at least|>=|>)?\s*(\d+(?:\.\d+)?)", p_lower)
@@ -132,15 +173,6 @@ def parse_natural_language_requirements(
             StructuredConstraint(parameter="weight", operator="<=", value=val, unit="kg", priority="preferred")
         )
 
-    # If regex found nothing, add baseline capacity target
-    if not constraints:
-        constraints.append(
-            StructuredConstraint(parameter="cooling_capacity", operator=">=", value=1200.0, unit="kW", priority="mandatory")
-        )
-        constraints.append(
-            StructuredConstraint(parameter="voltage", operator="==", value=480.0, unit="V", priority="mandatory")
-        )
-
     return StructuredRequirementSet(
         project_id=project_id,
         equipment_type=detected_type,
@@ -159,7 +191,8 @@ def generate_product_recommendations(
     equipment_type: str,
     requirement_set: StructuredRequirementSet | None = None,
     custom_weights: dict[str, float] | None = None,
-    site_climate_db_c: float | None = 35.0,
+    site_climate_db_c: float | None = None,
+    limit: int = 20,
 ) -> ProductRecommendationResult:
     """Search catalog, deterministically score candidates, and generate explanation."""
     candidates = catalog_engine.search_and_rank_candidates(
@@ -167,9 +200,10 @@ def generate_product_recommendations(
         requirement_set=requirement_set,
         custom_weights=custom_weights,
         site_climate_db_c=site_climate_db_c,
+        limit=limit,
     )
 
-    top = candidates[0] if candidates else None
+    top = next((candidate for candidate in candidates if candidate.compatibility_status != "INCOMPATIBLE"), None)
     narrative_lines = []
     if top:
         narrative_lines.append(
@@ -183,6 +217,38 @@ def generate_product_recommendations(
                 narrative_lines.append(f"- ⚠ **Engineering Notice:** {w}")
     else:
         narrative_lines.append("No compatible equipment models found matching the specified constraints.")
+
+    # The model coordinates and explains the deterministic shortlist; it cannot
+    # add candidates, alter scores, or write values used by an engineering check.
+    llm = get_llm()
+    if llm.available and candidates:
+        explanation_payload = {
+            "equipment_type": equipment_type,
+            "constraints": [constraint.model_dump(mode="json") for constraint in (requirement_set.constraints if requirement_set else [])],
+            "ranked_candidates": [
+                {
+                    "model_number": candidate.model_number,
+                    "score": candidate.score,
+                    "compatibility_status": candidate.compatibility_status,
+                    "passed_constraints": candidate.passed_constraints,
+                    "failed_constraints": candidate.failed_constraints,
+                    "warnings": candidate.warnings,
+                }
+                for candidate in candidates[:5]
+            ],
+        }
+        coordinated_note = llm.complete(
+            system=(
+                "You coordinate an equipment-substitution review. Explain only the supplied "
+                "deterministic results in plain engineering language. Do not calculate, invent "
+                "specifications, change rankings, or claim code compliance. State that synthetic "
+                "catalog values require certified manufacturer submittals."
+            ),
+            user=json.dumps(explanation_payload, separators=(",", ":")),
+            max_tokens=900,
+        )
+        if coordinated_note:
+            narrative_lines.extend(["", "**LLM coordination note (explanation only):**", coordinated_note])
 
     return ProductRecommendationResult(
         project_id=project_id,
@@ -216,6 +282,12 @@ def apply_recommendation_as_change(
         raise ValueError(f"Candidate product '{candidate_product_id}' not found in catalog.")
 
     # 1. Build Proposed Equipment record
+    is_synthetic = bool(model.get("synthetic", False))
+    discipline = (
+        Discipline.ELECTRICAL
+        if model.get("equipment_type") in {"transformer", "ups", "generator", "switchgear", "pdu"}
+        else Discipline.MECHANICAL
+    )
     p_cfg = EquipmentConfiguration(
         manufacturer=model.get("manufacturer", "Catalog Manufacturer"),
         model_number=model.get("model_number", model.get("id", "Model")),
@@ -225,8 +297,8 @@ def apply_recommendation_as_change(
         length=Quantity(value=model["length_mm"], unit="mm") if "length_mm" in model else None,
         width=Quantity(value=model["width_mm"], unit="mm") if "width_mm" in model else None,
         height=Quantity(value=model["height_mm"], unit="mm") if "height_mm" in model else None,
-        voltage=Quantity(value=model["voltage_v"], unit="V") if "voltage_v" in model else Quantity(value=480, unit="V"),
-        phases=model.get("phases", 3),
+        voltage=Quantity(value=model["voltage_v"], unit="V") if "voltage_v" in model else None,
+        phases=model.get("phases"),
         full_load_amps=Quantity(value=model["full_load_amps_a"], unit="A") if "full_load_amps_a" in model else None,
         mca=Quantity(value=model["mca_a"], unit="A") if "mca_a" in model else None,
         mocp=Quantity(value=model["mocp_a"], unit="A") if "mocp_a" in model else None,
@@ -234,16 +306,16 @@ def apply_recommendation_as_change(
         cooling_capacity=Quantity(value=model["cooling_capacity_kw"], unit="kW") if "cooling_capacity_kw" in model else None,
         refrigerant_type=model.get("refrigerant_type"),
         refrigerant_charge=Quantity(value=model["refrigerant_charge_kg"], unit="kg") if "refrigerant_charge_kg" in model else None,
-        synthetic=False,
+        synthetic=is_synthetic,
     )
 
     proposed_eq = Equipment(
         project_id=project.id,
         tag=f"{equipment_tag}-PROP",
         name=f"Proposed Substitution - {model.get('model_number')}",
-        discipline=Discipline.MECHANICAL,
+        discipline=discipline,
         configuration=p_cfg,
-        synthetic=False,
+        synthetic=is_synthetic,
     )
     store.put(C.EQUIPMENT, proposed_eq, project_id=project.id)
 
@@ -251,6 +323,8 @@ def apply_recommendation_as_change(
     change = None
     if existing_change_id:
         change = store.get(C.CHANGES, existing_change_id, EquipmentChange)
+        if change is None or change.project_id != project.id:
+            raise ValueError("Existing change case was not found in this project")
 
     if not change:
         # Find existing baseline equipment or create a baseline
@@ -279,15 +353,15 @@ def apply_recommendation_as_change(
                 power_input=Quantity(value=model.get("power_input_kw", 200), unit="kW"),
                 cooling_capacity=Quantity(value=model.get("cooling_capacity_kw", 1200), unit="kW"),
                 refrigerant_type=model.get("refrigerant_type", "R-134a"),
-                synthetic=False,
+                synthetic=True,
             )
             existing_eq = Equipment(
                 project_id=project.id,
                 tag=equipment_tag,
                 name=f"Specified {equipment_tag}",
-                discipline=Discipline.MECHANICAL,
+                discipline=discipline,
                 configuration=e_cfg,
-                synthetic=False,
+                synthetic=True,
             )
             store.put(C.EQUIPMENT, existing_eq, project_id=project.id)
 
@@ -299,14 +373,16 @@ def apply_recommendation_as_change(
             site_id=site_id,
             existing_equipment_id=existing_eq.id,
             proposed_equipment_id=proposed_eq.id,
-            submitted_by="Mireye Recommendation Agent",
+            submitted_by="Mireye Recommendation Coordinator",
             status="draft",
-            synthetic=False,
+            synthetic=is_synthetic,
         )
     else:
         change.proposed_equipment_id = proposed_eq.id
         change.title = title or f"Substitution: {model.get('model_number')}"
         change.reason = reason or change.reason
+        if site_id is not None:
+            change.site_id = site_id
 
     store.put(C.CHANGES, change, project_id=project.id)
     return change
@@ -361,7 +437,7 @@ Preliminary verification indicates the change is in state **`{dec_state.value}`*
 3. Confirm control sequence and BACnet/Modbus point mapping compatibility.
 
 ### 4. Attached Evidence
-- Ingested Vendor Technical Datasheet & RacksDB / LBNL Open Catalog Reference Benchmarks.
+- Ingested vendor technical data and the Mireye synthetic prototype equipment catalog.
 """
         requested_items = [
             "Structural pad and beam calculation sign-off",
