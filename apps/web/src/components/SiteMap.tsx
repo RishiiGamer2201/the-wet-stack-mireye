@@ -88,6 +88,22 @@ function FitBounds({ sites }: { sites: CandidateSite[] }) {
   return null;
 }
 
+/** Smoothly flies to new map center whenever centerOverride or zoomOverride changes. */
+function FlyToCenter({ center, zoom }: { center?: [number, number]; zoom?: number }) {
+  const map = useMap();
+  const prevKey = useRef<string>("");
+
+  useEffect(() => {
+    if (!center) return;
+    const key = `${center[0].toFixed(5)},${center[1].toFixed(5)}:${zoom ?? 13}`;
+    if (key === prevKey.current) return;
+    prevKey.current = key;
+    map.flyTo(center, zoom ?? 13, { duration: 1.0 });
+  }, [map, center, zoom]);
+
+  return null;
+}
+
 export function SiteMap({
   sites,
   scores,
@@ -96,6 +112,7 @@ export function SiteMap({
   drawingMode = false,
   drawingPoints = [],
   onMapClick,
+  onRemovePoint,
   centerOverride,
   zoomOverride,
   heightClass = "h-80",
@@ -107,6 +124,7 @@ export function SiteMap({
   drawingMode?: boolean;
   drawingPoints?: Array<{ lat: number; lon: number }>;
   onMapClick?: (coords: { lat: number; lon: number }) => void;
+  onRemovePoint?: (index: number) => void;
   centerOverride?: [number, number];
   zoomOverride?: number;
   heightClass?: string;
@@ -147,6 +165,7 @@ export function SiteMap({
           url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
         <MapResizer />
+        {drawingMode && centerOverride && <FlyToCenter center={centerOverride} zoom={zoomOverride} />}
         {drawingMode && <MapClickHandler onClick={onMapClick} />}
         {!drawingMode && located.length > 0 && <FitBounds sites={located} />}
 
@@ -154,14 +173,41 @@ export function SiteMap({
         {drawingPoints.map((pt, idx) => (
           <Marker key={`draw-pt-${idx}`} position={[pt.lat, pt.lon]} icon={vertexPin(idx)}>
             <Popup>
-              <strong>Vertex P{idx + 1}</strong>
-              <br />
-              Lat: {pt.lat.toFixed(5)}, Lon: {pt.lon.toFixed(5)}
+              <div style={{ textAlign: "center", padding: "2px" }}>
+                <strong>Vertex P{idx + 1}</strong>
+                <br />
+                <span style={{ fontSize: "11px", color: "#64748b" }}>
+                  {pt.lat.toFixed(5)}, {pt.lon.toFixed(5)}
+                </span>
+                {onRemovePoint && (
+                  <div style={{ marginTop: "6px" }}>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onRemovePoint(idx);
+                      }}
+                      style={{
+                        background: "#ef4444",
+                        color: "white",
+                        border: "none",
+                        borderRadius: "4px",
+                        padding: "3px 8px",
+                        fontSize: "11px",
+                        cursor: "pointer",
+                        fontWeight: 600,
+                      }}
+                    >
+                      Delete Pin
+                    </button>
+                  </div>
+                )}
+              </div>
             </Popup>
           </Marker>
         ))}
 
-        {/* Boundary Polygon or Polyline */}
+        {/* 2 pins create a straight line; 3+ pins create a polygon */}
         {polygonCoords.length >= 3 ? (
           <Polygon
             positions={polygonCoords}
@@ -170,7 +216,7 @@ export function SiteMap({
         ) : polygonCoords.length === 2 ? (
           <Polyline
             positions={polygonCoords}
-            pathOptions={{ color: "#0b7565", weight: 3, dashArray: "6,6" }}
+            pathOptions={{ color: "#0b7565", weight: 4, dashArray: "6,6" }}
           />
         ) : null}
 

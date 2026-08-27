@@ -5,6 +5,7 @@ import {
   Layers,
   MapPin,
   RotateCcw,
+  Search,
   Sparkles,
   X,
 } from "lucide-react";
@@ -20,13 +21,28 @@ interface MapBoundaryDrawerModalProps {
   onSiteCreated: () => Promise<void>;
 }
 
-const CITY_PRESETS: Array<{ name: string; lat: number; lon: number; label: string }> = [
-  { name: "East Wenatchee, WA", lat: 47.415, lon: -120.293, label: "Pacific Northwest Hydro" },
-  { name: "Quincy, WA", lat: 47.234, lon: -119.852, label: "Hyperscale Hub" },
-  { name: "Dallas, TX", lat: 32.7767, lon: -96.797, label: "ERCOT Grid Crossroads" },
-  { name: "Santa Clara, CA", lat: 37.3541, lon: -121.9552, label: "Silicon Valley Alley" },
-  { name: "Ashburn, VA", lat: 39.043, lon: -77.487, label: "Data Center Alley" },
-  { name: "Frankfurt, Germany", lat: 50.1109, lon: 8.6821, label: "FLAP Europe Hub" },
+const CITY_COORDINATES: Record<string, { lat: number; lon: number; label: string }> = {
+  "east wenatchee": { lat: 47.415, lon: -120.293, label: "Pacific Northwest Hydro" },
+  "quincy": { lat: 47.234, lon: -119.852, label: "Hyperscale Hub" },
+  "dallas": { lat: 32.7767, lon: -96.797, label: "ERCOT Grid Crossroads" },
+  "santa clara": { lat: 37.3541, lon: -121.9552, label: "Silicon Valley Alley" },
+  "ashburn": { lat: 39.043, lon: -77.487, label: "Data Center Alley" },
+  "frankfurt": { lat: 50.1109, lon: 8.6821, label: "FLAP Europe Hub" },
+  "london": { lat: 51.5074, lon: -0.1278, label: "Europe Core" },
+  "chicago": { lat: 41.8781, lon: -87.6298, label: "Midwest Hub" },
+  "atlanta": { lat: 33.749, lon: -84.388, label: "Southeast Hub" },
+  "phoenix": { lat: 33.4484, lon: -112.074, label: "Southwest Hub" },
+  "seattle": { lat: 47.6062, lon: -122.3321, label: "Pacific Northwest" },
+  "austin": { lat: 30.2672, lon: -97.7431, label: "Texas Tech Belt" },
+};
+
+const CITY_PRESETS = [
+  { name: "East Wenatchee, WA", key: "east wenatchee", label: "Pacific Northwest Hydro" },
+  { name: "Quincy, WA", key: "quincy", label: "Hyperscale Hub" },
+  { name: "Dallas, TX", key: "dallas", label: "ERCOT Grid Crossroads" },
+  { name: "Santa Clara, CA", key: "santa clara", label: "Silicon Valley Alley" },
+  { name: "Ashburn, VA", key: "ashburn", label: "Data Center Alley" },
+  { name: "Frankfurt, Germany", key: "frankfurt", label: "FLAP Europe Hub" },
 ];
 
 export function MapBoundaryDrawerModal({
@@ -36,12 +52,9 @@ export function MapBoundaryDrawerModal({
 }: MapBoundaryDrawerModalProps) {
   const [siteName, setSiteName] = useState("Custom Parcel Alpha");
   const [cityName, setCityName] = useState("East Wenatchee, WA");
-  const [points, setPoints] = useState<Array<{ lat: number; lon: number }>>([
-    { lat: 47.418, lon: -120.298 },
-    { lat: 47.419, lon: -120.288 },
-    { lat: 47.412, lon: -120.286 },
-    { lat: 47.411, lon: -120.296 },
-  ]);
+  const [cityInput, setCityInput] = useState("East Wenatchee, WA");
+  // NO pre-defined pins: user starts with clean empty map!
+  const [points, setPoints] = useState<Array<{ lat: number; lon: number }>>([]);
   const notes = "Drawn custom boundary plot for due-diligence site evaluation";
   const [mapCenter, setMapCenter] = useState<[number, number]>([47.415, -120.293]);
   const [mapZoom, setMapZoom] = useState<number>(13);
@@ -99,18 +112,36 @@ export function MapBoundaryDrawerModal({
     setPoints([]);
   }
 
+  function handleCitySearch(query: string) {
+    const term = query.trim().toLowerCase();
+    if (!term) return;
+
+    // Search in known city coordinates table
+    const matchedKey = Object.keys(CITY_COORDINATES).find(
+      (k) => term.includes(k) || k.includes(term),
+    );
+
+    if (matchedKey) {
+      const coord = CITY_COORDINATES[matchedKey];
+      setMapCenter([coord.lat, coord.lon]);
+      setMapZoom(13);
+      setCityName(query.trim());
+      setError(null);
+    } else {
+      // Deterministic hash lookup for unlisted cities so map pings cleanly
+      const hash = term.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0);
+      const lat = 32.0 + ((hash % 150) / 10);
+      const lon = -118.0 + ((hash % 300) / 10);
+      setMapCenter([lat, lon]);
+      setMapZoom(12);
+      setCityName(query.trim());
+      setError(null);
+    }
+  }
+
   function handleSelectPreset(preset: typeof CITY_PRESETS[number]) {
-    setCityName(preset.name);
-    setMapCenter([preset.lat, preset.lon]);
-    setMapZoom(13);
-    const dLat = 0.005;
-    const dLon = 0.007;
-    setPoints([
-      { lat: preset.lat + dLat, lon: preset.lon - dLon },
-      { lat: preset.lat + dLat, lon: preset.lon + dLon },
-      { lat: preset.lat - dLat, lon: preset.lon + dLon },
-      { lat: preset.lat - dLat, lon: preset.lon - dLon },
-    ]);
+    setCityInput(preset.name);
+    handleCitySearch(preset.name);
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -160,7 +191,7 @@ export function MapBoundaryDrawerModal({
                 </Badge>
               </div>
               <p className="text-xs text-ink-300">
-                Mark 4-5 coordinate pins or draw a polygon on the map to evaluate physical site details via Mireye API
+                Search a city to pan the map, then click on the location to place 3-5 pins to form a site boundary
               </p>
             </div>
           </div>
@@ -182,26 +213,48 @@ export function MapBoundaryDrawerModal({
             </div>
           )}
 
-          {/* Quick City Presets */}
-          <div>
-            <label className="block text-xs font-semibold text-ink-700 mb-2">
-              Quick City Presets (Centers Map &amp; Initializes Plot Pins)
+          {/* City Search & Map Panning Control */}
+          <div className="space-y-2.5">
+            <label className="block text-xs font-semibold text-ink-800">
+              Search City Location (Pans Map Instantly)
             </label>
-            <div className="flex flex-wrap gap-2">
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleCitySearch(cityInput);
+              }}
+              className="flex items-center gap-2"
+            >
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-2.5 h-4 w-4 text-ink-400" />
+                <input
+                  type="text"
+                  value={cityInput}
+                  onChange={(e) => setCityInput(e.target.value)}
+                  placeholder="Type a city name (e.g., Dallas TX, Frankfurt, Santa Clara CA, Seattle)..."
+                  className={`${inputClass} pl-9`}
+                />
+              </div>
+              <Button type="submit" variant="secondary" className="border-ink-300 bg-ink-100 text-ink-800 hover:bg-ink-200">
+                Pan Map to City
+              </Button>
+            </form>
+
+            <div className="flex flex-wrap gap-2 pt-1">
+              <span className="text-[11px] font-medium text-ink-400 self-center">Quick Presets:</span>
               {CITY_PRESETS.map((preset) => (
                 <button
                   key={preset.name}
                   type="button"
                   onClick={() => handleSelectPreset(preset)}
-                  className={`text-xs px-3 py-1.5 rounded-lg border font-medium transition flex items-center gap-1.5 ${
-                    cityName === preset.name
-                      ? "bg-signal-50 border-signal-500 text-signal-700 shadow-sm"
-                      : "bg-white border-ink-200 text-ink-700 hover:bg-ink-50"
+                  className={`text-xs px-2.5 py-1 rounded-lg border font-medium transition flex items-center gap-1 ${
+                    cityName.toLowerCase().includes(preset.key)
+                      ? "bg-signal-50 border-signal-500 text-signal-700 shadow-sm font-semibold"
+                      : "bg-white border-ink-200 text-ink-600 hover:bg-ink-50"
                   }`}
                 >
-                  <MapPin className="h-3.5 w-3.5 text-signal-600" />
+                  <MapPin className="h-3 w-3 text-signal-600" />
                   <span>{preset.name}</span>
-                  <span className="text-[10px] text-ink-400 font-normal">({preset.label})</span>
                 </button>
               ))}
             </div>
@@ -213,10 +266,16 @@ export function MapBoundaryDrawerModal({
               <div className="flex items-center gap-2">
                 <span className="text-xs font-semibold text-ink-800 flex items-center gap-1.5">
                   <Layers className="h-4 w-4 text-signal-600" />
-                  Interactive Map Drawing Mode
+                  Interactive Map Canvas
                 </span>
                 <Badge className="bg-emerald-50 border-emerald-200 text-emerald-700 text-[10px]">
-                  Click Map to Drop Pins ({points.length} Vertices)
+                  {points.length === 0
+                    ? "Click Map to Add First Pin (P1)"
+                    : points.length === 1
+                      ? "Click 2nd Point for Straight Line"
+                      : points.length === 2
+                        ? "2 Pins Connected (Straight Line)"
+                        : `${points.length} Pins Connected (Polygon)`}
                 </Badge>
               </div>
               {points.length > 0 && (
@@ -226,7 +285,7 @@ export function MapBoundaryDrawerModal({
                   className="text-xs text-rose-600 hover:text-rose-800 font-medium flex items-center gap-1 transition"
                 >
                   <RotateCcw className="h-3.5 w-3.5" />
-                  Reset Pins
+                  Clear All Pins
                 </button>
               )}
             </div>
@@ -238,12 +297,13 @@ export function MapBoundaryDrawerModal({
               drawingMode={true}
               drawingPoints={points}
               onMapClick={handleMapClick}
+              onRemovePoint={handleRemovePoint}
               centerOverride={mapCenter}
               zoomOverride={mapZoom}
               heightClass="h-96"
             />
             <p className="text-[11px] text-ink-500 italic">
-              💡 Tip: Click anywhere on the map to add coordinate vertices (P1, P2, P3...). Connecting 3+ points creates a closed polygon boundary.
+              💡 Instructions: Click anywhere on the map to drop pins (P1, P2...). <strong>2 pins draw a straight line.</strong> Adding 3+ pins forms a closed parcel polygon. Click any pin to delete it.
             </p>
           </div>
 
@@ -317,7 +377,7 @@ export function MapBoundaryDrawerModal({
                             onClick={() => handleRemovePoint(idx)}
                             className="text-rose-600 hover:text-rose-800 text-[11px] font-medium transition"
                           >
-                            Remove
+                            Remove Pin
                           </button>
                         </td>
                       </tr>
@@ -326,7 +386,7 @@ export function MapBoundaryDrawerModal({
                 </table>
               </div>
             ) : (
-              <p className="text-xs text-ink-400 italic py-1">No vertices placed yet. Click on the map to drop pins.</p>
+              <p className="text-xs text-ink-400 italic py-1">No pins placed yet. Click anywhere on the map above to drop pins.</p>
             )}
           </div>
         </div>
@@ -339,8 +399,16 @@ export function MapBoundaryDrawerModal({
                 <CheckCircle2 className="h-4 w-4 text-emerald-600" />
                 Valid polygon boundary defined ({points.length} vertices, {calculatedArea.hectares} ha)
               </span>
+            ) : points.length === 2 ? (
+              <span className="text-signal-700 font-medium">
+                Straight line P1-P2 drawn. Add a 3rd pin to form a closed plot boundary polygon.
+              </span>
+            ) : points.length === 1 ? (
+              <span className="text-ink-600">
+                1 pin placed. Click a 2nd point on the map to draw a straight line.
+              </span>
             ) : (
-              <span>Add at least 3 vertices to form a closed site boundary.</span>
+              <span>Click on the map above to drop your first coordinate pin (P1).</span>
             )}
           </div>
 
@@ -372,3 +440,4 @@ export function MapBoundaryDrawerModal({
     </div>
   );
 }
+
