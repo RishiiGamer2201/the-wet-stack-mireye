@@ -18,6 +18,26 @@ def test_mcp_tools_registration_and_list():
     assert "project_inspect_context" in tool_names
 
 
+def test_knowledge_prompt_keeps_context_and_history_bounded():
+    from app.agent.knowledge_agent import (
+        MAX_CONTEXT_CHARS,
+        MAX_HISTORY_MESSAGE_CHARS,
+        _synthesis_prompt,
+    )
+
+    prompt = _synthesis_prompt(
+        ["A" * 20_000, "B" * 20_000, "C" * 20_000, "D" * 20_000],
+        [{"role": "user", "content": "H" * 9_000} for _ in range(8)],
+        "Check the selected chiller.",
+    )
+
+    assert "Check the selected chiller." in prompt
+    assert "earlier detail omitted" in prompt
+    assert prompt.count("User:") == 4
+    # Allow fixed headings and role labels around the bounded variable content.
+    assert len(prompt) < MAX_CONTEXT_CHARS + 4 * MAX_HISTORY_MESSAGE_CHARS + 1_000
+
+
 def test_mcp_mireye_telemetry_execution():
     registry = get_mcp_registry()
     res = registry.execute(

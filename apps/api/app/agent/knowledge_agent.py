@@ -159,6 +159,55 @@ At the very end of your response, output a strict JSON block delimited by ```jso
 ```
 """
 
+# Prompt budgets are expressed as characters because every provider tokenizes
+# differently. These bounds keep a long chat or a verbose tool response from
+# being resent in full on every turn while retaining the most recent evidence.
+PLANNER_OUTPUT_TOKENS = 350
+KNOWLEDGE_OUTPUT_TOKENS = 1200
+MAX_CONTEXT_BLOCK_CHARS = 5_000
+MAX_CONTEXT_CHARS = 18_000
+MAX_HISTORY_MESSAGE_CHARS = 1_200
+
+
+def _bounded_text(text: str, limit: int) -> str:
+    if len(text) <= limit:
+        return text
+    marker = "\n[earlier detail omitted to keep the prompt bounded]\n"
+    if limit <= len(marker):
+        return text[:limit]
+    keep = max(0, limit - len(marker))
+    head = keep // 2
+    tail = keep - head
+    return text[:head] + marker + (text[-tail:] if tail else "")
+
+
+def _synthesis_prompt(
+    context_blocks: list[str],
+    history: list[dict[str, str]] | None,
+    message: str,
+) -> str:
+    """Build one bounded prompt shared by blocking and streaming paths."""
+    compact_blocks = [_bounded_text(block, MAX_CONTEXT_BLOCK_CHARS) for block in context_blocks]
+    full_context = _bounded_text("\n\n".join(compact_blocks), MAX_CONTEXT_CHARS)
+
+    history_text = ""
+    if history:
+        history_lines = []
+        for item in history[-4:]:
+            role = "User" if item.get("role") == "user" else "Principal Engineer"
+            content = _bounded_text(str(item.get("content", "")), MAX_HISTORY_MESSAGE_CHARS)
+            history_lines.append(f"{role}: {content}")
+        history_text = "\n\nRECENT CONVERSATION:\n" + "\n".join(history_lines)
+
+    return f"""EVALUATION EVIDENCE COLLECTED:
+{full_context}
+{history_text}
+
+USER INQUIRY:
+{message}
+
+Please provide your rigorous Principal EPC Engineering assessment and conclude with the ```json_tell_me ... ``` block as instructed."""
+
 
 def _is_conversational_greeting(message: str) -> bool:
     cleaned = re.sub(r"[^\w\s]", "", message.strip().lower())
@@ -251,7 +300,7 @@ Formulate the optimal tool plan JSON."""
                 plan_text = llm.complete(
                     system=LLM_PLANNER_SYSTEM_PROMPT,
                     user=prompt,
-                    max_tokens=600,
+                    max_tokens=PLANNER_OUTPUT_TOKENS,
                 )
                 if plan_text:
                     # Extract JSON array
@@ -511,20 +560,7 @@ Formulate the optimal tool plan JSON."""
                 context_blocks.append(ctx)
 
         # 3. LLM Synthesis
-        full_context = "\n\n".join(context_blocks)
-        history_text = ""
-        if history:
-            h_lines = [f"{'User' if h.get('role') == 'user' else 'Principal Engineer'}: {h.get('content', '')}" for h in history[-4:]]
-            history_text = "\n\nRECENT CONVERSATION:\n" + "\n".join(h_lines)
-
-        user_prompt = f"""EVALUATION EVIDENCE COLLECTED:
-{full_context}
-{history_text}
-
-USER INQUIRY:
-{message}
-
-Please provide your rigorous Principal EPC Engineering assessment and conclude with the ```json_tell_me ... ``` block as instructed."""
+        user_prompt = _synthesis_prompt(context_blocks, history, message)
 
         llm = get_llm()
         reply_raw = None
@@ -535,7 +571,7 @@ Please provide your rigorous Principal EPC Engineering assessment and conclude w
                 reply_raw = llm.complete(
                     system=KNOWLEDGE_AGENT_SYSTEM_PROMPT,
                     user=user_prompt,
-                    max_tokens=2000,
+                    max_tokens=KNOWLEDGE_OUTPUT_TOKENS,
                 )
                 if reply_raw:
                     mode = getattr(llm, "name", "llm")
@@ -616,20 +652,7 @@ Please provide your rigorous Principal EPC Engineering assessment and conclude w
             yield f"data: {json.dumps({'event': 'tool_finish', 'tool': tool_name, 'output_summary': trace.output_summary, 'duration_ms': trace.duration_ms})}\n\n"
 
         # 3. LLM Synthesis & Streaming
-        full_context = "\n\n".join(context_blocks)
-        history_text = ""
-        if history:
-            h_lines = [f"{'User' if h.get('role') == 'user' else 'Principal Engineer'}: {h.get('content', '')}" for h in history[-4:]]
-            history_text = "\n\nRECENT CONVERSATION:\n" + "\n".join(h_lines)
-
-        user_prompt = f"""EVALUATION EVIDENCE COLLECTED:
-{full_context}
-{history_text}
-
-USER INQUIRY:
-{message}
-
-Please provide your rigorous Principal EPC Engineering assessment and conclude with the ```json_tell_me ... ``` block as instructed."""
+        user_prompt = _synthesis_prompt(context_blocks, history, message)
 
         has_streamed = False
         full_text = ""
@@ -642,7 +665,7 @@ Please provide your rigorous Principal EPC Engineering assessment and conclude w
                 for chunk in llm.complete_stream(
                     system=KNOWLEDGE_AGENT_SYSTEM_PROMPT,
                     user=user_prompt,
-                    max_tokens=2000,
+                    max_tokens=KNOWLEDGE_OUTPUT_TOKENS,
                 ):
                     if chunk:
                         has_streamed = True
