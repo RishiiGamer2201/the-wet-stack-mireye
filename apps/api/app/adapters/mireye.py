@@ -777,7 +777,9 @@ class LiveMireyeClient:
                 "field_count": len(provider_names),
                 "fields": sorted(provider_names),
                 "billed_extra_group": billed,
-                "estimated_credits": len(provider_names) - len(billed) + 300 * len(billed),
+                # parcel_record is one metered group per location, not 300 per
+                # field inside the group.
+                "estimated_credits": len(provider_names) - len(billed) + (300 if billed else 0),
             },
         )
 

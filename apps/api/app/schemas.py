@@ -139,6 +139,48 @@ class OverrideRequest(BaseModel):
     note: str | None = None
 
 
+class DecisionGateConfirmationRequest(BaseModel):
+    utility_confirmed_capacity_mw: float | None = Field(default=None, ge=0, le=20_000)
+    utility_confirmation_reference: str | None = Field(default=None, max_length=1000)
+    government_approval_status: Literal[
+        "not_confirmed", "pre_application", "conditional", "approved", "rejected"
+    ] | None = None
+    government_approval_reference: str | None = Field(default=None, max_length=1000)
+    confirmed_by: str | None = Field(default=None, max_length=160)
+
+
+class SiteBusinessCaseRequest(BaseModel):
+    it_load_mw: float | None = Field(default=None, gt=0, le=5_000)
+    target_pue: float = Field(default=1.35, ge=1.0, le=3.0)
+    utilization_pct: float = Field(default=70.0, gt=0, le=100)
+    years: int = Field(default=10, ge=1, le=30)
+    electricity_rate_usd_kwh: float | None = Field(default=None, ge=0, le=5)
+    land_cost_usd: float | None = Field(default=None, ge=0)
+    utility_interconnection_cost_usd: float | None = Field(default=None, ge=0)
+    annual_staffing_network_cost_usd: float | None = Field(default=None, ge=0)
+    taxes_and_fees_usd: float | None = Field(default=None, ge=0)
+    incentives_usd: float | None = Field(default=None, ge=0)
+
+
+class SiteBusinessCaseResponse(BaseModel):
+    project_id: str
+    site_id: str
+    site_name: str
+    annual_energy_kwh: float
+    annual_energy_cost_usd: float
+    estimated_facility_capex_low_usd: float
+    estimated_facility_capex_high_usd: float
+    known_additional_capex_usd: float
+    ten_year_known_cost_low_usd: float
+    ten_year_known_cost_high_usd: float
+    years: int
+    inputs: dict[str, Any]
+    sources: list[str]
+    missing_cost_items: list[str]
+    estimate_class: str
+    disclaimer: str
+
+
 class WhatIfResponse(BaseModel):
     ranking: SiteRanking
     changed_from: SiteRanking | None = None

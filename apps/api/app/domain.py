@@ -367,6 +367,17 @@ class CandidateSite(Base):
     synthetic: bool = True
     notes: str | None = None
     polygon_coordinates: list[dict[str, float]] | None = None
+    # These two fields are the only first-pass feasibility gates. They are
+    # deliberately human/authority supplied: neither a Mireye layer nor a
+    # public dataset can certify utility service or governmental approval.
+    utility_confirmed_capacity_mw: float | None = None
+    utility_confirmation_reference: str | None = None
+    government_approval_status: Literal[
+        "not_confirmed", "pre_application", "conditional", "approved", "rejected"
+    ] = "not_confirmed"
+    government_approval_reference: str | None = None
+    gate_confirmed_by: str | None = None
+    gate_confirmed_at: datetime | None = None
     created_at: datetime = Field(default_factory=now)
 
     @field_validator("latitude")
@@ -454,6 +465,30 @@ class SiteRanking(Base):
     weights: dict[SiteDimension, float]
     scores: list[SiteScore]
     comparisons: list[str] = Field(default_factory=list)
+    computed_at: datetime = Field(default_factory=now)
+
+
+class DecisionGate(Base):
+    key: Literal["power_serviceability", "government_approval"]
+    label: str
+    status: Literal["CONFIRMED", "NEEDS_CONFIRMATION", "FAILED"]
+    requirement: str
+    confirmed_value: str | None = None
+    screening_context: list[str] = Field(default_factory=list)
+    authority: str
+    reference: str | None = None
+    next_action: str
+
+
+class SiteDecisionReadiness(Base):
+    project_id: str
+    site_id: str
+    site_name: str
+    decision_status: Literal["READY_FOR_DUE_DILIGENCE", "CONDITIONAL", "BLOCKED"]
+    gates: list[DecisionGate]
+    business_context_score: float | None = None
+    business_context_rank: int | None = None
+    disclaimer: str
     computed_at: datetime = Field(default_factory=now)
 
 

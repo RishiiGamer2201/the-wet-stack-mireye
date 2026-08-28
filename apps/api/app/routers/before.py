@@ -2,19 +2,31 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 
+from ..adapters.equipment_specs import get_equipment_specs_adapter
 from ..adapters.mireye import MireyeError, get_mireye_client
 from ..agent import workflow
-from ..domain import CandidateSite, Investigation, Project, Workflow
+from ..domain import (
+    CandidateSite,
+    Investigation,
+    Project,
+    SiteDecisionReadiness,
+    SiteObservation,
+    Workflow,
+)
+from ..engine.site_decision import build_business_case, decision_readiness
 from ..fields import UnknownFieldError
 from ..schemas import (
+    DecisionGateConfirmationRequest,
     OverrideRequest,
     PolygonSiteCreate,
     RankingRequest,
     RunSiteInvestigation,
+    SiteBusinessCaseRequest,
+    SiteBusinessCaseResponse,
     SiteCreate,
     WhatIfResponse,
 )
@@ -23,6 +35,13 @@ from ..store import C, Store
 from .deps import get_project, store_dep
 
 router = APIRouter(prefix="/projects/{project_id}", tags=["before-construction"])
+
+
+def _site_or_404(store: Store, project: Project, site_id: str) -> CandidateSite:
+    site = store.get(C.SITES, site_id, CandidateSite)
+    if site is None or site.project_id != project.id:
+        raise HTTPException(status_code=404, detail="site not found on this project")
+    return site
 
 
 @router.get("/sites", response_model=list[CandidateSite])
@@ -110,6 +129,52 @@ def delete_site(
     if site is None or site.project_id != project.id:
         raise HTTPException(status_code=404, detail="site not found on this project")
     store.delete(C.SITES, site_id)
+
+
+@router.get("/sites/{site_id}/decision-readiness", response_model=SiteDecisionReadiness)
+def get_decision_readiness(
+    site_id: str, project: Project = Depends(get_project), store: Store = Depends(store_dep)
+):
+    site = _site_or_404(store, project, site_id)
+    observations = store.list(C.OBSERVATIONS, SiteObservation, parent_id=site.id)
+    ranking = site_service.score_sites(store, project, [site], project.dimension_weights or None)
+    score = ranking.scores[0] if ranking.scores else None
+    return decision_readiness(project, site, observations, score)
+
+
+@router.post("/sites/{site_id}/decision-gates", response_model=SiteDecisionReadiness)
+def confirm_decision_gates(
+    site_id: str,
+    payload: DecisionGateConfirmationRequest,
+    project: Project = Depends(get_project),
+    store: Store = Depends(store_dep),
+):
+    site = _site_or_404(store, project, site_id)
+    updates = {key: getattr(payload, key) for key in payload.model_fields_set}
+    for key, value in updates.items():
+        setattr(site, "gate_confirmed_by" if key == "confirmed_by" else key, value)
+    site.gate_confirmed_at = datetime.now(timezone.utc)
+    store.put(C.SITES, site, project_id=project.id)
+    observations = store.list(C.OBSERVATIONS, SiteObservation, parent_id=site.id)
+    ranking = site_service.score_sites(store, project, [site], project.dimension_weights or None)
+    return decision_readiness(project, site, observations, ranking.scores[0] if ranking.scores else None)
+
+
+@router.post("/sites/{site_id}/business-case", response_model=SiteBusinessCaseResponse)
+def site_business_case(
+    site_id: str,
+    payload: SiteBusinessCaseRequest,
+    project: Project = Depends(get_project),
+    store: Store = Depends(store_dep),
+):
+    site = _site_or_404(store, project, site_id)
+    profile = get_equipment_specs_adapter().find_us_construction_profile(
+        site.address, site.jurisdiction, site.name, project.region
+    )
+    try:
+        return build_business_case(project, site, payload, profile)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.post("/investigations/site", response_model=Investigation)

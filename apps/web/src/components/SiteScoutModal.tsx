@@ -705,7 +705,7 @@ export function SiteScoutModal({
                     AI Scored Recommendations across Selected Cities ({scoredRecommendations.length})
                   </h2>
                   <p className="text-xs text-ink-500">
-                    Ranked by multi-dimensional power, seismic, water, and civil feasibility
+                    Ranked by multi-dimensional power, seismic, water, and civil screening context
                   </p>
                 </div>
 

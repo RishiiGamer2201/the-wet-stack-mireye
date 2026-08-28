@@ -30,7 +30,7 @@
 
 ## Quick Overview
 
-**The Wet Stack** is an enterprise EPC intelligence platform powered by **Mireye Physical-World Intelligence APIs**. It bridges high-resolution geospatial, environmental, and infrastructure data directly into mission-critical data center feasibility and on-site construction change verification.
+**The Wet Stack** is an enterprise EPC intelligence platform powered by **Mireye Physical-World Intelligence APIs**. It combines high-resolution site screening, two authority-owned decision gates, business-cost comparison, and on-site construction change verification.
 
 ---
 
@@ -42,7 +42,7 @@
 
 ### Solution: Powered by Mireye Physical-World Intelligence
 
-Our solution leverages **Mireye's physical-world intelligence layer** as the ground-truth data engine. By uniting Mireye's multi-source environmental data with deterministic Python engineering engines, the platform guarantees that every feasibility ranking and field equipment change is evaluated against verified physical-world constraints:
+Our solution uses **Mireye's physical-world intelligence layer** for cited screening evidence. Deterministic Python evaluates the evidence, while utility-confirmed deliverable power and AHJ-confirmed approvals remain explicit gates that public data cannot close:
 
 #### 1. Before Construction: Site Feasibility Intelligence (via Mireye Data Layer)
 * **Mireye Multi-Layer Geospatial Ingestion:** Ingests 30 physical-world parameters across terrain, water chemistry, utility grid reliability, flood zones, and extreme climate conditions directly through Mireye connectors (USGS 3DEP, FEMA NFHL, EIA-861, EPA WQP, NOAA/ASHRAE, NRCS, and FCC).

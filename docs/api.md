@@ -34,6 +34,9 @@ Base path: `/api`
 | `DELETE` | `/projects/{id}/sites/{site_id}` | Remove a candidate |
 | `POST` | `/projects/{id}/investigations/site` | **Run the investigation.** Body: `{site_ids?, weights?}`. Returns the full `Investigation` including steps, events, ranking, decision and next actions |
 | `POST` | `/projects/{id}/ranking` | **What-if on weights.** Re-scores stored evidence; returns the new ranking, the baseline and a rank-change explanation |
+| `GET` | `/projects/{id}/sites/{site_id}/decision-readiness` | **Two-gate decision.** Utility deliverable-power and government-approval status; public data is context only |
+| `POST` | `/projects/{id}/sites/{site_id}/decision-gates` | Record utility/AHJ confirmation references and recompute readiness |
+| `POST` | `/projects/{id}/sites/{site_id}/business-case` | Deterministic energy cost and prototype CAPEX/TCO range with missing cost items listed |
 | `POST` | `/projects/{id}/sites/{site_id}/override` | **What-if on a value.** Records `user_confirmed` evidence (superseding the old record) and re-ranks |
 
 ## During Construction

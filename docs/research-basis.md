@@ -169,3 +169,47 @@ though they run.
    concept. If Mireye has no field for it, it becomes an InformationGap — which is
    the honest outcome and demonstrates the gap machinery.
 4. Legal review of `US12373613B2` before any commercial use (§2).
+# Founder-feedback product correction (28 August 2026)
+
+The before-construction workflow now separates **two authority-owned decision gates** from the
+broader business-context ranking:
+
+1. **Deliverable power.** A distance-to-substation layer, generator interconnection queue, or
+   regional reserve forecast does not prove that a serving utility can deliver the project's MW at
+   a parcel. The gate closes only with a utility service study or equivalent user-recorded utility
+   commitment.
+2. **Government approval pathway.** Public zoning and permit layers are useful screening context,
+   but the gate closes only with an AHJ decision or recorded approval reference.
+
+This is consistent with current public-source boundaries. EIA explains that grid managers regulate
+new large-load interconnections so demand can be accommodated, while EIA-411 publishes aggregate
+reliability-area planning data rather than parcel service availability. EIA also publishes power
+plant and transmission-line data but not substation locations. The Permitting Council's state
+portal supports coordinated permitting research, but it does not replace local zoning, building,
+and project-specific approvals.
+
+The business-context score still compares terrain, hazards, water, connectivity, civil,
+environmental, regulatory, and power indicators. The Flexential site-selection checklist supports
+using those broader factors for strategy, resilience, efficiency, workforce, connectivity, and
+total cost of ownership. The UI now labels that score as context rather than feasibility.
+
+Prototype proof points:
+
+- An attractive context score cannot display a proceed decision while either authority gate is
+  unconfirmed.
+- Confirmed capacity below the project's MW requirement deterministically blocks the site.
+- Approval rejection deterministically blocks the site; approval and utility references are kept
+  with the site record.
+- Costing shows annual facility energy, state-average or user-supplied tariff cost, a clearly
+  synthetic facility-CAPEX range, and every excluded TCO item. Utility network-upgrade cost stays
+  missing until the utility or user supplies it.
+- Mireye parcel fields remain enabled for high-resolution context and are never promoted into an
+  authority confirmation.
+
+Sources:
+
+- U.S. EIA, “Large load electricity demand”: https://www.eia.gov/TODAYINENERGY/detail.php?id=67344
+- U.S. EIA, Form EIA-411 data: https://www.eia.gov/electricity/data/eia411/
+- U.S. EIA, electricity data FAQ: https://www.eia.gov/tools/faqs/faq.php?id=567&t=3
+- Federal Permitting Improvement Steering Council, state permitting: https://www.permitting.gov/resources/states
+- Flexential, data center site-selection considerations: https://www.flexential.com/resources/blog/essential-considerations-effective-data-center-site-selection

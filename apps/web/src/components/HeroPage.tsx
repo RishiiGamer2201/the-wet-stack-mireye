@@ -85,13 +85,13 @@ export function HeroPage({ onStart }: HeroPageProps) {
                   Before Construction
                 </h2>
                 <p className="text-xs text-ink-500 mt-1 font-medium">
-                  Site Intelligence &amp; Multi-Dimensional Feasibility
+                  Site Screening, Decision Gates &amp; Business Cost
                 </p>
               </div>
 
               <p className="text-xs text-ink-600 leading-relaxed">
-                Screen and rank candidate data center locations across 8 physical, environmental,
-                and power dimensions backed by 34 Mireye catalog telemetry fields.
+                Compare candidate locations with Mireye context, while keeping deliverable power
+                and government approval as explicit authority-confirmed gates.
               </p>
 
               <ul className="space-y-2 pt-2 text-xs text-ink-700 border-t border-ink-100">
@@ -105,7 +105,7 @@ export function HeroPage({ onStart }: HeroPageProps) {
                 </li>
                 <li className="flex items-center gap-2">
                   <CheckCircle2 className="h-3.5 w-3.5 text-signal-500 shrink-0" />
-                  <span>What-If weight tuning &amp; certified engineering overrides</span>
+                  <span>What-If weight tuning &amp; traceable user-confirmed evidence</span>
                 </li>
               </ul>
             </div>
@@ -169,7 +169,7 @@ export function HeroPage({ onStart }: HeroPageProps) {
           <span>•</span>
           <div className="flex items-center gap-1.5">
             <Zap className="h-4 w-4 text-amber-600" />
-            <span>Zero Hallucination Scoring</span>
+            <span>Deterministic Context Scoring</span>
           </div>
         </div>
       </main>

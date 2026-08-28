@@ -50,7 +50,7 @@ def plan_site_investigation(
             1,
             InvestigationPhase.EVIDENCE,
             f"Broad physical-world sweep across {len(sites)} candidate site(s)",
-            "A cheap comparable baseline is needed before spending effort on any single site.",
+            "A comparable physical-context baseline is needed before deeper site due diligence.",
             requested_fields=broad_fields(),
         ),
         _step(

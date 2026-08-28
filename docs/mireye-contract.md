@@ -144,9 +144,8 @@ A proxy is labelled on the evidence and in the UI. It is never presented as an e
 ### Billed separately
 
 `wetland_fraction_of_parcel` and `parcel_zoning` belong to Mireye's `parcel_record` group, billed at
-**300 credits per location** against 1 credit for an ordinary field. They are mapped but excluded
-from every request unless `MIREYE_INCLUDE_PARCEL_FIELDS=true`. Left off, they behave as unavailable
-and become information gaps.
+**300 credits per location** against 1 credit for an ordinary field. This prototype enables them
+with `MIREYE_INCLUDE_PARCEL_FIELDS=true` so a site investigation requests full parcel context.
 
 ### Concepts with no provider equivalent
 
@@ -203,16 +202,16 @@ Covered by `tests/test_mireye_contract.py` (27 tests) and `tests/test_evidence.p
 `::test_a_drifted_contract_degrades_rather_than_failing_the_investigation`,
 `::test_feature_requests_are_submitted_once_per_field`).
 
-## Cost guardrails
+## High-utilization prototype controls
 
-Mireye bills per field per location, so an unbounded sweep is an unbounded bill. These limits are
-conservative by default and every one of them is enforced in code, not by convention.
+Mireye bills per field per location. This hackathon prototype intentionally uses a high-utilization
+profile. The limits still prevent an accidental infinite loop and are enforced in code.
 
 | Control | Default | Effect |
 | --- | --- | --- |
-| `MIREYE_MAX_LIVE_LOCATIONS` | `3` | Locations one investigation may fetch live |
-| `MIREYE_MAX_LIVE_FETCHES` | `8` | Live `/v1/fetch` calls per investigation, across all locations |
-| `MIREYE_INCLUDE_PARCEL_FIELDS` | `false` | Keeps the 300-credit `parcel_record` group out of every request |
+| `MIREYE_MAX_LIVE_LOCATIONS` | `1000` | Locations one investigation may fetch live |
+| `MIREYE_MAX_LIVE_FETCHES` | `5000` | Live `/v1/fetch` calls per investigation, across all locations |
+| `MIREYE_INCLUDE_PARCEL_FIELDS` | `true` | Includes the 300-credit `parcel_record` group |
 | `MIREYE_ENABLE_FEATURE_REQUESTS` | `false` | `/v1/feature-requests` is unverified, so gaps are recorded locally |
 | `MIREYE_CACHE_TTL_SECONDS` | `900` | Repeat fetches for the same location + field set are served from cache |
 

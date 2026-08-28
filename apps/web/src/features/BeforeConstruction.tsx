@@ -48,6 +48,8 @@ import type {
   ProjectDetail,
   SiteRanking,
   SiteScore,
+  SiteBusinessCase,
+  SiteDecisionReadiness,
 } from "../lib/types";
 
 const RISK_COLOR: Record<string, string> = {
@@ -278,6 +280,8 @@ export function BeforeConstruction({
   const [error, setError] = useState<unknown>(null);
   const [investigationFailed, setInvestigationFailed] = useState(false);
   const [selectedSite, setSelectedSite] = useState<string | null>(null);
+  const [readiness, setReadiness] = useState<SiteDecisionReadiness | null>(null);
+  const [businessCase, setBusinessCase] = useState<SiteBusinessCase | null>(null);
 
   // Keep the app-level advisor pointed at whichever candidate is selected here,
   // so opening it from another tab still knows which site is under discussion.
@@ -322,6 +326,13 @@ export function BeforeConstruction({
   const scores = ranking?.scores ?? [];
   const leader = scores[0];
   const selected: SiteScore | undefined = scores.find((s) => s.site_id === selectedSite) ?? leader;
+  const selectedRecord = sites.find((s) => s.id === selected?.site_id);
+
+  useEffect(() => {
+    if (!selected?.site_id) { setReadiness(null); setBusinessCase(null); return; }
+    api.decisionReadiness(projectId, selected.site_id).then(setReadiness).catch(setError);
+    api.businessCase(projectId, selected.site_id, {}).then(setBusinessCase).catch(() => setBusinessCase(null));
+  }, [projectId, selected?.site_id, ranking]);
 
   const chartData = useMemo(
     () =>
@@ -583,7 +594,7 @@ export function BeforeConstruction({
                 {realSites.length} {realSites.length === 1 ? "site" : "sites"} ready to investigate
               </p>
               <p className="text-xs text-emerald-700">
-                Fetch real-world data from Mireye and score all candidates deterministically.
+                Fetch Mireye screening context and compare all candidates deterministically.
               </p>
             </div>
           </div>
@@ -612,8 +623,20 @@ export function BeforeConstruction({
 
       {ranking && (
         <>
+          {selected && selectedRecord && (
+            <SiteDecisionPanel
+              key={selected.site_id}
+              projectId={projectId}
+              site={selectedRecord}
+              readiness={readiness}
+              businessCase={businessCase}
+              defaultItLoad={detail.project.targets.it_load_mw ?? undefined}
+              onReadiness={async (next) => { setReadiness(next); await refresh(); }}
+              onBusinessCase={setBusinessCase}
+            />
+          )}
           <div className="grid gap-4 xl:grid-cols-[3fr_2fr]">
-            <Card title="Ranking" subtitle="Deterministic weighted score \u2014 the backend recomputes it on every weight change">
+            <Card title="Business context ranking" subtitle="Secondary comparison only; it cannot close the utility or approval gates">
               <div className="h-56">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={chartData} layout="vertical" margin={{ left: 24, right: 16 }}>
@@ -637,7 +660,7 @@ export function BeforeConstruction({
                     <tr>
                       <th className="py-1 pr-2 font-medium">#</th>
                       <th className="py-1 pr-2 font-medium">Site</th>
-                      <th className="py-1 pr-2 font-medium">Score</th>
+                      <th className="py-1 pr-2 font-medium">Context score</th>
                       <th className="py-1 pr-2 font-medium">Risk</th>
                       <th className="py-1 pr-2 font-medium">Coverage</th>
                       <th className="py-1 pr-2 font-medium">Confidence</th>
@@ -713,7 +736,7 @@ export function BeforeConstruction({
               </Card>
 
               {selected && (
-                <Card title={`Dimension profile \u2014 ${selected.site_name}`} subtitle={selected.summary}>
+                <Card title={`Business context profile \u2014 ${selected.site_name}`} subtitle={selected.summary}>
                   <div className="h-56">
                     <ResponsiveContainer width="100%" height="100%">
                       <RadarChart data={radarData} outerRadius="75%">
@@ -857,6 +880,71 @@ export function BeforeConstruction({
       )}
 
     </div>
+  );
+}
+
+function money(value: number) {
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", notation: "compact", maximumFractionDigits: 1 }).format(value);
+}
+
+function SiteDecisionPanel({
+  projectId, site, readiness, businessCase, defaultItLoad, onReadiness, onBusinessCase,
+}: {
+  projectId: string;
+  site: CandidateSite;
+  readiness: SiteDecisionReadiness | null;
+  businessCase: SiteBusinessCase | null;
+  defaultItLoad?: number;
+  onReadiness: (value: SiteDecisionReadiness) => void;
+  onBusinessCase: (value: SiteBusinessCase) => void;
+}) {
+  const [capacity, setCapacity] = useState(site.utility_confirmed_capacity_mw?.toString() ?? "");
+  const [utilityRef, setUtilityRef] = useState(site.utility_confirmation_reference ?? "");
+  const [approval, setApproval] = useState(site.government_approval_status ?? "not_confirmed");
+  const [approvalRef, setApprovalRef] = useState(site.government_approval_reference ?? "");
+  const [itLoad, setItLoad] = useState(defaultItLoad?.toString() ?? "");
+  const [saving, setSaving] = useState(false);
+  const gateStyle = (status: string) => status === "CONFIRMED"
+    ? "border-emerald-200 bg-emerald-50 text-emerald-900"
+    : status === "FAILED" ? "border-rose-200 bg-rose-50 text-rose-900" : "border-amber-200 bg-amber-50 text-amber-900";
+
+  return (
+    <Card title={`Decision gates & business case — ${site.name}`} subtitle="A context score never proves utility serviceability or permit approval">
+      <div className="mb-3 rounded-lg border border-sky-200 bg-sky-50 p-3 text-xs text-sky-950">
+        <strong>Decision rule:</strong> proceed only after the serving utility confirms deliverable MW and the authority having jurisdiction confirms the approval pathway. Mireye parcel, grid, and zoning layers remain cited screening context.
+      </div>
+      <div className="grid gap-3 lg:grid-cols-2">
+        <div className="flex flex-col gap-3">
+          {readiness?.gates.map((gate) => (
+            <div key={gate.key} className={cx("rounded-lg border p-3 text-xs", gateStyle(gate.status))}>
+              <div className="flex items-center justify-between gap-2"><strong>{gate.label}</strong><Badge>{gate.status.replaceAll("_", " ")}</Badge></div>
+              <p className="mt-1">Required: {gate.requirement}</p>
+              <p className="mt-1">Authority: {gate.authority}</p>
+              <p className="mt-1 font-medium">Next: {gate.next_action}</p>
+            </div>
+          ))}
+          <div className="grid gap-2 rounded-lg border border-ink-200 p-3 sm:grid-cols-2">
+            <Field label="Utility-confirmed MW" htmlFor="gate-mw"><input id="gate-mw" className={inputClass} value={capacity} onChange={(e) => setCapacity(e.target.value)} inputMode="decimal" /></Field>
+            <Field label="Utility study / reference" htmlFor="gate-utility-ref"><input id="gate-utility-ref" className={inputClass} value={utilityRef} onChange={(e) => setUtilityRef(e.target.value)} /></Field>
+            <Field label="Government status" htmlFor="gate-approval"><select id="gate-approval" className={inputClass} value={approval} onChange={(e) => setApproval(e.target.value as typeof approval)}><option value="not_confirmed">Not confirmed</option><option value="pre_application">Pre-application</option><option value="conditional">Conditional</option><option value="approved">Approved</option><option value="rejected">Rejected</option></select></Field>
+            <Field label="Approval / permit reference" htmlFor="gate-approval-ref"><input id="gate-approval-ref" className={inputClass} value={approvalRef} onChange={(e) => setApprovalRef(e.target.value)} /></Field>
+            <Button loading={saving} onClick={async () => { setSaving(true); try { onReadiness(await api.confirmDecisionGates(projectId, site.id, { utility_confirmed_capacity_mw: capacity ? Number(capacity) : null, utility_confirmation_reference: utilityRef || null, government_approval_status: approval, government_approval_reference: approvalRef || null })); } finally { setSaving(false); } }}>Save authority evidence</Button>
+          </div>
+        </div>
+        <div className="rounded-lg border border-ink-200 p-3">
+          <h3 className="text-sm font-semibold text-ink-900">Costing agent</h3>
+          <p className="mt-1 text-xs text-ink-600">Deterministic energy and prototype CAPEX range. Missing costs stay visible.</p>
+          <div className="mt-3 flex items-end gap-2"><Field label="IT load (MW)" htmlFor="case-it-load"><input id="case-it-load" className={inputClass} value={itLoad} onChange={(e) => setItLoad(e.target.value)} inputMode="decimal" /></Field><Button variant="secondary" onClick={async () => onBusinessCase(await api.businessCase(projectId, site.id, { it_load_mw: itLoad ? Number(itLoad) : null }))}>Recalculate</Button></div>
+          {businessCase && <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+            <div className="rounded bg-ink-50 p-2"><span className="block text-ink-500">Annual energy</span><strong>{(businessCase.annual_energy_kwh / 1e6).toFixed(1)} GWh</strong></div>
+            <div className="rounded bg-ink-50 p-2"><span className="block text-ink-500">Annual electricity</span><strong>{money(businessCase.annual_energy_cost_usd)}</strong></div>
+            <div className="col-span-2 rounded bg-ink-50 p-2"><span className="block text-ink-500">{businessCase.years}-year known range</span><strong>{money(businessCase.ten_year_known_cost_low_usd)} – {money(businessCase.ten_year_known_cost_high_usd)}</strong></div>
+            <div className="col-span-2 text-amber-800"><strong>Excluded:</strong> {businessCase.missing_cost_items.join(", ") || "none"}</div>
+            <div className="col-span-2 text-[11px] text-ink-500">{businessCase.estimate_class}. {businessCase.disclaimer}</div>
+          </div>}
+        </div>
+      </div>
+    </Card>
   );
 }
 

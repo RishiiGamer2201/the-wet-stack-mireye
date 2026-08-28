@@ -105,6 +105,56 @@ def test_boundary_site_creation_rejects_a_degenerate_polygon(api):
     assert response.status_code == 422
 
 
+def test_site_decision_gates_require_authority_confirmation(api):
+    pid = project_id(api)
+    site = api.get(f"/api/projects/{pid}/sites").json()[0]
+    initial = api.get(f"/api/projects/{pid}/sites/{site['id']}/decision-readiness")
+    assert initial.status_code == 200
+    assert initial.json()["decision_status"] == "CONDITIONAL"
+    assert {gate["status"] for gate in initial.json()["gates"]} == {"NEEDS_CONFIRMATION"}
+
+    confirmed = api.post(
+        f"/api/projects/{pid}/sites/{site['id']}/decision-gates",
+        json={
+            "utility_confirmed_capacity_mw": 250,
+            "utility_confirmation_reference": "Utility service study USS-42",
+            "government_approval_status": "approved",
+            "government_approval_reference": "AHJ pre-application letter PA-7",
+            "confirmed_by": "Project development lead",
+        },
+    )
+    assert confirmed.status_code == 200
+    body = confirmed.json()
+    assert body["decision_status"] == "READY_FOR_DUE_DILIGENCE"
+    assert all(gate["status"] == "CONFIRMED" for gate in body["gates"])
+
+
+def test_site_decision_gate_blocks_insufficient_confirmed_power(api):
+    pid = project_id(api)
+    site = api.get(f"/api/projects/{pid}/sites").json()[0]
+    response = api.post(
+        f"/api/projects/{pid}/sites/{site['id']}/decision-gates",
+        json={"utility_confirmed_capacity_mw": 100},
+    )
+    assert response.status_code == 200
+    assert response.json()["decision_status"] == "BLOCKED"
+
+
+def test_site_business_case_is_transparent_about_missing_costs(api):
+    pid = project_id(api)
+    site = api.get(f"/api/projects/{pid}/sites").json()[0]
+    response = api.post(
+        f"/api/projects/{pid}/sites/{site['id']}/business-case",
+        json={"it_load_mw": 48, "target_pue": 1.3, "electricity_rate_usd_kwh": 0.08},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["annual_energy_kwh"] > 0
+    assert body["estimated_facility_capex_high_usd"] > body["estimated_facility_capex_low_usd"]
+    assert "utility interconnection and network upgrades" in body["missing_cost_items"]
+    assert "excludes" in body["disclaimer"].lower()
+
+
 def test_geocoding_fills_coordinates_from_an_address(api):
     response = api.post(
         f"/api/projects/{project_id(api)}/sites",

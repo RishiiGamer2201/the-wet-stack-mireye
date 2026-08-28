@@ -270,12 +270,12 @@ export default function App() {
                           Before Construction
                         </h2>
                         <p className="text-xs font-medium text-ink-500 mt-0.5">
-                          Site Intelligence &amp; Multi-Dimensional Feasibility
+                          Site Screening, Decision Gates &amp; Business Cost
                         </p>
                       </div>
 
                       <p className="text-xs text-ink-600 leading-relaxed">
-                        Evaluate and rank candidate data center locations across 8 physical, environmental, and infrastructure dimensions backed by 34 Mireye catalog fields.
+                        Screen candidates across 8 business-context dimensions, then track the two authority-owned gates: deliverable utility power and government approval.
                       </p>
 
                       <div className="space-y-2 pt-2 border-t border-ink-100">
@@ -291,7 +291,7 @@ export default function App() {
                           </li>
                           <li className="flex items-start gap-2">
                             <CheckCircle2 className="h-3.5 w-3.5 text-signal-500 mt-0.5 shrink-0" />
-                            <span><strong>What-If Simulator:</strong> Real-time weight tuning &amp; certified user overrides</span>
+                            <span><strong>What-If Simulator:</strong> Real-time weight tuning &amp; traceable user-confirmed evidence</span>
                           </li>
                         </ul>
                       </div>

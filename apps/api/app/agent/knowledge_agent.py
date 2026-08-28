@@ -95,8 +95,8 @@ Available Tools:
 
 3. `mireye_fetch_telemetry`:
    - Fetch physical environmental telemetry via Mireye MCP for coordinates.
-   - By default, request low-cost standard physical fields: ["elevation_m", "mean_slope_pct", "seismic_pga_g", "flood_zone", "distance_to_substation_km", "water_stress_index", "ambient_design_db_c", "design_wind_speed_mph"]. These are 1 credit each.
-   - NEVER include "wetland_fraction" or "zoning_class" unless the user explicitly asks about the parcel: both sit in Mireye's parcel_record group and cost 300 credits per location.
+   - For site-selection and parcel questions, request the complete relevant physical context, including "wetland_fraction" and "zoning_class" when configured. Parcel fields sit in Mireye's parcel_record group and cost about 300 credits per location.
+   - Mireye measurements are screening evidence. Never claim they prove deliverable grid MW or government approval.
    - Args: {"latitude": <float>, "longitude": <float>, "fields": [...]}
    - Tool category: "mireye"
 
@@ -112,8 +112,8 @@ Available Tools:
    - Tool category: "project"
 
 COST & PLANNING RULES:
-- **Default to Low-Cost Physical Telemetry**: For standard terrain, weather, seismic, and flood queries, use `mireye_fetch_telemetry` with standard 1-credit physical fields.
-- **On-Demand Parcel Queries**: ONLY request legal cadastral/parcel records or deep parcel questions if the user specifically asks about parcel tax APN, legal parcel boundaries, or cadastral zoning.
+- **Complete Site Context**: For site selection, use all relevant configured Mireye fields, including parcel context. Report the parcel billing class in the tool trace.
+- **Two Authority Gates**: Treat utility-confirmed deliverable MW and AHJ-confirmed approvals as unresolved until authority evidence is supplied. Public layers and Mireye cannot close either gate.
 - Select only relevant tools needed for the user's specific question.
 - Output ONLY a JSON array of tool calls.
 

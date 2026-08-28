@@ -83,6 +83,54 @@ export interface CandidateSite {
   synthetic: boolean;
   notes?: string | null;
   polygon_coordinates?: Array<{ latitude: number; longitude: number }> | null;
+  utility_confirmed_capacity_mw?: number | null;
+  utility_confirmation_reference?: string | null;
+  government_approval_status?: "not_confirmed" | "pre_application" | "conditional" | "approved" | "rejected";
+  government_approval_reference?: string | null;
+  gate_confirmed_by?: string | null;
+  gate_confirmed_at?: string | null;
+}
+
+export interface DecisionGate {
+  key: "power_serviceability" | "government_approval";
+  label: string;
+  status: "CONFIRMED" | "NEEDS_CONFIRMATION" | "FAILED";
+  requirement: string;
+  confirmed_value?: string | null;
+  screening_context: string[];
+  authority: string;
+  reference?: string | null;
+  next_action: string;
+}
+
+export interface SiteDecisionReadiness {
+  project_id: string;
+  site_id: string;
+  site_name: string;
+  decision_status: "READY_FOR_DUE_DILIGENCE" | "CONDITIONAL" | "BLOCKED";
+  gates: DecisionGate[];
+  business_context_score?: number | null;
+  business_context_rank?: number | null;
+  disclaimer: string;
+}
+
+export interface SiteBusinessCase {
+  project_id: string;
+  site_id: string;
+  site_name: string;
+  annual_energy_kwh: number;
+  annual_energy_cost_usd: number;
+  estimated_facility_capex_low_usd: number;
+  estimated_facility_capex_high_usd: number;
+  known_additional_capex_usd: number;
+  ten_year_known_cost_low_usd: number;
+  ten_year_known_cost_high_usd: number;
+  years: number;
+  inputs: Record<string, number>;
+  sources: string[];
+  missing_cost_items: string[];
+  estimate_class: string;
+  disclaimer: string;
 }
 
 export interface EvidenceSource {

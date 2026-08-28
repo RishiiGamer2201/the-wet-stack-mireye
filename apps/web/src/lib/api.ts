@@ -15,6 +15,8 @@ import type {
   Requirement,
   RequirementTargets,
   SearchResponse,
+  SiteBusinessCase,
+  SiteDecisionReadiness,
   WhatIfResponse,
 } from "./types";
 
@@ -106,6 +108,12 @@ export const api = {
     post<WhatIfResponse>(`/projects/${projectId}/ranking`, body),
   override: (projectId: string, siteId: string, body: unknown) =>
     post<WhatIfResponse>(`/projects/${projectId}/sites/${siteId}/override`, body),
+  decisionReadiness: (projectId: string, siteId: string) =>
+    request<SiteDecisionReadiness>(`/projects/${projectId}/sites/${siteId}/decision-readiness`),
+  confirmDecisionGates: (projectId: string, siteId: string, body: unknown) =>
+    post<SiteDecisionReadiness>(`/projects/${projectId}/sites/${siteId}/decision-gates`, body),
+  businessCase: (projectId: string, siteId: string, body: unknown) =>
+    post<SiteBusinessCase>(`/projects/${projectId}/sites/${siteId}/business-case`, body),
 
   // During Construction
   changes: (projectId: string) => request<ChangeDetail["change"][]>(`/projects/${projectId}/changes`),
